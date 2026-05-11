@@ -1,0 +1,1 @@
+{"uuid": "f7f59c40-22ca-4ac5-9425-68455b1cdc96", "children": ["deec18c0-436e-48b7-a7f9-f0c0aec73479"], "befores": [{"name": "registration_page", "status": "passed", "steps": [{"name": "Open Pre-Registration page", "status": "passed", "start": 1778228195591, "stop": 1778228196092}], "start": 1778228195591, "stop": 1778228196092}], "start": 1778228195591, "stop": 1778228197023}
