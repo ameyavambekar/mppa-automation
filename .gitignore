@@ -22,6 +22,7 @@ env/
 *.ipr
 
 # Playwright
+reports/
 test-results/
 playwright-report/
 playwright/.cache/
