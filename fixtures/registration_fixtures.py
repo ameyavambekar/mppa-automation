@@ -83,3 +83,36 @@ def password_no_symbol_data():
 def short_password_data():
     """TC-06 — Password without special symbol"""
     return AgencyRegistrationFactory.password_too_short().password
+
+
+# ── Section 2: Contact & Identity fixtures (TC-10 to TC-18) ──────────────────
+# TC-10 uses valid_registration_data (already declared above).
+# TC-11 uses valid_registration_data — the OTP is fetched live from testmail.app.
+
+@pytest.fixture
+def invalid_email_domain_data():
+    """
+    TC-14 / EC-3 — Syntactically valid email whose domain does not exist.
+    OTP delivery is expected to fail.
+    """
+    return AgencyRegistrationFactory.invalid_email_domain()
+
+
+@pytest.fixture
+def ec4_pan_lowercase_data():
+    """
+    TC-15 / EC-4 — PAN entered in lowercase; the field should auto-uppercase
+    the value in real-time.
+    """
+    return AgencyRegistrationFactory.ec4_pan_lowercase()
+
+
+@pytest.fixture
+def duplicate_pan_data():
+    """TC-17 — PAN already registered in the system; expects duplicate error."""
+    return AgencyRegistrationFactory.duplicate_pan()
+
+@pytest.fixture
+def no_district_data():
+    """TC-18 (negative path) — District left unselected; expects required error."""
+    return AgencyRegistrationFactory.no_district_selected()

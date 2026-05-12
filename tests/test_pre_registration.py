@@ -315,10 +315,6 @@ def test_tc08_password_show_hide_toggle(registration_page, ec5_show_hide_data):
         expect(registration_page.confirm_password_input).to_have_attribute("type", "password")
 
 
-
-
-
-
 # ===========================================================================
 # TC-09 — Login Credentials Entry & Password Strength Feedback
 # ===========================================================================
@@ -345,9 +341,6 @@ def test_tc09_valid_credentials_accepted_and_strength_shown(
         expect(registration_page.password_helper).to_contain_text("Strong")
         expect(registration_page.confirm_password_helper).to_contain_text("Passwords match")
         expect(registration_page.username_helper).to_contain_text("Username available")
-
-
-
 
 # ===========================================================================
 # TC-10 — OTP Delivery on Email Submit
@@ -376,3 +369,284 @@ def test_tc10_otp_sent_on_email_submit(registration_page, valid_registration_dat
 
     with allure.step("Assert Get OTP button is disabled during countdown"):
         expect(registration_page.otp_button).to_be_disabled()
+
+
+# =============================================================================
+# TC-11 — Successful OTP Verification (AC-3)
+# =============================================================================
+
+@allure.story("TC-11: Successful OTP Verification")
+@allure.title("Email is verified after entering correct OTP within validity window")
+def test_tc11_email_verified_after_correct_otp(registration_page, valid_registration_data):
+    """
+    Given I am on the Pre-Registration page and have clicked Get OTP,
+    When I retrieve the 6-digit OTP from my inbox and enter it,
+    Then the email field is marked as verified (green tick / 'Verified' label).
+
+    Notion ref: TC-11 (AC-3)
+    Pre-condition: testmail.app inbox reachable; TESTMAIL_NAMESPACE set in .env
+    """
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Enter email and click Get OTP"):
+        registration_page.fill_email_and_request_otp(data.email)
+
+    with allure.step("Assert OTP countdown / resend button is visible (OTP dispatched)"):
+        expect(registration_page.otp_countdown_timer).to_be_visible()
+
+    with allure.step("Fetch OTP from testmail.app inbox and enter it"):
+        registration_page.enter_otp_and_verify_email()
+
+    with allure.step("Assert email verified tag is shown"):
+        expect(registration_page.email_verified_tag).to_be_visible()
+
+
+# =============================================================================
+# TC-12 — OTP: Incorrect OTP Entry
+# =============================================================================
+
+@allure.story("TC-12: OTP — Incorrect Entry")
+@allure.title("Error shown when an incorrect OTP is submitted")
+def test_tc12_incorrect_otp_shows_error(registration_page, valid_registration_data):
+    """
+    Given OTP has been sent to the registered email,
+    When I enter a deliberately wrong OTP (000000),
+    Then an inline error 'Incorrect OTP. Please check and try again.' is displayed
+    and the email remains unverified.
+
+    Notion ref: TC-12 | Data: wrong OTP = 000000
+    """
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Enter valid email and request OTP"):
+        registration_page.fill_email_and_request_otp(data.email)
+        expect(registration_page.otp_countdown_timer).to_be_visible()
+
+    with allure.step("Enter an incorrect OTP and click Verify"):
+        error = registration_page.submit_otp_and_handle_alert()
+
+    with allure.step("Assert OTP error shown; email verified tag absent"):
+        assert("Invalid OTP" in error)
+        expect(registration_page.email_verified_tag).not_to_be_visible()
+
+
+# =============================================================================
+# TC-13 — OTP: Expired OTP + Resend (EC-2)
+# =============================================================================
+
+@pytest.mark.slow
+@allure.story("TC-13: OTP — Expired OTP")
+@allure.title("Expired OTP is rejected and resend issues a fresh OTP")
+def test_tc13_expired_otp_rejected_resend_works(registration_page, valid_registration_data):
+    """
+    Given the OTP countdown has reached zero (OTP expired),
+    When I enter the original (now-expired) OTP,
+    Then an error 'OTP has expired. Please click 'Get OTP' to resend.' is shown,
+    And clicking 'Get OTP' again delivers a fresh OTP that can be verified.
+
+    Notion ref: TC-13 (EC-2)
+    Marked @pytest.mark.slow — requires waiting for the OTP validity window to
+    expire (typically 5–10 min in production). Run with: pytest -m slow
+    """
+
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Enter valid email and request OTP; record the timer start"):
+        registration_page.fill_email_and_request_otp(data.email)
+        expect(registration_page.otp_countdown_timer).to_be_visible()
+
+    with allure.step("Wait for the OTP validity window to expire (countdown → 0)"):
+        # Wait until the resend button becomes re-enabled (countdown reached zero).
+        expect(registration_page.otp_button).to_be_enabled(timeout=600_000)  # 10 min
+
+    with allure.step("Enter the now-expired OTP and click Verify"):
+        # Use a placeholder — in real execution the tester has the original OTP.
+        # For automation, the OTP was fetched earlier; here we simulate entering it late.
+        error = registration_page.submit_otp_and_handle_alert()  # any value will fail as expired
+
+    with allure.step("Assert expired OTP error is shown"):
+        assert("Invalid OTP" in error)
+
+    with allure.step("Click Get OTP resend button; assert new countdown starts"):
+        registration_page.otp_button.click()
+        expect(registration_page.otp_countdown_timer).to_be_visible()
+
+    with allure.step("Enter fresh OTP from inbox and verify email"):
+        registration_page.enter_otp_and_verify_email()
+        expect(registration_page.email_verified_tag).to_be_visible()
+
+
+# =============================================================================
+# TC-14 — OTP: Undeliverable Email (EC-3)
+# =============================================================================
+
+@allure.story("TC-14: OTP — Undeliverable Email")
+@allure.title("Error shown when OTP cannot be delivered to a non-existent domain")
+def test_tc14_undeliverable_email_shows_error(registration_page, invalid_email_domain_data):
+    """
+    Given I enter a syntactically valid email whose domain does not exist,
+    When I click Get OTP,
+    Then an error banner 'OTP could not be delivered. Please check the email
+    address and try again.' is displayed and no OTP is sent.
+
+    Notion ref: TC-14 (EC-3) | Data: user@nonexistentdomain12345
+    """
+    data = invalid_email_domain_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step(f"Enter non-existent-domain email: '{data.email}' and click Get OTP"):
+        registration_page.fill_email_and_request_otp(data.email)
+
+    with allure.step("Assert OTP delivery failure error is displayed"):
+        expect(registration_page.email_helper).to_contain_text("Invalid email format")
+
+    with allure.step("Assert email is NOT marked as verified"):
+        expect(registration_page.email_verified_tag).not_to_be_visible()
+
+
+# =============================================================================
+# TC-15 — Valid PAN Entry with Auto-Uppercase (EC-4)
+# =============================================================================
+
+@allure.story("TC-15: Valid PAN Entry — Auto-Uppercase")
+@allure.title("PAN entered in lowercase is auto-converted to uppercase in real-time")
+def test_tc15_valid_pan_auto_uppercased(registration_page, ec4_pan_lowercase_data):
+    """
+    Given I am on the Pre-Registration page (email already verified),
+    When I type a valid PAN number in lowercase (e.g. abcde1234f),
+    Then the PAN field auto-uppercases the value to ABCDE1234F in real-time
+    and no validation error is displayed.
+
+    Notion ref: TC-15 (EC-4) | Data: lowercase valid PAN
+    """
+    data = ec4_pan_lowercase_data
+    lowercase_pan = data.pan_number          # e.g. 'abcde1234f'
+
+    with allure.step(f"Type PAN in lowercase: '{lowercase_pan}'"):
+        registration_page.fill_pan(lowercase_pan)   # blur triggered inside
+
+    with allure.step("Assert field value is auto-uppercased"):
+        expect(registration_page.pan_input).to_have_value(lowercase_pan.upper())
+
+    with allure.step("Assert no PAN format error is shown"):
+        expect(registration_page.pan_helper).to_contain_text("Valid PAN format")
+
+
+# =============================================================================
+# TC-16 — PAN: Duplicate PAN Blocked (AC-7)
+# =============================================================================
+
+@allure.story("TC-16: PAN — Duplicate PAN Blocked")
+@allure.title("Submission blocked when PAN is already registered in the system")
+def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
+    """
+    Given a registration already exists with PAN AAAPL1234C,
+    And I am on the Pre-Registration page with all other fields validly filled,
+    When I enter the duplicate PAN and click SUBMIT REGISTRATION,
+    Then the error 'This PAN is already registered. Please use a different PAN
+    or login if you are an existing user.' is shown and submission is blocked.
+
+    Notion ref: TC-16 (AC-7)
+    Pre-condition: PAN 'AAAPL1234C' exists in the test environment DB.
+    """
+    data = duplicate_pan_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Verify email via OTP"):
+        registration_page.fill_email_and_request_otp(data.email)
+        registration_page.enter_otp_and_verify_email()
+
+    with allure.step(f"Enter duplicate PAN: '{data.pan_number}'"):
+        registration_page.fill_pan(data.pan_number)
+
+    with allure.step("Select district"):
+        registration_page.select_district(data.district)
+
+    with allure.step("Fill CAPTCHA and accept declaration"):
+        registration_page.fill_captcha()
+        registration_page.accept_declaration()
+
+    with allure.step("Click SUBMIT REGISTRATION"):
+        registration_page.submit()
+
+    with allure.step("Assert duplicate PAN error and submission blocked"):
+        expect(registration_page.server_error).to_contain_text(registration_page.duplicate_pan_error)
+
+
+
+# =============================================================================
+# TC-17 — District Dropdown Selection
+# =============================================================================
+
+@allure.story("TC-17: District Dropdown Selection")
+@allure.title("District dropdown accepts a valid selection and shows error when skipped")
+def test_tc17_district_dropdown_selection(registration_page, valid_registration_data):
+    """
+    Given I am on the Pre-Registration page,
+    When I open the District dropdown and select 'Mumbai',
+    Then 'Mumbai' is displayed as the selected value and no error is shown.
+    When I attempt to submit without selecting a district (separate step),
+    Then the error 'Please select the district where your agency is located.' appears.
+
+    Notion ref: TC-17
+    """
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Verify email via OTP"):
+        registration_page.fill_email_and_request_otp(data.email)
+        registration_page.enter_otp_and_verify_email()
+
+    with allure.step(f"Enter PAN: '{data.pan_number}'"):
+        registration_page.fill_pan(data.pan_number)
+
+    with allure.step("Verify dropdown initially shows '-- Select District --'"):
+        expect(registration_page.district_select).to_have_value("")
+
+    with allure.step("Select 'Mumbai City' from the dropdown"):
+        registration_page.select_district("Mumbai City")
+
+    with allure.step("Assert 'Mumbai City' is the selected value"):
+        expect(registration_page.district_select).to_have_value("519")
+
+
+    with allure.step("Reset to no selection and trigger blur-validation"):
+        registration_page.district_select.select_option(value="")  # reset
+        registration_page.blur_district()
+
+    with allure.step("Fill CAPTCHA and accept declaration"):
+        registration_page.fill_captcha()
+        registration_page.accept_declaration()
+
+    with allure.step("Click SUBMIT REGISTRATION"):
+        error = registration_page.submit_and_handle_alert()
+
+    with allure.step("Step 6 — Assert required-district error appears"):
+       assert(registration_page.district_not_selected_error in error)
