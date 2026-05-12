@@ -4,7 +4,7 @@ from playwright.sync_api import expect
 from pages.base_page import BasePage
 from utils import email_otp
 
-REGISTER_URL = "https://mppa.sppuef.in/module/agency/auth/register.php"
+REGISTER_URL = "https://devmppa.sppuef.in/module/agency/auth/register.php"
 
 class RegistrationPage(BasePage):
 
@@ -23,6 +23,46 @@ class RegistrationPage(BasePage):
         return self.page.locator("//input[@id='password']")
 
     @property
+    def password_length_error(self):
+        return self.page.locator("//span[@id='chk-len' and contains(@class,'err')]")
+
+    @property
+    def password_length_correct(self):
+        return self.page.locator("//span[@id='chk-len' and contains(@class,'ok')]")
+
+    @property
+    def password_uppercase_error(self):
+        return self.page.locator("//span[@id='chk-upper' and contains(@class,'err')]")
+
+    @property
+    def password_uppercase_correct(self):
+        return self.page.locator("//span[@id='chk-upper' and contains(@class,'ok')]")
+
+    @property
+    def password_number_error(self):
+        return self.page.locator("//span[@id='chk-num' and contains(@class,'err')]")
+
+    @property
+    def password_number_correct(self):
+        return self.page.locator("//span[@id='chk-num' and contains(@class,'ok')]")
+
+    @property
+    def password_symbol_error(self):
+        return self.page.locator("//span[@id='chk-sym' and contains(@class,'err')]")
+
+    @property
+    def password_symbol_correct(self):
+        return self.page.locator("//span[@id='chk-sym' and contains(@class,'ok')]")
+
+    @property
+    def password_show_toggle(self):
+        return self.page.locator("//input[@id='password']//following-sibling::button")
+
+    @property
+    def confirm_password_show_toggle(self):
+        return self.page.locator("//input[@id='confirmPassword']//following-sibling::button")
+
+    @property
     def confirm_password_input(self):
         return self.page.locator("//input[@id='confirmPassword']")
 
@@ -35,6 +75,10 @@ class RegistrationPage(BasePage):
     @property
     def otp_button(self):
         return self.page.locator("#otpBtn")
+
+    @property
+    def otp_countdown_timer(self):
+        return self.page.locator("//button[contains(text(),'Resend')]")
 
     @property
     def email_otp_input(self):
@@ -136,9 +180,39 @@ class RegistrationPage(BasePage):
     def fill_password(self, password: str):
         self.password_input.fill(password)
 
+    @allure.step("Fill password")
+    def clear_password(self):
+        self.password_input.clear()
+
+    @allure.step("Fill password and blur to trigger validation")
+    def fill_password_and_blur(self, password: str):
+        """
+        Fills the password field and immediately blurs it so that
+        on-blur complexity errors are triggered (used by TC-07).
+        """
+        self.password_input.fill(password)
+        self.password_input.blur()
+
     @allure.step("Fill confirm password")
     def fill_confirm_password(self, confirm_password: str):
         self.confirm_password_input.fill(confirm_password)
+
+    @allure.step("Toggle show password")
+    def toggle_password_visibility(self):
+        self.password_show_toggle.click()
+
+    @allure.step("Toggle show confirm password")
+    def toggle_confirm_password_visibility(self):
+        self.confirm_password_show_toggle.click()
+
+    @allure.step("Fill confirm password and blur to trigger validation")
+    def fill_confirm_password_and_blur(self, confirm_password: str):
+        """
+        Fills the confirm-password field and blurs it so on-blur
+        mismatch errors are triggered (used by TC-08).
+        """
+        self.confirm_password_input.fill(confirm_password)
+        self.confirm_password_input.blur()
 
     @allure.step("Fill Section 1 — Login Credentials")
     def fill_credentials(self, username: str, password: str, confirm_password: str = None):
@@ -146,7 +220,24 @@ class RegistrationPage(BasePage):
         self.fill_password(password)
         self.fill_confirm_password(confirm_password or password)
 
-        # Section 2
+        @allure.step("Toggle password visibility (SHOW / HIDE)")
+        def toggle_password_visibility(self):
+            """
+            TC-09 / EC-5 — Clicks the show/hide button on the Password field.
+            First click reveals the password (type → text);
+            second click re-masks it (type → password).
+            """
+            self.password_show_toggle.click()
+
+        @allure.step("Toggle confirm password visibility (SHOW / HIDE)")
+        def toggle_confirm_password_visibility(self):
+            """
+            TC-09 / EC-5 — Clicks the show/hide button on the Confirm Password field.
+            """
+            self.confirm_password_show_toggle.click()
+
+
+    # Section 2
 
     @allure.step("Fill email and trigger OTP")
     def fill_email_and_request_otp(self, email: str):
@@ -202,6 +293,27 @@ class RegistrationPage(BasePage):
     def submit(self):
         self.submit_button.click()
 
+    @allure.step("Submit form and handle alert")
+    def submit_and_handle_alert(self, action: str = "accept", prompt_text: str = None) -> str:
+        """
+        Clicks Submit, handles any alert/confirm/prompt dialog,
+        and returns the dialog message for assertions.
+        """
+        dialog_message = []
+
+        def handle_dialog(dialog):
+            dialog_message.append(dialog.message)
+            if action == "dismiss":
+                dialog.dismiss()
+            else:
+                dialog.accept(prompt_text or "")
+
+        self.page.on("dialog", handle_dialog)
+        self.submit_button.click()
+        self.page.remove_listener("dialog", handle_dialog)  # clean up
+
+        return dialog_message[0] if dialog_message else ""
+
     # ── Composite action ──────────────────────────────────────────────────────
 
     @allure.step("Complete full registration for {data.scenario_label}")
@@ -233,5 +345,24 @@ class RegistrationPage(BasePage):
     @allure.step("Assert Registration ID is displayed")
     def assert_registration_id_displayed(self):
         """AC-6 — ID must follow MPPA/[Year]/[SeqNo] pattern."""
-        expect(self.registration_id_text.text_content()).to_be_visible()
+        expect(self.registration_id_text).to_be_visible()
 
+    @allure.step("Assert password field is masked (type=password)")
+    def assert_password_is_masked(self):
+        """TC-09 — Verifies the password input renders as masked dots."""
+        expect(self.password_input).to_have_attribute("type", "password")
+
+    @allure.step("Assert password field is visible as plain text (type=text)")
+    def assert_password_is_visible(self):
+        """TC-09 — Verifies the password input renders as readable plain text."""
+        expect(self.password_input).to_have_attribute("type", "text")
+
+    @allure.step("Assert confirm-password field is masked (type=password)")
+    def assert_confirm_password_is_masked(self):
+        """TC-09 — Verifies the confirm-password input renders as masked dots."""
+        expect(self.confirm_password_input).to_have_attribute("type", "password")
+
+    @allure.step("Assert confirm-password field is visible as plain text (type=text)")
+    def assert_confirm_password_is_visible(self):
+        """TC-09 — Verifies the confirm-password input renders as readable plain text."""
+        expect(self.confirm_password_input).to_have_attribute("type", "text")

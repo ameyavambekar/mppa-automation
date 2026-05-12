@@ -11,14 +11,35 @@ from pages.login_page import LoginPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
 
+
+# ── Allure output dir ─────────────────────────────────────────────────────────
 load_dotenv()
 ALLURE_RESULTS_DIR = os.path.join(os.path.dirname(__file__), "reports", "allure-results")
-BASE_URL = os.getenv("MPPA_BASE_URL", "https://mppa.sppuef.in/module/agency/auth/login.php")
+BASE_URL = os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 SLOW_MO = int(os.getenv("SLOW_MO", "100"))
-print(f"HEADLESS value: '{os.getenv('HEADLESS')}'")
-print(f"SLOW_MO value: '{os.getenv('SLOW_MO')}'")
 
+
+# ── Data fixture plugins ──────────────────────────────────────────────────────
+# Each string is a dotted module path to a fixtures file.
+# pytest discovers and registers all @pytest.fixture functions inside them
+# automatically — no imports needed in test files.
+pytest_plugins = [
+    "fixtures.registration_fixtures",
+]
+
+
+# ── Allure environment file ───────────────────────────────────────────────────
+def pytest_configure(config):
+    os.makedirs(ALLURE_RESULTS_DIR, exist_ok=True)
+    env_file = os.path.join(ALLURE_RESULTS_DIR, "environment.properties")
+    with open(env_file, "w") as f:
+        f.write(f"Base.URL={BASE_URL}\n")
+        f.write(f"Browser=chromium\n")
+        f.write(f"Python.Version=3.11\n")
+        f.write(f"Framework=Playwright+pytest\n")
+
+# ── Browser lifecycle ─────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
 def browser_context():
     """Single browser context shared across the session."""
@@ -33,16 +54,6 @@ def browser_context():
         context.close()
         browser.close()
 
-
-def pytest_configure(config):
-    os.makedirs(ALLURE_RESULTS_DIR, exist_ok=True)
-    env_file = os.path.join(ALLURE_RESULTS_DIR, "environment.properties")
-    with open(env_file, "w") as f:
-        f.write(f"Base.URL={BASE_URL}\n")
-        f.write(f"Browser=chromium\n")
-        f.write(f"Python.Version=3.11\n")
-        f.write(f"Framework=Playwright+pytest\n")
-
 @pytest.fixture(scope="function")
 def page(browser_context):
     """Fresh page for each test function."""
@@ -54,7 +65,7 @@ def page(browser_context):
 def logged_in_page(request, page):
     """Logs in as the given role before the test."""
     role = request.param          # passed via indirect=
-    page.goto("https://example.com/login")
+    page.goto(f"{BASE_URL}/login.php")
     page.fill("#user", role)
     page.fill("#pass", "password")
     page.click("button[type=submit]")
@@ -98,14 +109,3 @@ def pytest_runtest_makereport(item, call):
                 name=f"FAILED — {item.name}",
                 attachment_type=allure.attachment_type.PNG
             )
-
-
-
-# ── Data Factory fixtures ─────────────────────────────────────────────────────
-# Each fixture returns ONE AgencyRegistrationData instance.
-# Tests declare only the fixtures they need — no test knows how data is built.
-
-@pytest.fixture
-def valid_registration_data():
-    """AC-5 — All fields valid; happy-path registration."""
-    return AgencyRegistrationFactory.valid()

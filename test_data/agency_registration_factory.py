@@ -16,6 +16,7 @@ Usage
 
 from __future__ import annotations
 
+import os
 import random
 import re
 import string
@@ -192,11 +193,12 @@ class AgencyRegistrationFactory:
         All fields satisfy every constraint; form should submit successfully.
         """
         pwd = _PasswordGenerator.valid()
+        username = _UsernameGenerator().valid()
         return AgencyRegistrationData(
-            username=_UsernameGenerator.valid(),
+            username=username,
             password=pwd,
             confirm_password=pwd,
-            email=fake.company_email(),
+            email= _testmail_email(username),
             pan_number=_PanGenerator.valid(),
             district="Pune",
             scenario_label="AC-5: valid full registration",
@@ -218,7 +220,7 @@ class AgencyRegistrationFactory:
         """Field-level: Username must be at least 6 characters."""
         data = cls.valid()
         data.username = _UsernameGenerator.too_short()
-        data.expected_error = "Username must be at least 6 characters."
+        data.expected_error = "6–30 chars, letters/numbers/underscore only"
         data.scenario_label = "FV: username too short"
         return data
 
@@ -235,8 +237,8 @@ class AgencyRegistrationFactory:
     def username_already_taken(cls) -> AgencyRegistrationData:
         """EC-9: Username already exists — inline error on blur."""
         data = cls.valid()
-        data.username = _UsernameGenerator.already_taken()
-        data.expected_error = "This username is already taken. Please choose a different one."
+        data.username = "ameyavambekar"
+        data.expected_error = "❌ Username taken"
         data.scenario_label = "EC-9: username already taken"
         return data
 
@@ -387,6 +389,28 @@ class AgencyRegistrationFactory:
 
     # ── Parametrize helpers ───────────────────────────────────────────────────
 
+    # ── Parametrize helpers ───────────────────────────────────────────────────
+
+    @classmethod
+    def password_complexity_scenarios(cls) -> list[AgencyRegistrationData]:
+        """
+        TC-07 — Returns all four password-complexity-violation scenarios as a
+        list ready for @pytest.mark.parametrize.
+
+        Usage in test:
+            @pytest.mark.parametrize(
+                "data",
+                AgencyRegistrationFactory.tc07_password_complexity_scenarios(),
+                ids=lambda d: d.scenario_label,
+            )
+        """
+        return [
+            cls.password_no_uppercase(),
+            cls.password_no_number(),
+            cls.password_no_symbol(),
+            cls.password_too_short(),
+        ]
+
     @classmethod
     def all_field_validation_scenarios(cls) -> list[AgencyRegistrationData]:
         """
@@ -425,11 +449,13 @@ class AgencyRegistrationFactory:
             "Pune", "Mumbai", "Nagpur", "Nashik",
             "Aurangabad", "Solapur", "Kolhapur",
         ]
+        username = _UsernameGenerator.valid()
+
         return [
             AgencyRegistrationData(
-                username=_UsernameGenerator.valid(),
+                username = username,
                 password=_PasswordGenerator.valid(),
-                email=fake.company_email(),
+                email=_testmail_email(username),
                 pan_number=_PanGenerator.valid(),
                 district=d,
                 scenario_label=f"district: {d}",
