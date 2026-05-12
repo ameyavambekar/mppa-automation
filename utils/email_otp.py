@@ -34,7 +34,6 @@ def get_otp_from_testmail(retries: int = 10, delay: int = 6) -> str:
                 params={
                     "apikey": TESTMAIL_API_KEY,
                     "namespace": TESTMAIL_NAMESPACE,
-                    "tag": TESTMAIL_TAG,
                     "livequery": "true",   # waits up to 30s server-side for new mail
                     "timestamp_from": timestamp_before,
                 },

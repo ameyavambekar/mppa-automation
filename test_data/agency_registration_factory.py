@@ -109,7 +109,7 @@ class _PanGenerator:
         AC-7 / EC-9 — a PAN known to already exist in the test environment.
         Replace with the actual seeded duplicate PAN for your test DB.
         """
-        return "AAAPL1234C"        # ← replace with your test-env seeded value
+        return "AZPPA6529G"        # ← replace with your test-env seeded value
 
 
 class _PasswordGenerator:
@@ -316,6 +316,25 @@ class AgencyRegistrationFactory:
         return cls.valid()
 
     # ── Section 2: Contact & Identity Validations ─────────────────────────────
+
+    # ── Section 2: Contact & Identity Validations ─────────────────────────────
+
+    @classmethod
+    def invalid_email_domain(cls) -> AgencyRegistrationData:
+        """
+        TC-14 / EC-3 — Syntactically valid email address but with a
+        non-existent domain so OTP delivery will fail at the SMTP layer.
+        Expected error: 'OTP could not be delivered. Please check the email
+        address and try again.'
+        """
+        data = cls.valid()
+        data.email = "user@nonexistentdomain12345"
+        data.expected_error = (
+            "OTP could not be delivered. "
+            "Please check the email address and try again."
+        )
+        data.scenario_label = "TC-14: undeliverable email domain"
+        return data
 
     @classmethod
     def invalid_pan(cls) -> AgencyRegistrationData:

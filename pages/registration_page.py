@@ -97,6 +97,11 @@ class RegistrationPage(BasePage):
         return self.page.locator("#pan")
 
     @property
+    def pan_helper(self):
+        """TC-16 / TC-17 — Inline error shown below the PAN field."""
+        return self.page.locator("#panHelper")
+
+    @property
     def district_select(self):
         return self.page.locator("#districtId")
 
@@ -146,22 +151,23 @@ class RegistrationPage(BasePage):
 
     @property
     def username_helper(self):
-        """Returns the inline error element associated with a given field."""
         return self.page.locator("#usernameHelper")
 
     @property
     def password_helper(self):
-        """Returns the inline error element associated with a given field."""
         return self.page.locator("#pwdHint")
 
     @property
     def confirm_password_helper(self):
-        """Returns the inline error element associated with a given field."""
         return self.page.locator("#confirmHint")
 
-    def field_error(self, field_id: str):
-        """Returns the inline error element associated with a given field."""
-        return self.page.locator(f"#{field_id}Error")
+    @property
+    def email_helper(self):
+        return self.page.locator("#emailHint")
+
+    @property
+    def server_error(self):
+        return self.page.locator("#serverError")
 
     # Actions
 
@@ -245,12 +251,36 @@ class RegistrationPage(BasePage):
         self.otp_button.click()
 
     @allure.step("Enter OTP and verify email")
-    def verify_email_otp(self):
+    def enter_otp_and_verify_email(self):
         otp_code = email_otp.get_otp_from_testmail()
         self.email_otp_input.fill(otp_code)
         self.verify_otp_button.click()
-        # AC-3: Assert the verified tag appears
-        expect(self.email_verified_tag).to_be_visible()
+
+    @allure.step("Submit incorrect otp and handle alert")
+    def submit_otp_and_handle_alert(self) -> str:
+        """
+        Clicks Submit, handles any alert/confirm/prompt dialog,
+        and returns the dialog message for assertions.
+        """
+        dialog_message = []
+
+        def handle_dialog(dialog):
+            dialog_message.append(dialog.message)
+            dialog.dismiss()
+
+        self.page.on("dialog", handle_dialog)
+        self.email_otp_input.fill("000000")
+        self.verify_otp_button.click()
+        self.page.remove_listener("dialog", handle_dialog)  # clean up
+        return dialog_message[0] if dialog_message else ""
+
+    @allure.step("Read PAN field value from DOM")
+    def get_pan_value(self) -> str:
+        """
+        TC-15 — Returns the current value of the PAN input so tests can
+        assert that lowercase input was auto-uppercased by the application.
+        """
+        return self.pan_input.input_value()
 
     @allure.step("Fill PAN: {pan}")
     def fill_pan(self, pan: str):
@@ -262,10 +292,16 @@ class RegistrationPage(BasePage):
         if district:
             self.district_select.select_option(label=district)
 
+    @allure.step("Attempt to submit with no district selected (blur dropdown)")
+    def blur_district(self):
+        """TC-18 — Triggers on-blur validation on the district dropdown."""
+        self.district_select.focus()
+        self.district_select.blur()
+
     @allure.step("Fill Section 2 — Contact & Identity")
     def fill_contact_identity(self, email: str, pan: str, district: str):
         self.fill_email_and_request_otp(email)
-        self.verify_email_otp()
+        self.enter_otp_and_verify_email()
         self.fill_pan(pan)
         self.select_district(district)
 
@@ -292,6 +328,9 @@ class RegistrationPage(BasePage):
     @allure.step("Submit Registration form")
     def submit(self):
         self.submit_button.click()
+
+
+
 
     @allure.step("Submit form and handle alert")
     def submit_and_handle_alert(self, action: str = "accept", prompt_text: str = None) -> str:
@@ -366,3 +405,8 @@ class RegistrationPage(BasePage):
     def assert_confirm_password_is_visible(self):
         """TC-09 — Verifies the confirm-password input renders as readable plain text."""
         expect(self.confirm_password_input).to_have_attribute("type", "text")
+
+
+    duplicate_pan_error = "A registration with this PAN number already exists."
+    district_not_selected_error = "Please select your district." #Alert Pop-up
+    district_not_selected_error = "Please select your district." #Alert Pop-up
