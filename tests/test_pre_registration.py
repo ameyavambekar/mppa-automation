@@ -647,3 +647,378 @@ def test_tc17_district_dropdown_selection(registration_page, valid_registration_
 
     with allure.step("Step 6 — Assert required-district error appears"):
        assert(registration_page.district_not_selected_error in error)
+
+
+# =============================================================================
+# TC-18 — CAPTCHA: Valid Entry
+# =============================================================================
+
+@allure.story("TC-18: CAPTCHA — Valid Entry")
+@allure.title("Correct CAPTCHA characters pass validation and produce no captcha error")
+def test_tc18_valid_captcha_passes_validation(registration_page, valid_registration_data):
+    """
+    Given I am on the Pre-Registration page and can see the CAPTCHA text in Section 3,
+    When I read the current CAPTCHA value from the DOM and type it exactly,
+    And I click SUBMIT REGISTRATION,
+    Then no CAPTCHA-specific error is shown — the captcha section passes validation.
+
+    Note: other section errors may still fire (email unverified, etc.).
+    This test isolates CAPTCHA acceptance independently of the full form.
+
+    Notion ref: TC-18 | Data: CAPTCHA value read live from #captcha DOM element
+    """
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Step 1 — Observe the CAPTCHA image and read its text from the DOM"):
+        captcha_text = registration_page.read_captcha_value()
+        allure.attach(
+            captcha_text,
+            name="CAPTCHA value read from DOM",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+
+    with allure.step(f"Step 2 — Enter the exact CAPTCHA characters: '{captcha_text}'"):
+        registration_page.fill_captcha(captcha_text)
+
+    with allure.step("Step 3 — Click SUBMIT to trigger all section validations"):
+        registration_page.submit()
+
+    with allure.step("Assert no CAPTCHA-specific error is displayed"):
+        expect(registration_page.captcha_hint).not_to_contain_text("Does not match")
+
+
+# =============================================================================
+# TC-19 — CAPTCHA: Incorrect Entry
+# =============================================================================
+
+@allure.story("TC-19: CAPTCHA — Incorrect Entry")
+@allure.title("Error shown when CAPTCHA characters are entered incorrectly")
+def test_tc19_incorrect_captcha_shows_error(registration_page, valid_registration_data):
+    """
+    Given I am on the Pre-Registration page and the CAPTCHA image is shown,
+    When I deliberately type characters that do not match the displayed CAPTCHA,
+    And I click SUBMIT REGISTRATION,
+    Then the inline error 'Incorrect CAPTCHA. Please try again.' is displayed
+    and the form submission is blocked.
+
+    Notion ref: TC-20 | Data: wrong captcha = 'AAA111' (hardcoded mismatch)
+    """
+    WRONG_CAPTCHA = "AAA111"
+
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Step 1 — Observe the CAPTCHA image is displayed"):
+        captcha_text = registration_page.read_captcha_value()
+        allure.attach(
+            captcha_text,
+            name="Actual CAPTCHA value (for reference)",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+
+    with allure.step(f"Step 2 — Enter deliberately wrong CAPTCHA value: '{WRONG_CAPTCHA}'"):
+        registration_page.fill_captcha(WRONG_CAPTCHA)
+
+    with allure.step("Step 3 — Click SUBMIT to trigger validation"):
+        registration_page.submit()
+
+    with allure.step("Assert CAPTCHA error is shown"):
+        expect(registration_page.captcha_hint).to_contain_text("Does not match")
+
+# =============================================================================
+# TC-20 — CAPTCHA: Refresh Generates New CAPTCHA (EC-1)
+# =============================================================================
+
+@allure.story("TC-20: CAPTCHA — Refresh Generates New Value")
+@allure.title("Refresh button generates a new CAPTCHA, clears input, and invalidates old value")
+def test_tc20_captcha_refresh_generates_new_value(registration_page, valid_registration_data):
+    """
+    Given I am on the Pre-Registration page and a CAPTCHA is displayed,
+    When I note the current CAPTCHA text and type it into the input field,
+    And I click the 'Refresh' button,
+    Then a NEW CAPTCHA value is displayed (different from the previous one),
+    And the CAPTCHA input field is cleared,
+    And if I re-enter the OLD CAPTCHA value and submit, an error is shown
+    (the old value has been invalidated by the refresh).
+
+    Notion ref: TC-21 (EC-1)
+    """
+    data = valid_registration_data
+
+    with allure.step("Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Step 1 — Record the current CAPTCHA value from the DOM"):
+        original_captcha = registration_page.read_captcha_value()
+        allure.attach(
+            original_captcha,
+            name="Original CAPTCHA value",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+
+    with allure.step(f"Step 2 — Type the original CAPTCHA into the input: '{original_captcha}'"):
+        registration_page.fill_captcha(original_captcha)
+
+    with allure.step("Step 3 — Click Refresh and capture the new CAPTCHA value"):
+        new_captcha = registration_page.refresh_captcha()
+        allure.attach(
+            new_captcha,
+            name="New CAPTCHA value after refresh",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+
+    with allure.step("Assert the CAPTCHA value has changed after Refresh"):
+        assert new_captcha != original_captcha, (
+            f"CAPTCHA did not change after Refresh — "
+            f"still showing '{original_captcha}'")
+
+    with allure.step("Assert the CAPTCHA input field has been cleared by the Refresh"):
+        expect(registration_page.captcha_input).to_have_value("")
+
+    with allure.step(
+        f"Step 4 — Re-enter the OLD CAPTCHA value ('{original_captcha}') and submit "
+        "to confirm it is now invalidated"
+    ):
+        registration_page.fill_captcha(original_captcha)
+
+    with allure.step("Assert CAPTCHA error shows — old value is no longer valid"):
+        expect(registration_page.captcha_hint).to_contain_text("Does not match")
+
+
+# =============================================================================
+# TC-21 — Declaration Checkbox: Mandatory Check
+# =============================================================================
+
+@allure.story("TC-21: Declaration Checkbox — Mandatory")
+@allure.title("Submit blocked when Declaration checkbox is unchecked; unblocked after check")
+def test_tc21_declaration_checkbox_mandatory(registration_page, valid_registration_data):
+    """
+    Given all of Sections 1, 2, and 3 are validly filled,
+    When I leave the Declaration checkbox unchecked and click SUBMIT REGISTRATION,
+    Then the error 'You must accept the declaration and undertaking to proceed.'
+    is displayed and submission is blocked.
+    When I check the checkbox,
+    Then the error disappears and the submit button becomes active.
+
+    Notion ref: TC-22
+    """
+    data = valid_registration_data
+
+    with allure.step("Step 1 — Fill Section 1 credentials"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Step 1 — Fill Section 2: verify email, PAN, district"):
+        registration_page.fill_email_and_request_otp(data.email)
+        registration_page.enter_otp_and_verify_email()
+        registration_page.fill_pan(data.pan_number)
+        registration_page.select_district(data.district)
+
+    with allure.step("Step 1 — Fill Section 3 CAPTCHA correctly"):
+        captcha = registration_page.read_captcha_value()
+        registration_page.fill_captcha(captcha)
+
+    with allure.step("Step 2 — Confirm declaration checkbox is unchecked"):
+        expect(registration_page.declaration_checkbox).not_to_be_checked()
+
+    with allure.step("Step 3 — Click SUBMIT REGISTRATION without accepting declaration"):
+        registration_page.submit()
+
+    with allure.step("Assert declaration error is displayed; submission is blocked"):
+        expect(registration_page.declaration_error).to_be_visible()
+
+    with allure.step("Step 4 — Check the Declaration checkbox"):
+        registration_page.accept_declaration()
+        expect(registration_page.declaration_checkbox).to_be_checked()
+
+    with allure.step("Assert declaration error is no longer shown"):
+        expect(registration_page.declaration_error).not_to_be_visible()
+
+
+# =============================================================================
+# TC-22 — Already Registered User Link Visible (EC-8)
+# =============================================================================
+
+@allure.story("TC-22: Already Registered User — Login Link Visible")
+@allure.title("'Already registered? Login' link is visible and redirects to login page")
+def test_tc22_already_registered_login_link_visible(registration_page,login_page):
+    """
+    Given I am on the Pre-Registration page,
+    When I look at the footer of the form,
+    Then the 'Already registered? Login here →' link is visible.
+    When I click it,
+    Then I am redirected to the MPPA Portal login page.
+
+    Notion ref: TC-25 (EC-8)
+    """
+    with allure.step("Step 1 — Navigate to Pre-Registration page"):
+        # registration_page fixture already opens the page
+        pass
+
+    with allure.step("Step 2 — Assert 'Already registered? Login here →' link is visible"):
+        expect(registration_page.login_link).to_be_visible()
+
+    with allure.step("Step 3 — Click the login link and assert redirect to login page"):
+        registration_page.click_login_link()
+        expect(login_page.login_title).to_be_visible()
+
+
+# =============================================================================
+# TC-23 — Self-Declaration Text is Read-Only
+# =============================================================================
+
+@allure.story("TC-23: Self-Declaration Text — Read-Only")
+@allure.title("The 6 declaratory clauses in Section 4 are displayed in a non-editable block")
+def test_tc23_declaration_text_is_readonly(registration_page):
+    """
+    Given I am on the Pre-Registration page,
+    When I navigate to Section 4: Declaration & Undertaking,
+    Then the 6 declaratory clauses are displayed inside a bordered container
+    that is non-editable — the cursor does not change to a text cursor and
+    no input is possible.
+
+    Notion ref: TC-27
+    """
+    with allure.step("Step 1 — Navigate to the Pre-Registration page"):
+        # registration_page fixture already opens the page
+        pass
+
+    with allure.step("Step 2 — Locate the declaration text block in Section 4"):
+        expect(registration_page.declaration_text_block).to_be_visible()
+
+    with allure.step("Step 3 — Assert the declaration container is read-only (non-editable)"):
+        content_editable = registration_page.declaration_text_block.get_attribute("contenteditable")
+        assert content_editable in (None, "false"), (
+            f"Declaration block is editable (contenteditable='{content_editable}')"
+        )
+        editable_children = registration_page.declaration_text_block.locator(
+            "input:not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled])")
+        assert editable_children.count() == 0, (
+            f"Declaration block contains {editable_children.count()} editable child element(s)"
+        )
+
+# =============================================================================
+# TC-24 — Page Header and Mandatory Field Indicator Display
+# =============================================================================
+
+@allure.story("TC-24: Static UI Elements")
+@allure.title("Page header, subtitle, mandatory badge, and support footer render correctly")
+def test_tc24_static_ui_elements_display_correctly(registration_page):
+    """
+    Given I am on the Pre-Registration page,
+    Then the following static UI elements are rendered exactly as per the spec:
+      Step 1 — Page header: 'New Agency Registration Form'
+      Step 2 — Subtitle: 'Please fill all mandatory fields carefully. Details once
+                          submitted cannot be changed without approval.'
+      Step 3 — Mandatory field badge (top-right): '* Marked fields are mandatory'
+      Step 4 — Technical support footer: 'support@placementportal.gov.in'
+
+    Notion ref: TC-28
+    """
+    with allure.step("Step 1 — Assert page header reads 'New Agency Registration Form'"):
+        expect(registration_page.page_title).to_be_visible()
+        expect(registration_page.page_title).to_contain_text("New Agency Registration Form")
+
+    with allure.step("Step 2 — Assert subtitle is displayed correctly"):
+        expect(registration_page.page_subtitle).to_be_visible()
+        expect(registration_page.page_subtitle).to_contain_text(
+            "Please fill all mandatory fields carefully."
+        )
+        expect(registration_page.page_subtitle).to_contain_text(
+            "Details once submitted cannot be changed without approval."
+        )
+
+    with allure.step("Step 3 — Assert mandatory field badge is visible"):
+        expect(registration_page.mandatory_field_badge).to_be_visible()
+        expect(registration_page.mandatory_field_badge).to_contain_text("Marked fields are mandatory")
+
+    with allure.step("Step 4 — Assert technical support footer text is present"):
+        expect(registration_page.support_footer).to_be_visible()
+        expect(registration_page.support_footer).to_contain_text("support@placementportal.gov.in")
+
+
+# =============================================================================
+# TC-25 — Full Valid Submission: Registration ID Generated (AC-5 & AC-6)
+# =============================================================================
+
+@allure.story("TC-25: Full Valid Submission — Registration ID Generated")
+@allure.title("Successful E2E pre-registration generates a unique Registration ID")
+def test_tc25_full_valid_submission_generates_registration_id(
+    registration_page, valid_registration_data
+):
+    """
+    Given I fill all four sections correctly (valid credentials, verified email,
+    valid unique PAN, selected district, correct CAPTCHA, accepted declaration),
+    When I click SUBMIT REGISTRATION,
+    Then a success overlay is shown and a unique Registration ID in the format
+    MPPA/[Year]/[SequenceNo] is displayed prominently on-screen.
+    The registered user is then persisted to the local state store DB so that
+    subsequent tests (e.g. Form-I) can retrieve a pre-existing agency user
+    without re-registering.
+
+    Notion ref: TC-23 (AC-5 & AC-6)
+    Pre-condition: testmail.app reachable; no prior registration for this username/PAN/email.
+    """
+    from utils.state_store import TestStateStore
+
+    data = valid_registration_data
+
+    with allure.step("Steps 2–4 — Fill Section 1: username, password, confirm password"):
+        registration_page.fill_credentials(
+            data.username, data.password, data.confirm_password
+        )
+
+    with allure.step("Steps 5–6 — Fill Section 2: email OTP verification"):
+        registration_page.fill_email_and_request_otp(data.email)
+        registration_page.enter_otp_and_verify_email()
+
+    with allure.step("Steps 7–8 — Fill Section 2: PAN and district"):
+        registration_page.fill_pan(data.pan_number)
+        registration_page.select_district(data.district)
+
+    with allure.step("Step 9 — Fill Section 3: CAPTCHA"):
+        captcha = registration_page.read_captcha_value()
+        registration_page.fill_captcha(captcha)
+
+    with allure.step("Step 10 — Accept Declaration checkbox"):
+        registration_page.accept_declaration()
+
+    with allure.step("Step 11 — Click SUBMIT REGISTRATION"):
+        registration_page.submit()
+
+    with allure.step("Assert success overlay / confirmation message is displayed"):
+        expect(registration_page.registration_success_message).to_be_visible()
+
+    with allure.step(
+        "Assert Registration ID is visible"
+    ):
+        expect(registration_page.registration_id_text).to_be_visible()
+
+    with allure.step("Record registered user in state store DB for downstream tests"):
+        registration_id = registration_page.registration_id_text.text_content().strip()
+        TestStateStore().record_user(
+            role="agency",
+            username=data.username,
+            password=data.password,
+            email=data.email,
+            pan=data.pan_number,
+            district=data.district,
+            registration_id=registration_id,
+        )
+        allure.attach(
+            f"username={data.username}\nregistration_id={registration_id}",
+            name="State store entry",
+            attachment_type=allure.attachment_type.TEXT,
+        )

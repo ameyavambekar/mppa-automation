@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from faker import Faker
 import random
 import string
