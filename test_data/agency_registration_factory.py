@@ -27,7 +27,7 @@ from faker import Faker
 
 # ── Faker with Indian locale for realistic, locale-correct data ──────────────
 fake = Faker("en_IN")
-Faker.seed(0)   # Deterministic seeds make CI reproducible; remove for true random
+#Faker.seed(0)   # Deterministic seeds make CI reproducible; remove for true random
 
 # ── Testmail.app namespace — set TESTMAIL_NAMESPACE=kmi3t in your .env ───────
 TESTMAIL_NAMESPACE = os.getenv("TESTMAIL_NAMESPACE", "kmi3t")

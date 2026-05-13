@@ -1,3 +1,4 @@
+
 import allure
 from playwright.sync_api import expect
 
@@ -13,6 +14,14 @@ class RegistrationPage(BasePage):
     @property
     def page_title(self):
         return self.page.locator("//h2[contains(text(),'Registration')]")
+
+    @property
+    def page_subtitle(self):
+        return self.page.locator("//h2[contains(text(),'Registration')]//following-sibling::p")
+
+    @property
+    def mandatory_field_badge(self):
+        return self.page.locator("//h2[contains(text(),'Registration')]//parent::div//following-sibling::div")
 
     @property
     def username_input(self):
@@ -73,6 +82,10 @@ class RegistrationPage(BasePage):
         return self.page.locator("#email")
 
     @property
+    def email_helper(self):
+        return self.page.locator("#emailHint")
+
+    @property
     def otp_button(self):
         return self.page.locator("#otpBtn")
 
@@ -116,13 +129,25 @@ class RegistrationPage(BasePage):
         return self.page.locator("#captchaInput")
 
     @property
+    def captcha_hint(self):
+        return self.page.locator("#captchaHint")
+
+    @property
     def captcha_refresh_button(self):
         return self.page.locator("//button[contains(text(),'Refresh')]")
 
     # Section 4 — Declaration
     @property
+    def declaration_text_block(self):
+        return self.page.locator("//p[contains(text(),'Self-Declaration')]//following-sibling::ol")
+
+    @property
     def declaration_checkbox(self):
         return self.page.locator("#declarationCheck")
+
+    @property
+    def declaration_error(self):
+        return self.page.locator("#declErr")
 
     @property
     def submit_button(self):
@@ -132,6 +157,10 @@ class RegistrationPage(BasePage):
     @property
     def login_link(self):
         return self.page.locator("//a[contains(text(),'Already registered? Login')]")
+
+    @property
+    def support_footer(self):
+        return self.page.locator("//p[contains(text(),'technical issues')]")
 
     # Error / confirmation elements
     @property
@@ -161,9 +190,7 @@ class RegistrationPage(BasePage):
     def confirm_password_helper(self):
         return self.page.locator("#confirmHint")
 
-    @property
-    def email_helper(self):
-        return self.page.locator("#emailHint")
+
 
     @property
     def server_error(self):
@@ -227,21 +254,21 @@ class RegistrationPage(BasePage):
         self.fill_password(password)
         self.fill_confirm_password(confirm_password or password)
 
-        @allure.step("Toggle password visibility (SHOW / HIDE)")
-        def toggle_password_visibility(self):
-            """
-            TC-09 / EC-5 — Clicks the show/hide button on the Password field.
-            First click reveals the password (type → text);
-            second click re-masks it (type → password).
-            """
-            self.password_show_toggle.click()
+    @allure.step("Toggle password visibility (SHOW / HIDE)")
+    def toggle_password_visibility(self):
+        """
+        TC-09 / EC-5 — Clicks the show/hide button on the Password field.
+        First click reveals the password (type → text);
+        second click re-masks it (type → password).
+        """
+        self.password_show_toggle.click()
 
-        @allure.step("Toggle confirm password visibility (SHOW / HIDE)")
-        def toggle_confirm_password_visibility(self):
-            """
-            TC-09 / EC-5 — Clicks the show/hide button on the Confirm Password field.
-            """
-            self.confirm_password_show_toggle.click()
+    @allure.step("Toggle confirm password visibility (SHOW / HIDE)")
+    def toggle_confirm_password_visibility(self):
+        """
+        TC-09 / EC-5 — Clicks the show/hide button on the Confirm Password field.
+        """
+        self.confirm_password_show_toggle.click()
 
 
     # Section 2
@@ -314,11 +341,18 @@ class RegistrationPage(BasePage):
         self.select_district(district)
 
     # Section 3
+    @allure.step("Read current CAPTCHA text from DOM")
+    def read_captcha_value(self) -> str:
+        """
+        TC-19 / TC-21 — Returns the CAPTCHA string currently rendered in #captcha.
+        Because the CAPTCHA is exposed as plain text in the DOM (not an image),
+        we read it directly rather than using OCR.
+        """
+        return self.captcha_value.text_content().strip()
 
     @allure.step("Fill CAPTCHA from DOM value")
-    def fill_captcha(self):
+    def fill_captcha(self, captcha_text:str):
         """Reads the visible CAPTCHA text directly from the DOM element."""
-        captcha_text = self.captcha_value.text_content().strip()
         self.captcha_input.fill(captcha_text)
 
     @allure.step("Refresh CAPTCHA")
@@ -337,7 +371,9 @@ class RegistrationPage(BasePage):
     def submit(self):
         self.submit_button.click()
 
-
+    @allure.step("Click Already Registered? Login-> link")
+    def click_login_link(self):
+        self.login_link.click()
 
 
     @allure.step("Submit form and handle alert")
@@ -363,7 +399,6 @@ class RegistrationPage(BasePage):
 
     # ── Composite action ──────────────────────────────────────────────────────
 
-    @allure.step("Complete full registration for {data.scenario_label}")
     def complete_registration(self, data):
         """
         Convenience method used by happy-path tests.
@@ -372,49 +407,13 @@ class RegistrationPage(BasePage):
         """
         self.fill_credentials(data.username, data.password, data.confirm_password)
         self.fill_email_and_request_otp(data.email)
-        self.verify_email_otp()
+        self.enter_otp_and_verify_email()
         self.fill_pan(data.pan_number)
         self.select_district(data.district)
         self.fill_captcha()
         self.accept_declaration()
 
 
-    # ── Assertions ────────────────────────────────────────────────────────────
-
-    @allure.step("Assert page title is visible")
-    def assert_page_loaded(self):
-        expect(self.page_title).to_be_visible()
-
-    @allure.step("Assert email is verified")
-    def assert_email_verified(self):
-        expect(self.email_verified_tag).to_be_visible()
-
-    @allure.step("Assert Registration ID is displayed")
-    def assert_registration_id_displayed(self):
-        """AC-6 — ID must follow MPPA/[Year]/[SeqNo] pattern."""
-        expect(self.registration_id_text).to_be_visible()
-
-    @allure.step("Assert password field is masked (type=password)")
-    def assert_password_is_masked(self):
-        """TC-09 — Verifies the password input renders as masked dots."""
-        expect(self.password_input).to_have_attribute("type", "password")
-
-    @allure.step("Assert password field is visible as plain text (type=text)")
-    def assert_password_is_visible(self):
-        """TC-09 — Verifies the password input renders as readable plain text."""
-        expect(self.password_input).to_have_attribute("type", "text")
-
-    @allure.step("Assert confirm-password field is masked (type=password)")
-    def assert_confirm_password_is_masked(self):
-        """TC-09 — Verifies the confirm-password input renders as masked dots."""
-        expect(self.confirm_password_input).to_have_attribute("type", "password")
-
-    @allure.step("Assert confirm-password field is visible as plain text (type=text)")
-    def assert_confirm_password_is_visible(self):
-        """TC-09 — Verifies the confirm-password input renders as readable plain text."""
-        expect(self.confirm_password_input).to_have_attribute("type", "text")
-
-
     duplicate_pan_error = "A registration with this PAN number already exists."
     district_not_selected_error = "Please select your district." #Alert Pop-up
-    district_not_selected_error = "Please select your district." #Alert Pop-up
+    declaration_error_message = "You must accept the declaration to proceed."
