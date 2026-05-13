@@ -1,4 +1,0 @@
-https://mppa.sppuef.in/module/agency/auth
-[OTP] Polling attempt 1/10...
-[OTP] Found OTP: 913807
-913807

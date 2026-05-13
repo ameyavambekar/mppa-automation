@@ -37,7 +37,6 @@ from test_data.agency_registration_factory import AgencyRegistrationFactory
 # ---------------------------------------------------------------------------
 pytestmark = [
     allure.feature("MPPA Pre-Registration"),
-    pytest.mark.pre_registration,
 ]
 
 
@@ -443,8 +442,6 @@ def test_tc12_incorrect_otp_shows_error(registration_page, valid_registration_da
 # =============================================================================
 # TC-13 — OTP: Expired OTP + Resend (EC-2)
 # =============================================================================
-
-@pytest.mark.slow
 @allure.story("TC-13: OTP — Expired OTP")
 @allure.title("Expired OTP is rejected and resend issues a fresh OTP")
 def test_tc13_expired_otp_rejected_resend_works(registration_page, valid_registration_data):

@@ -29,6 +29,15 @@ pytest_plugins = [
 ]
 
 
+def pytest_runtest_setup(item):
+    """Wait 60 seconds before each test except the first one."""
+    if not hasattr(pytest, "_first_test_done"):
+        pytest._first_test_done = True
+    else:
+        print("\n[Wait] Pausing 60 seconds before next test...")
+        time.sleep(160)
+        print("[Wait] Resuming.")
+
 # ── Allure environment file ───────────────────────────────────────────────────
 def pytest_configure(config):
     os.makedirs(ALLURE_RESULTS_DIR, exist_ok=True)
