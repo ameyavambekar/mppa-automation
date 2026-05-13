@@ -174,6 +174,7 @@ class RegistrationPage(BasePage):
     @allure.step("Open Pre-Registration page")
     def open(self):
         self.navigate(REGISTER_URL)
+        self.wait_for_load()
 
     # Section 1
 
@@ -247,13 +248,20 @@ class RegistrationPage(BasePage):
 
     @allure.step("Fill email and trigger OTP")
     def fill_email_and_request_otp(self, email: str):
+        self.email_input.wait_for(state="visible")
         self.email_input.fill(email)
+        self.email_input.blur()
         self.otp_button.click()
+        self.otp_countdown_timer.wait_for(
+            state="visible",
+            timeout=10000
+        )
 
     @allure.step("Enter OTP and verify email")
     def enter_otp_and_verify_email(self):
         otp_code = email_otp.get_otp_from_testmail()
         self.email_otp_input.fill(otp_code)
+        self.email_otp_input.blur()
         self.verify_otp_button.click()
 
     @allure.step("Submit incorrect otp and handle alert")
