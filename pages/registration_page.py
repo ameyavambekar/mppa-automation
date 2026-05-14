@@ -214,7 +214,7 @@ class RegistrationPage(BasePage):
     def fill_password(self, password: str):
         self.password_input.fill(password)
 
-    @allure.step("Fill password")
+    @allure.step("Clear password")
     def clear_password(self):
         self.password_input.clear()
 
@@ -279,10 +279,7 @@ class RegistrationPage(BasePage):
         self.email_input.fill(email)
         self.email_input.blur()
         self.otp_button.click()
-        self.otp_countdown_timer.wait_for(
-            state="visible",
-            timeout=10000
-        )
+
 
     @allure.step("Enter OTP and verify email")
     def enter_otp_and_verify_email(self):

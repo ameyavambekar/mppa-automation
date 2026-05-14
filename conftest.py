@@ -29,14 +29,6 @@ pytest_plugins = [
 ]
 
 
-def pytest_runtest_setup(item):
-    """Wait 60 seconds before each test except the first one."""
-    if not hasattr(pytest, "_first_test_done"):
-        pytest._first_test_done = True
-    else:
-        print("\n[Wait] Pausing 60 seconds before next test...")
-        time.sleep(160)
-        print("[Wait] Resuming.")
 
 # ── Allure environment file ───────────────────────────────────────────────────
 def pytest_configure(config):
@@ -47,6 +39,11 @@ def pytest_configure(config):
         f.write(f"Browser=chromium\n")
         f.write(f"Python.Version=3.11\n")
         f.write(f"Framework=Playwright+pytest\n")
+    config.addinivalue_line(
+        "markers",
+        "wait_before(seconds): pause for the given number of seconds before "
+        "the test starts. Defaults to 60 seconds when no argument is supplied.",
+    )
 
 # ── Browser lifecycle ─────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
@@ -81,6 +78,31 @@ def logged_in_page(request, page):
     page.wait_for_url("**/dashboard")
     yield page
 
+
+@pytest.fixture(autouse=True)
+def pause_before(request):
+    """
+    Pauses before any test marked with @pytest.mark.wait_before.
+
+    Usage — default 60-second pause:
+        @pytest.mark.wait_before
+        def test_something(...): ...
+
+    Usage — custom duration:
+        @pytest.mark.wait_before(30)
+        def test_something(...): ...
+
+    The pause happens during fixture setup (before the test body runs) so it
+    shows up as setup time in the Allure timeline, not as test time.
+    """
+    marker = request.node.get_closest_marker("wait_before")
+    if marker:
+        # marker.args[0] if a duration was passed, otherwise default to 60
+        seconds = marker.args[0] if marker.args else 60
+        print(f"\n[wait_before] Pausing {seconds}s before '{request.node.name}' ...")
+        time.sleep(seconds)
+        print(f"[wait_before] Resuming '{request.node.name}'.")
+    yield
 
 # Page object fixtures
 @pytest.fixture

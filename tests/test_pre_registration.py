@@ -344,7 +344,6 @@ def test_tc09_valid_credentials_accepted_and_strength_shown(
 # ===========================================================================
 # TC-10 — OTP Delivery on Email Submit
 # ===========================================================================
-
 @allure.story("TC-10: OTP Delivery")
 @allure.title("OTP is sent and countdown timer appears after clicking Get OTP")
 def test_tc10_otp_sent_on_email_submit(registration_page, valid_registration_data):
@@ -373,7 +372,7 @@ def test_tc10_otp_sent_on_email_submit(registration_page, valid_registration_dat
 # =============================================================================
 # TC-11 — Successful OTP Verification (AC-3)
 # =============================================================================
-
+@pytest.mark.wait_before(60)
 @allure.story("TC-11: Successful OTP Verification")
 @allure.title("Email is verified after entering correct OTP within validity window")
 def test_tc11_email_verified_after_correct_otp(registration_page, valid_registration_data):
@@ -408,7 +407,7 @@ def test_tc11_email_verified_after_correct_otp(registration_page, valid_registra
 # =============================================================================
 # TC-12 — OTP: Incorrect OTP Entry
 # =============================================================================
-
+@pytest.mark.wait_before(60)
 @allure.story("TC-12: OTP — Incorrect Entry")
 @allure.title("Error shown when an incorrect OTP is submitted")
 def test_tc12_incorrect_otp_shows_error(registration_page, valid_registration_data):
@@ -442,6 +441,7 @@ def test_tc12_incorrect_otp_shows_error(registration_page, valid_registration_da
 # =============================================================================
 # TC-13 — OTP: Expired OTP + Resend (EC-2)
 # =============================================================================
+@pytest.mark.wait_before
 @allure.story("TC-13: OTP — Expired OTP")
 @allure.title("Expired OTP is rejected and resend issues a fresh OTP")
 def test_tc13_expired_otp_rejected_resend_works(registration_page, valid_registration_data):
@@ -491,7 +491,7 @@ def test_tc13_expired_otp_rejected_resend_works(registration_page, valid_registr
 # =============================================================================
 # TC-14 — OTP: Undeliverable Email (EC-3)
 # =============================================================================
-
+@pytest.mark.wait_before
 @allure.story("TC-14: OTP — Undeliverable Email")
 @allure.title("Error shown when OTP cannot be delivered to a non-existent domain")
 def test_tc14_undeliverable_email_shows_error(registration_page, invalid_email_domain_data):
@@ -551,7 +551,7 @@ def test_tc15_valid_pan_auto_uppercased(registration_page, ec4_pan_lowercase_dat
 # =============================================================================
 # TC-16 — PAN: Duplicate PAN Blocked (AC-7)
 # =============================================================================
-
+@pytest.mark.wait_before(240)
 @allure.story("TC-16: PAN — Duplicate PAN Blocked")
 @allure.title("Submission blocked when PAN is already registered in the system")
 def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
@@ -583,7 +583,8 @@ def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
         registration_page.select_district(data.district)
 
     with allure.step("Fill CAPTCHA and accept declaration"):
-        registration_page.fill_captcha()
+        captcha = registration_page.read_captcha_value()
+        registration_page.fill_captcha(captcha)
         registration_page.accept_declaration()
 
     with allure.step("Click SUBMIT REGISTRATION"):
@@ -597,7 +598,7 @@ def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
 # =============================================================================
 # TC-17 — District Dropdown Selection
 # =============================================================================
-
+@pytest.mark.wait_before
 @allure.story("TC-17: District Dropdown Selection")
 @allure.title("District dropdown accepts a valid selection and shows error when skipped")
 def test_tc17_district_dropdown_selection(registration_page, valid_registration_data):
@@ -639,7 +640,8 @@ def test_tc17_district_dropdown_selection(registration_page, valid_registration_
         registration_page.blur_district()
 
     with allure.step("Fill CAPTCHA and accept declaration"):
-        registration_page.fill_captcha()
+        captcha = registration_page.read_captcha_value()
+        registration_page.fill_captcha(captcha)
         registration_page.accept_declaration()
 
     with allure.step("Click SUBMIT REGISTRATION"):
@@ -799,7 +801,7 @@ def test_tc20_captcha_refresh_generates_new_value(registration_page, valid_regis
 # =============================================================================
 # TC-21 — Declaration Checkbox: Mandatory Check
 # =============================================================================
-
+@pytest.mark.wait_before
 @allure.story("TC-21: Declaration Checkbox — Mandatory")
 @allure.title("Submit blocked when Declaration checkbox is unchecked; unblocked after check")
 def test_tc21_declaration_checkbox_mandatory(registration_page, valid_registration_data):
@@ -952,7 +954,7 @@ def test_tc24_static_ui_elements_display_correctly(registration_page):
 # =============================================================================
 # TC-25 — Full Valid Submission: Registration ID Generated (AC-5 & AC-6)
 # =============================================================================
-
+@pytest.mark.wait_before
 @allure.story("TC-25: Full Valid Submission — Registration ID Generated")
 @allure.title("Successful E2E pre-registration generates a unique Registration ID")
 def test_tc25_full_valid_submission_generates_registration_id(
