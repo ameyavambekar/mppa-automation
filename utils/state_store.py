@@ -294,3 +294,18 @@ class TestStateStore:
                 "SELECT * FROM users WHERE username = ?", (username,)
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
+
+    def get_agency_user_with_no_form(self) -> Optional[UserRecord]:
+        """Returns an agency user who has not started the 8-step wizard at all."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM users u
+                WHERE u.role = 'agency'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM form_applications fa WHERE fa.user_id = u.id
+                  )
+                LIMIT 1
+                """
+            ).fetchone()
+            return self._row_to_record(row, conn) if row else None
