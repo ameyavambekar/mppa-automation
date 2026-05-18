@@ -77,7 +77,7 @@ class LoginPage(BasePage):
 
     # Actions
     def open(self):
-        self.navigate("https://mppa.sppuef.in/module/agency/auth/login.php")
+        self.navigate(f"{BasePage.BASE_URL}/login.php")
 
     @allure.step("Fill username: {username}")
     def fill_username(self, username: str):
@@ -112,4 +112,21 @@ class LoginPage(BasePage):
         self.username_input.fill(username)
         self.password_input.fill(password)
         self.captcha_input.fill(self.captcha_value.text_content())
-        self.submit_button.click()
+        self.login_button.click()
+
+    @allure.step("Click on login and handle alert")
+    def handle_alert(self) -> str:
+        """
+        Clicks Login, handles any alert/confirm/prompt dialog,
+        and returns the dialog message for assertions.
+        """
+        dialog_message = []
+
+        def handle_dialog(dialog):
+            dialog_message.append(dialog.message)
+            dialog.dismiss()
+
+        self.page.on("dialog", handle_dialog)
+        self.login_button.click()
+        self.page.remove_listener("dialog", handle_dialog)  # clean up
+        return dialog_message[0] if dialog_message else ""
