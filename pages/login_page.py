@@ -56,7 +56,7 @@ class LoginPage(BasePage):
 
     @property
     def captcha_refresh_button(self):
-        return self.page.locator("#//div[@id='captcha']//following-sibling::button")
+        return self.page.locator("//div[@id='captcha']//following-sibling::button")
 
     @property
     def login_button(self):
@@ -74,10 +74,18 @@ class LoginPage(BasePage):
     def agency_registration_link(self):
         return self.page.locator("//a[contains(text(),'New Agency? Register here')]")
 
+    @property
+    def forgot_password_link(self):
+        return self.page.locator("//a[contains(text(),'Forgot Password')]")
+
+    @property
+    def account_locked_message(self):
+        return self.page.locator("div[class*='alert']").filter(has_text="locked")
+
 
     # Actions
     def open(self):
-        self.navigate(f"{BasePage.BASE_URL}/login.php")
+        self.navigate("https://devmppa.sppuef.in/module/agency/auth/login.php")
 
     @allure.step("Fill username: {username}")
     def fill_username(self, username: str):
@@ -108,25 +116,10 @@ class LoginPage(BasePage):
         self.captcha_refresh_button.click()
         return self.captcha_value.text_content().strip()
     # Composite Actions
+    @allure.step("Login as {username}")
     def login(self, username: str, password: str):
-        self.username_input.fill(username)
-        self.password_input.fill(password)
-        self.captcha_input.fill(self.captcha_value.text_content())
+        self.fill_username(username)
+        self.fill_password(password)
+        captcha = self.read_captcha_value()
+        self.fill_captcha(captcha)
         self.login_button.click()
-
-    @allure.step("Click on login and handle alert")
-    def handle_alert(self) -> str:
-        """
-        Clicks Login, handles any alert/confirm/prompt dialog,
-        and returns the dialog message for assertions.
-        """
-        dialog_message = []
-
-        def handle_dialog(dialog):
-            dialog_message.append(dialog.message)
-            dialog.dismiss()
-
-        self.page.on("dialog", handle_dialog)
-        self.login_button.click()
-        self.page.remove_listener("dialog", handle_dialog)  # clean up
-        return dialog_message[0] if dialog_message else ""
