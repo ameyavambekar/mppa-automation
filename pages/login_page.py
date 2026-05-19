@@ -6,7 +6,7 @@ class LoginPage(BasePage):
 
     @property
     def login_title(self):
-        return self.page.locator("//h2[text()='Agency Login']")
+        return self.page.locator("//h2[contains(text(),'Login')]")
 
     @property
     def login_subtitle(self):
@@ -32,7 +32,7 @@ class LoginPage(BasePage):
 
     @property
     def password_input(self):
-        return self.page.locator("#loginPassword")
+        return self.page.locator("input[name='password']")
 
     @property
     def password_show_toggle(self):
@@ -80,7 +80,7 @@ class LoginPage(BasePage):
 
     @property
     def account_locked_message(self):
-        return self.page.locator("div[class*='alert']").filter(has_text="locked")
+        return self.page.locator("div[class*='alert']").filter(has_text="failed")
 
 
     # Actions
@@ -124,3 +124,20 @@ class LoginPage(BasePage):
         captcha = self.read_captcha_value()
         self.fill_captcha(captcha)
         self.login_button.click()
+
+    @allure.step("Click login button and handle alert")
+    def click_login_and_handle_alert(self) -> str:
+        """
+        Clicks Login, handles any alert/confirm/prompt dialog,
+        and returns the dialog message for assertions.
+        """
+        dialog_message = []
+
+        def handle_dialog(dialog):
+            dialog_message.append(dialog.message)
+            dialog.dismiss()
+
+        self.page.on("dialog", handle_dialog)
+        self.login_button.click()
+        self.page.remove_listener("dialog", handle_dialog)  # clean up
+        return dialog_message[0] if dialog_message else ""
