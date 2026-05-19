@@ -107,9 +107,10 @@ class LoginPage(BasePage):
         """Clicks Refresh and returns the new CAPTCHA value."""
         self.captcha_refresh_button.click()
         return self.captcha_value.text_content().strip()
+    
     # Composite Actions
     def login(self, username: str, password: str):
         self.username_input.fill(username)
         self.password_input.fill(password)
         self.captcha_input.fill(self.captcha_value.text_content())
-        self.submit_button.click()
+        self.login_button.click()
