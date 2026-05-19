@@ -26,6 +26,8 @@ SLOW_MO = int(os.getenv("SLOW_MO", "100"))
 # automatically — no imports needed in test files.
 pytest_plugins = [
     "fixtures.registration_fixtures",
+    "fixtures.login_fixtures",
+    "fixtures.dashboard_fixtures",
 ]
 
 

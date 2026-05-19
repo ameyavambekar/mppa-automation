@@ -21,6 +21,9 @@ env/
 *.iws
 *.ipr
 
+#claude
+.claude/
+
 # Playwright
 reports/
 test-results/
