@@ -80,7 +80,7 @@ class LoginPage(BasePage):
 
     @property
     def account_locked_message(self):
-        return self.page.locator("div[class*='alert']").filter(has_text="locked")
+        return self.page.locator("div[class*='alert']").filter(has_text="Please wait 10 minutes and try again.")
 
 
     # Actions
@@ -123,3 +123,20 @@ class LoginPage(BasePage):
         captcha = self.read_captcha_value()
         self.fill_captcha(captcha)
         self.login_button.click()
+
+    @allure.step("Click on login and handle alert")
+    def handle_alert(self) -> str:
+        """
+        Clicks Login, handles any alert/confirm/prompt dialog,
+        and returns the dialog message for assertions.
+        """
+        dialog_message = []
+
+        def handle_dialog(dialog):
+            dialog_message.append(dialog.message)
+            dialog.dismiss()
+
+        self.page.on("dialog", handle_dialog)
+        self.login_button.click()
+        self.page.remove_listener("dialog", handle_dialog)  # clean up
+        return dialog_message[0] if dialog_message else ""

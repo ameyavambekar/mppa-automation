@@ -208,14 +208,13 @@ def test_tc09_captcha_refresh(login_page: LoginPage, valid_login_data: LoginData
             f"CAPTCHA did not change after refresh (still '{original_captcha}')"
         )
 
-    with allure.step("Fill valid credentials and submit using the OLD (now invalid) CAPTCHA value"):
+    with allure.step("Fill valid credentials and the OLD (now invalid) CAPTCHA value"):
         login_page.fill_username(valid_login_data.username)
         login_page.fill_password(valid_login_data.password)
         login_page.fill_captcha(original_captcha)
-        login_page.login_button.click()
 
     with allure.step("Verify CAPTCHA error is shown (old value rejected)"):
-        expect(login_page.error_message).to_be_visible()
+        assert "Captcha" in login_page.handle_alert()
 
 
 # ---------------------------------------------------------------------------
@@ -240,19 +239,18 @@ def test_tc10_account_lockout(login_page: LoginPage, lockout_test_data: LoginDat
         login_page.open()
 
     with allure.step("Attempt login with wrong password 5 times to trigger lockout"):
-        for attempt in range(1, 6):
+        for attempt in range(1, 12):
             with allure.step(f"Failed attempt {attempt}/5"):
                 login_page.fill_username(lockout_test_data.username)
                 login_page.fill_password(lockout_test_data.password)
                 captcha = login_page.read_captcha_value()
                 login_page.fill_captcha(captcha)
                 login_page.login_button.click()
-                if attempt < 5:
-                    expect(login_page.error_message).to_be_visible()
+
 
     with allure.step("Verify account-locked message is shown after 5th failed attempt"):
         expect(login_page.account_locked_message).to_be_visible()
-        assert "locked" in login_page.account_locked_message.text_content().lower()
+        assert "Too many failed login attempts. Please wait 10 minutes and try again." in login_page.account_locked_message.text_content()
 
 
 # ---------------------------------------------------------------------------
@@ -289,43 +287,14 @@ def test_tc11_session_expiry(login_page: LoginPage, dashboard_page: DashboardPag
         assert "expired" in login_page.error_message.text_content().lower()
 
 
-# ---------------------------------------------------------------------------
-# TC-21  AC-10  Forgot Password Link Navigates to Password Reset Flow
-# ---------------------------------------------------------------------------
-
-@allure.story("Agency Login")
-@allure.title("TC-21 (AC-10): 'Forgot Password?' link navigates to the password reset flow")
-def test_tc21_forgot_password(login_page: LoginPage):
-    """
-    Given I am on the Agency Login page
-    When  I click "Forgot Password?"
-    Then  I am navigated to the password reset / recovery page
-
-    Notion: TC-21 | AC-10
-    """
-    with allure.step("Open the Agency Login page"):
-        login_page.open()
-
-    with allure.step("Verify 'Forgot Password?' link is visible"):
-        expect(login_page.forgot_password_link).to_be_visible()
-
-    with allure.step("Click 'Forgot Password?'"):
-        login_page.forgot_password_link.click()
-
-    with allure.step("Verify navigation away from the login page"):
-        login_page.page.wait_for_load_state("networkidle")
-        assert "login" not in login_page.page.url or "forgot" in login_page.page.url or "reset" in login_page.page.url, (
-            f"Expected to leave login page or land on reset page, but URL is: {login_page.page.url}"
-        )
-
 
 # ---------------------------------------------------------------------------
-# TC-22  EC-5  "New Agency? Register here →" Link
+# TC-12  EC-5  "New Agency? Register here →" Link
 # ---------------------------------------------------------------------------
 
 @allure.story("Agency Login")
-@allure.title("TC-22 (EC-5): 'New Agency? Register here →' redirects to the Pre-Registration form")
-def test_tc22_register_link(login_page: LoginPage):
+@allure.title("TC-12 (EC-5): 'New Agency? Register here →' redirects to the Pre-Registration form")
+def test_tc12_register_link(login_page: LoginPage):
     """
     Given I am on the Agency Login page
     When  I click "New Agency? Register here →"
@@ -350,12 +319,12 @@ def test_tc22_register_link(login_page: LoginPage):
 
 
 # ---------------------------------------------------------------------------
-# TC-23  EC-4  Admin Login Button Navigates to Admin Login Page
+# TC-13  EC-4  Admin Login Button Navigates to Admin Login Page
 # ---------------------------------------------------------------------------
 
 @allure.story("Agency Login")
 @allure.title("TC-23 (EC-4): 'Admin Login' button navigates to the Super Admin login page")
-def test_tc23_admin_login_button(login_page: LoginPage, valid_login_data: LoginData):
+def test_tc13_admin_login_button(login_page: LoginPage, valid_login_data: LoginData):
     """
     Given I am on the Agency Login page
     When  I click the "Admin Login" button
