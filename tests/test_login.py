@@ -4,6 +4,7 @@ from playwright.sync_api import expect
 
 from pages.dashboard_page import DashboardPage
 from pages.login_page import LoginPage
+from pages.registration_page import RegistrationPage
 from test_data.login_factory import LoginData
 
 # ---------------------------------------------------------------------------
@@ -124,12 +125,8 @@ def test_tc04_wrong_captcha(login_page: LoginPage, wrong_captcha_data: LoginData
     with allure.step("Fill a deliberately wrong CAPTCHA value"):
         login_page.fill_captcha("AAAAAA")
 
-    with allure.step("Click LOGIN TO PORTAL"):
-        login_page.login_button.click()
-
-    with allure.step("Verify CAPTCHA error message is displayed"):
-        expect(login_page.error_message).to_be_visible()
-        assert "CAPTCHA" in login_page.error_message.text_content() or "captcha" in login_page.error_message.text_content().lower()
+    with allure.step("Click LOGIN TO PORTAL and Verify CAPTCHA error message is displayed"):
+        assert "Captcha" in login_page.click_login_and_handle_alert()
 
     with allure.step("Verify CAPTCHA input field is cleared"):
         expect(login_page.captcha_input).to_have_value("")
@@ -213,8 +210,9 @@ def test_tc09_captcha_refresh(login_page: LoginPage, valid_login_data: LoginData
         login_page.fill_password(valid_login_data.password)
         login_page.fill_captcha(original_captcha)
 
-    with allure.step("Verify CAPTCHA error is shown (old value rejected)"):
-        assert "Captcha" in login_page.handle_alert()
+
+    with allure.step("Verify CAPTCHA error is shown (old value rejected) after clicking login"):
+        assert "Captcha" in login_page.click_login_and_handle_alert()
 
 
 # ---------------------------------------------------------------------------
@@ -239,8 +237,8 @@ def test_tc10_account_lockout(login_page: LoginPage, lockout_test_data: LoginDat
         login_page.open()
 
     with allure.step("Attempt login with wrong password 5 times to trigger lockout"):
-        for attempt in range(1, 12):
-            with allure.step(f"Failed attempt {attempt}/5"):
+        for attempt in range(1, 10):
+            with allure.step(f"Failed attempt {attempt}/7"):
                 login_page.fill_username(lockout_test_data.username)
                 login_page.fill_password(lockout_test_data.password)
                 captcha = login_page.read_captcha_value()
@@ -294,7 +292,7 @@ def test_tc11_session_expiry(login_page: LoginPage, dashboard_page: DashboardPag
 
 @allure.story("Agency Login")
 @allure.title("TC-12 (EC-5): 'New Agency? Register here →' redirects to the Pre-Registration form")
-def test_tc12_register_link(login_page: LoginPage):
+def test_tc12_register_link(login_page: LoginPage, registration_page: RegistrationPage):
     """
     Given I am on the Agency Login page
     When  I click "New Agency? Register here →"
@@ -312,10 +310,8 @@ def test_tc12_register_link(login_page: LoginPage):
         login_page.agency_registration_link.click()
 
     with allure.step("Verify navigation to the pre-registration form"):
-        login_page.page.wait_for_load_state("networkidle")
-        assert "register" in login_page.page.url.lower() or "registration" in login_page.page.url.lower(), (
-            f"Expected registration URL, got: {login_page.page.url}"
-        )
+        registration_page.wait_for_load()
+        expect(registration_page.page_title).to_contain_text("Registration")
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +319,7 @@ def test_tc12_register_link(login_page: LoginPage):
 # ---------------------------------------------------------------------------
 
 @allure.story("Agency Login")
-@allure.title("TC-23 (EC-4): 'Admin Login' button navigates to the Super Admin login page")
+@allure.title("TC-13 (EC-4): 'Admin Login' button navigates to the Super Admin login page")
 def test_tc13_admin_login_button(login_page: LoginPage, valid_login_data: LoginData):
     """
     Given I am on the Agency Login page
@@ -341,12 +337,10 @@ def test_tc13_admin_login_button(login_page: LoginPage, valid_login_data: LoginD
 
     with allure.step("Click 'Admin Login'"):
         login_page.admin_login_link.click()
-        login_page.page.wait_for_load_state("networkidle")
+        login_page.wait_for_load()
 
     with allure.step("Verify navigation to Admin login page"):
-        assert "admin" in login_page.page.url.lower(), (
-            f"Expected admin login URL, got: {login_page.page.url}"
-        )
+        assert "admin" in login_page.login_title.text_content().lower()
 
     with allure.step("Attempt login with agency credentials on the Admin login page"):
         login_page.fill_username(valid_login_data.username)

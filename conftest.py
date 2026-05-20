@@ -1,10 +1,14 @@
 import allure
-import pytest
+import base64
 import os
+import time
+from datetime import datetime
+from pathlib import Path
+
+import pytest
+import pytest_html
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
-from datetime import datetime
-import time
 
 from pages.dashboard_page import DashboardPage
 from pages.login_page import LoginPage
@@ -18,7 +22,8 @@ ALLURE_RESULTS_DIR = os.path.join(os.path.dirname(__file__), "reports", "allure-
 BASE_URL = os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 SLOW_MO = int(os.getenv("SLOW_MO", "100"))
-
+REPORT_DIR  = os.path.join(os.path.dirname(__file__), "reports")
+HTML_REPORT = os.path.join(REPORT_DIR, "report.html")
 
 # ── Data fixture plugins ──────────────────────────────────────────────────────
 # Each string is a dotted module path to a fixtures file.
@@ -35,6 +40,7 @@ pytest_plugins = [
 # ── Allure environment file ───────────────────────────────────────────────────
 def pytest_configure(config):
     os.makedirs(ALLURE_RESULTS_DIR, exist_ok=True)
+    os.makedirs(REPORT_DIR, exist_ok=True)
     env_file = os.path.join(ALLURE_RESULTS_DIR, "environment.properties")
     with open(env_file, "w") as f:
         f.write(f"Base.URL={BASE_URL}\n")
@@ -46,6 +52,14 @@ def pytest_configure(config):
         "wait_before(seconds): pause for the given number of seconds before "
         "the test starts. Defaults to 60 seconds when no argument is supplied.",
     )
+
+    # Wire up pytest-html as a self-contained single file
+    # (only if the user didn't already pass --html on the CLI)
+    if not config.option.__dict__.get("htmlpath"):
+        config.option.htmlpath = HTML_REPORT
+        config.option.self_contained_html = True
+
+
 
 # ── Browser lifecycle ─────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
@@ -142,3 +156,35 @@ def pytest_runtest_makereport(item, call):
                 name=f"FAILED — {item.name}",
                 attachment_type=allure.attachment_type.PNG
             )
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report  = outcome.get_result()
+
+    if report.when == "call" and report.failed:
+        page = item.funcargs.get("page")
+        if page:
+            # ── Screenshot bytes ──────────────────────────────────────
+            png_bytes = page.screenshot()
+
+            # Allure attachment
+            allure.attach(
+                png_bytes,
+                name=f"FAILED — {item.name}",
+                attachment_type=allure.attachment_type.PNG,
+            )
+
+            # pytest-html inline attachment (base64, no external file needed)
+            encoded = base64.b64encode(png_bytes).decode("utf-8")
+            html_img = (
+                f'<div><img src="data:image/png;base64,{encoded}" '
+                f'style="max-width:900px;border:1px solid #ccc;" '
+                f'alt="Screenshot on failure"/></div>'
+            )
+            report.extra = getattr(report, "extra", [])
+            report.extra.append(pytest_html.extras.html(html_img))
+
+
+def pytest_html_report_title(report):
+    report.title = "MPPA One-Stop Portal — Test Run Report"
