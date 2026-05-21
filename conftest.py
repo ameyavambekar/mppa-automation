@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
 from pages.dashboard_page import DashboardPage
+from pages.home_page import HomePage
 from pages.login_page import LoginPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
@@ -33,6 +34,7 @@ pytest_plugins = [
     "fixtures.registration_fixtures",
     "fixtures.login_fixtures",
     "fixtures.dashboard_fixtures",
+    "fixtures.home_fixtures",
 ]
 
 
@@ -135,6 +137,10 @@ def login_page(page):
 @pytest.fixture
 def dashboard_page(page):
     return DashboardPage(page)
+
+@pytest.fixture
+def home_page(page):
+    return HomePage(page)
 
 
 # ── Allure environment ────────────────────────────────────────────────────────
