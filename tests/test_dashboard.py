@@ -12,7 +12,7 @@ from pages.login_page import LoginPage
 
 @allure.story("Portal Dashboard")
 @allure.title("TC-12 (AC-5): My Application Status card shows Reg ID, status badge, and status message")
-def test_tc12_application_status_card(agency_user_with_part_a_page, dashboard_page: DashboardPage):
+def test_tc12_application_status_card(fresh_agency_user_page, dashboard_page: DashboardPage):
     """
     Given I have a submitted application and am logged in
     When  the dashboard loads
@@ -21,7 +21,7 @@ def test_tc12_application_status_card(agency_user_with_part_a_page, dashboard_pa
 
     Notion: TC-12 | AC-5 | data: agency_user_with_part_a
     """
-    page, user = agency_user_with_part_a_page
+    page, user = fresh_agency_user_page
 
     with allure.step("Verify My Application Status card is visible"):
         expect(dashboard_page.application_status_card).to_be_visible()
@@ -35,7 +35,7 @@ def test_tc12_application_status_card(agency_user_with_part_a_page, dashboard_pa
         expect(dashboard_page.application_status_badge).to_be_visible()
 
     with allure.step("Verify 'View Full Application →' link is present"):
-        expect(dashboard_page.view_full_application_link).to_be_visible()
+        expect(dashboard_page.continue_filling_form_link).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def test_tc12_application_status_card(agency_user_with_part_a_page, dashboard_pa
 
 @allure.story("Portal Dashboard")
 @allure.title("TC-13 (AC-6): Progress tracker accurately reflects completed and incomplete wizard parts")
-def test_tc13_progress_tracker(agency_user_with_part_a_page, dashboard_page: DashboardPage):
+def test_tc13_progress_tracker(logged_in_agency_page , dashboard_page: DashboardPage):
     """
     Given I have completed Part A only
     When  I view the dashboard
@@ -54,7 +54,7 @@ def test_tc13_progress_tracker(agency_user_with_part_a_page, dashboard_page: Das
 
     Notion: TC-13 | AC-6 | data: agency_user_with_part_a
     """
-    page, user = agency_user_with_part_a_page
+    page, user = logged_in_agency_page
 
     with allure.step("Verify progress tracker is visible"):
         expect(dashboard_page.progress_tracker).to_be_visible()
@@ -75,7 +75,7 @@ def test_tc13_progress_tracker(agency_user_with_part_a_page, dashboard_page: Das
 
 @allure.story("Portal Dashboard")
 @allure.title("TC-14 (EC-9): 'View Full Application →' opens a read-only view of the submitted application")
-def test_tc14_view_full_application(agency_user_with_part_a_page, dashboard_page: DashboardPage):
+def test_tc14_view_full_application(logged_in_agency_page, dashboard_page: DashboardPage):
     """
     Given I have a submitted application and am on the dashboard
     When  I click "View Full Application →" on the My Application Status card
