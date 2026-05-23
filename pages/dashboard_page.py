@@ -46,5 +46,5 @@ class DashboardPage(BasePage):
     def home_link(self):
         return self.page.get_by_role("link", name="← Home")
 
-    @allure.step("Login as {username}")
-    def login(self, username: str, password: str):
+    def logout(self):
+        self.logout_button.click()

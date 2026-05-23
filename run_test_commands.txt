@@ -1,0 +1,7 @@
+run_tests.bat                                         :: default — full pre-registration suite
+run_tests.bat tests\                                  :: every test in the project
+run_tests.bat tests\test_pre_registration.py          :: explicit file
+run_tests.bat tests\test_pre_registration.py -k tc05  :: single TC
+run_tests.bat tests\test_pre_registration.py -m slow  :: marked tests only
+run_tests.bat tests\ -k "tc01 or tc02"         
+allure-combine reports/allure-html --dest reports/ --auto-create-folders
