@@ -9,7 +9,7 @@ class DashboardPage(BasePage):
 
     @property
     def logout_button(self):
-        return self.page.locator("//div[@class='text-blue-200']//following-sibling::a")
+        return self.page.locator("//a[text()='Logout']").first
 
     # On View Application Dashboard
 
