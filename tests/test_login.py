@@ -27,11 +27,12 @@ def test_tc01_valid_login(login_page: LoginPage, dashboard_page: DashboardPage, 
     with allure.step(f"Login as '{valid_login_data.username}' with correct credentials and CAPTCHA"):
         login_page.login(valid_login_data.username, valid_login_data.password)
 
-    with allure.step("Verify dashboard loaded — logout button is visible"):
-        expect(dashboard_page.logout_button).to_be_visible()
+    with allure.step("Verify dashboard loaded — home link is visible"):
+        expect(dashboard_page.home_link).to_be_visible()
 
     with allure.step("Logout to clean up session"):
-        dashboard_page.logout()
+        dashboard_page.logout_button.click()
+        expect(login_page.login_title).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
