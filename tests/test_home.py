@@ -12,7 +12,7 @@ from pages.login_page import LoginPage
 
 @allure.story("Home Page")
 @allure.title("TC-12 (AC-5): My Application Status card shows Reg ID, status badge, and progress tracker")
-def test_tc12_application_status_card(agency_with_part_a_home_page, home_page: HomePage):
+def test_tc12_application_status_card(fresh_agency_user_home_page, home_page: HomePage):
     """
     Given I have a submitted application and I am on the Home page
     When  the page loads
@@ -22,7 +22,7 @@ def test_tc12_application_status_card(agency_with_part_a_home_page, home_page: H
 
     Notion: TC-12 | AC-5 | data: agency_with_part_a
     """
-    page, user = agency_with_part_a_home_page
+    page, user = fresh_agency_user_home_page
 
     with allure.step("Verify My Application Status card is visible"):
         expect(home_page.application_status_card).to_be_visible()
