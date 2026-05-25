@@ -40,7 +40,7 @@ def lockout_test_data() -> LoginData:
     """Uses a dedicated lockout-test account set via LOCKOUT_TEST_USERNAME env var.
     Set LOCKOUT_TEST_USERNAME to a real registered username before running TC-10.
     The account WILL be temporarily locked by this test."""
-    username = "kaira94"
+    username = "pariwadhwa"
     if not username:
         pytest.skip(
             "Set LOCKOUT_TEST_USERNAME env var to a dedicated test account before running TC-10."
