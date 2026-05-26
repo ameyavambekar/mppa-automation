@@ -21,7 +21,7 @@ def _login_and_navigate_to_home(page, user):
 @pytest.fixture
 def logged_in_home_page(page):
     """Yields (page, user) for any stored agency user, navigated to the Home page."""
-    user = TestStateStore().get_any_agency_user()
+    user = TestStateStore().get_agency_user_with_no_form()
     if user is None:
         pytest.skip("No agency user in state store — run pre-registration tests first.")
     _login_and_navigate_to_home(page, user)
@@ -51,9 +51,10 @@ def fresh_agency_user_home_page(page):
 
 
 @pytest.fixture
-def rejected_user_home_page(page):
-    """Yields (page, user) for a rejected applicant, navigated to the Home page.
-    Requires REJECTED_AGENCY_USERNAME and REJECTED_AGENCY_PASSWORD env vars."""
+def rejected_agency_user_page(page):
+    """Yields (page, user) for a rejected applicant.
+    Requires REJECTED_AGENCY_USERNAME and REJECTED_AGENCY_PASSWORD env vars
+    pointing to an account whose application was rejected in the portal."""
     username = os.getenv("REJECTED_AGENCY_USERNAME")
     password = os.getenv("REJECTED_AGENCY_PASSWORD")
     if not username or not password:
@@ -61,8 +62,7 @@ def rejected_user_home_page(page):
             "Set REJECTED_AGENCY_USERNAME and REJECTED_AGENCY_PASSWORD env vars "
             "to run TC-20 (rejected applicant flow)."
         )
-    user = TestStateStore().get_user_by_username(username)
-    if user is None:
-        pytest.skip(f"User '{username}' not found in state store.")
-    _login_and_navigate_to_home(page, user)
-    yield page, user
+    login = LoginPage(page)
+    login.open()
+    login.login(username, password)
+    page.wait_for_url("**/home**", timeout=15000)
