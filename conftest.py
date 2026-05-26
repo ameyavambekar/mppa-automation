@@ -15,6 +15,7 @@ from pages.home_page import HomePage
 from pages.login_page import LoginPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
+from utils import aio_client
 
 
 # ── Allure output dir ─────────────────────────────────────────────────────────
@@ -61,6 +62,14 @@ def pytest_configure(config):
         config.option.htmlpath = HTML_REPORT
         config.option.self_contained_html = True
 
+
+def pytest_collection_modifyitems(items):
+    """Surface @aio_case keys on items so they appear in JUnit XML and are
+    available to the report hook for REST upload to AIO."""
+    for item in items:
+        key = getattr(item.obj, "_aio_case_key", None)
+        if key:
+            item.user_properties.append(("aio_case_key", key))
 
 
 # ── Browser lifecycle ─────────────────────────────────────────────────────────
@@ -143,35 +152,34 @@ def home_page(page):
     return HomePage(page)
 
 
-# ── Allure environment ────────────────────────────────────────────────────────
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    outcome = yield
-    report = outcome.get_result()
-
-    # Only act on the actual test call phase (not setup/teardown)
-    if report.when == "call" and report.failed:
-        page = item.funcargs.get("page")
-        if page:
-            path = f"reports/allure-results/{item.name}"
-            screenshot_bytes = page.screenshot(path=path)
-
-            # Attach to Allure report
-            allure.attach(
-                screenshot_bytes,
-                name=f"FAILED — {item.name}",
-                attachment_type=allure.attachment_type.PNG
-            )
-
+# ── Test reporting: screenshot on failure + AIO Tests REST upload ───────────
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
     report  = outcome.get_result()
 
-    if report.when == "call" and report.failed:
+    if report.when != "call":
+        return
+
+    # ── AIO Tests: POST status for every test that carries an @aio_case key ──
+    aio_run_id = None
+    case_key = next(
+        (v for k, v in report.user_properties if k == "aio_case_key"), None
+    )
+    if case_key:
+        status = aio_client.map_status(report.outcome)
+        if status:
+            aio_run_id = aio_client.post_test_run(
+                case_key,
+                status,
+                comment=report.longreprtext if report.failed else None,
+                effort_ms=int(report.duration * 1000),
+            )
+
+    # ── On failure: capture screenshot, attach to Allure + HTML + AIO ───────
+    if report.failed:
         page = item.funcargs.get("page")
         if page:
-            # ── Screenshot bytes ──────────────────────────────────────
             png_bytes = page.screenshot()
 
             # Allure attachment
@@ -190,6 +198,14 @@ def pytest_runtest_makereport(item, call):
             )
             report.extra = getattr(report, "extra", [])
             report.extra.append(pytest_html.extras.html(html_img))
+
+            # AIO attachment — only if the status POST above gave us a run ID
+            if aio_run_id is not None:
+                aio_client.post_attachment(
+                    aio_run_id,
+                    png_bytes,
+                    filename=f"{item.name}.png",
+                )
 
 
 def pytest_html_report_title(report):
