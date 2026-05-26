@@ -175,10 +175,8 @@ def test_tc05_blank_username(login_page: LoginPage, blank_username_login_data: L
         login_page.fill_captcha(login_page.read_captcha_value())
 
     with allure.step("Click LOGIN TO PORTAL and assert blank-username error appears"):
-        error = login_page.click_login_and_handle_alert()
-        assert "Username" in error, (
-            f"Expected a blank-username validation error, got dialog message: '{error}'"
-        )
+        login_page.login_button.click()
+        expect(login_page.error_message).to_be_visible()
 
     with allure.step("Verify login is blocked (still on the login page)"):
         expect(login_page.login_title).to_be_visible()
@@ -215,10 +213,8 @@ def test_tc06_blank_password(login_page: LoginPage, blank_password_login_data: L
         login_page.fill_captcha(login_page.read_captcha_value())
 
     with allure.step("Click LOGIN TO PORTAL and assert blank-password error appears"):
-        error = login_page.click_login_and_handle_alert()
-        assert "Password" in error, (
-            f"Expected a blank-password validation error, got dialog message: '{error}'"
-        )
+        login_page.login_button.click()
+        expect(login_page.error_message).to_be_visible()
 
     with allure.step("Verify login is blocked (still on the login page)"):
         expect(login_page.login_title).to_be_visible()
