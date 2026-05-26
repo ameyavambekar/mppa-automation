@@ -60,6 +60,47 @@ class LoginFactory:
             expected_error="Incorrect CAPTCHA",
         )
 
+    # ── Blank-field validations (TC-33 / TC-34 / TC-35) ───────────────────────
+
+    @staticmethod
+    def blank_username() -> LoginData:
+        """Username left blank on login (KAN-TC-33).
+
+        Form should reject the submission before checking credentials, so a
+        placeholder password is sufficient — no state-store dependency."""
+        return LoginData(
+            username="",
+            password="Secure@1234",
+            scenario_label="blank_username_login",
+            expected_error="Username is required.",
+        )
+
+    @staticmethod
+    def blank_password() -> LoginData:
+        """Password left blank on login (KAN-TC-34).
+
+        Form should reject blank password before authenticating, so the
+        username does not need to map to a real account."""
+        return LoginData(
+            username="NewAgency01",
+            password="",
+            scenario_label="blank_password_login",
+            expected_error="Password is required.",
+        )
+
+    @staticmethod
+    def blank_captcha() -> LoginData:
+        """CAPTCHA left blank on login (KAN-TC-35).
+
+        Username/password are valid-looking but irrelevant — CAPTCHA check
+        runs first and blocks submission."""
+        return LoginData(
+            username="NewAgency01",
+            password="Secure@1234",
+            scenario_label="blank_captcha_login",
+            expected_error="Please enter the CAPTCHA.",
+        )
+
     # ── Account-lockout helper (EC-1) ─────────────────────────────────────────
 
     @staticmethod
