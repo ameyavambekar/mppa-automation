@@ -145,6 +145,126 @@ def test_tc04_wrong_captcha(login_page: LoginPage, wrong_captcha_data: LoginData
 
 
 # ---------------------------------------------------------------------------
+# TC-05  Username Blank on Login
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-33")
+@allure.story("Agency Login")
+@allure.title("TC-05 (KAN-TC-33): Error shown when Username is left blank on login")
+def test_tc05_blank_username(login_page: LoginPage, blank_username_login_data: LoginData):
+    """
+    Given I am on the Agency Login page
+    When  I leave the Username field blank but fill a valid password and the correct CAPTCHA
+    And   I click LOGIN TO PORTAL
+    Then  an error message "Username is required." is shown
+    And   login is blocked (no redirect to the dashboard)
+
+    Notion: TC-05 | KAN-TC-33 | data: blank_username_login_data
+    """
+    data = blank_username_login_data
+
+    with allure.step("Open the Agency Login page"):
+        login_page.open()
+
+    with allure.step("Leave the Username field blank"):
+        login_page.fill_username("")
+
+    with allure.step(f"Fill a valid password: '{data.password}'"):
+        login_page.fill_password(data.password)
+
+    with allure.step("Fill the displayed CAPTCHA exactly as shown"):
+        login_page.fill_captcha(login_page.read_captcha_value())
+
+    with allure.step("Click LOGIN TO PORTAL and assert blank-username error appears"):
+        error = login_page.click_login_and_handle_alert()
+        assert "Username" in error, (
+            f"Expected a blank-username validation error, got dialog message: '{error}'"
+        )
+
+    with allure.step("Verify login is blocked (still on the login page)"):
+        expect(login_page.login_title).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# TC-06  Password Blank on Login
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-34")
+@allure.story("Agency Login")
+@allure.title("TC-06 (KAN-TC-34): Error shown when Password is left blank on login")
+def test_tc06_blank_password(login_page: LoginPage, blank_password_login_data: LoginData):
+    """
+    Given I am on the Agency Login page
+    When  I fill a valid-looking username, leave the password blank, and fill the correct CAPTCHA
+    And   I click LOGIN TO PORTAL
+    Then  an error message "Password is required." is shown
+    And   login is blocked (no redirect to the dashboard)
+
+    Notion: TC-06 | KAN-TC-34 | data: blank_password_login_data
+    """
+    data = blank_password_login_data
+
+    with allure.step("Open the Agency Login page"):
+        login_page.open()
+
+    with allure.step(f"Fill a valid-looking username: '{data.username}'"):
+        login_page.fill_username(data.username)
+
+    with allure.step("Leave the Password field blank"):
+        login_page.fill_password("")
+
+    with allure.step("Fill the displayed CAPTCHA exactly as shown"):
+        login_page.fill_captcha(login_page.read_captcha_value())
+
+    with allure.step("Click LOGIN TO PORTAL and assert blank-password error appears"):
+        error = login_page.click_login_and_handle_alert()
+        assert "Password" in error, (
+            f"Expected a blank-password validation error, got dialog message: '{error}'"
+        )
+
+    with allure.step("Verify login is blocked (still on the login page)"):
+        expect(login_page.login_title).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# TC-07  CAPTCHA Blank on Login
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-35")
+@allure.story("Agency Login")
+@allure.title("TC-07 (KAN-TC-35): Error shown when CAPTCHA is left blank on login")
+def test_tc07_blank_captcha(login_page: LoginPage, blank_captcha_login_data: LoginData):
+    """
+    Given I am on the Agency Login page
+    When  I fill a valid-looking username and password but leave the CAPTCHA blank
+    And   I click LOGIN TO PORTAL
+    Then  an error message "Please enter the CAPTCHA." is shown
+    And   login is blocked (no redirect to the dashboard)
+
+    Notion: TC-07 | KAN-TC-35 | data: blank_captcha_login_data
+    """
+    data = blank_captcha_login_data
+
+    with allure.step("Open the Agency Login page"):
+        login_page.open()
+
+    with allure.step(f"Fill a valid-looking username: '{data.username}'"):
+        login_page.fill_username(data.username)
+
+    with allure.step(f"Fill a valid-looking password: '{data.password}'"):
+        login_page.fill_password(data.password)
+
+    with allure.step("Leave the CAPTCHA field blank"):
+        login_page.fill_captcha("")
+
+    with allure.step("Click LOGIN TO PORTAL and assert blank-CAPTCHA error appears"):
+        error = login_page.click_login_and_handle_alert()
+        assert "CAPTCHA" in error.upper(), (
+            f"Expected a blank-CAPTCHA validation error, got dialog message: '{error}'"
+        )
+
+    with allure.step("Verify login is blocked (still on the login page)"):
+        expect(login_page.login_title).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
 # TC-08  EC-3  Password Show / Hide Toggle
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-36")
