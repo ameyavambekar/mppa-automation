@@ -82,6 +82,9 @@ class LoginPage(BasePage):
     def account_locked_message(self):
         return self.page.locator("div[class*='alert']").filter(has_text="failed")
 
+    @property
+    def footer_text(self):
+        return self.page.locator("//footer//div//p[text()='© 2026 Placement Agency Regulation Portal | Government System']")
 
     # Actions
     def open(self):
@@ -142,3 +145,10 @@ class LoginPage(BasePage):
         self.page.remove_listener("dialog", handle_dialog)  # clean up
         return dialog_message[0] if dialog_message else ""
 
+    @allure.step("Reload Login Page")
+    def reload(self):
+        self.page.reload()
+
+
+    def get_url(self) -> str:
+        return self.page.url

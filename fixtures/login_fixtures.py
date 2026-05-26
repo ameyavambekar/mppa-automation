@@ -7,7 +7,7 @@ from utils.state_store import TestStateStore
 
 
 def _agency_user_or_skip():
-    user = TestStateStore().get_any_agency_user()
+    user = TestStateStore().get_agency_user_with_no_form()
     if user is None:
         pytest.skip("No agency user in state store — run pre-registration tests first.")
     return user
@@ -40,7 +40,7 @@ def lockout_test_data() -> LoginData:
     """Uses a dedicated lockout-test account set via LOCKOUT_TEST_USERNAME env var.
     Set LOCKOUT_TEST_USERNAME to a real registered username before running TC-10.
     The account WILL be temporarily locked by this test."""
-    username = "pariwadhwa"
+    username = os.getenv("LOCKED_AGENCY_USERNAME")
     if not username:
         pytest.skip(
             "Set LOCKOUT_TEST_USERNAME env var to a dedicated test account before running TC-10."
