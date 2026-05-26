@@ -74,18 +74,41 @@ def pytest_collection_modifyitems(items):
 
 # ── Browser lifecycle ─────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
-def browser_context():
-    """Single browser context shared across the session."""
+def playwright_instance():
+    """The single session-wide Playwright object. Reuse this to launch
+    additional browsers — never call sync_playwright() again inside a test."""
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=HEADLESS, slow_mo=SLOW_MO)
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            accept_downloads=True,
-        )
-        context.set_default_timeout(30000)
-        yield context
-        context.close()
-        browser.close()
+        yield p
+
+@pytest.fixture(scope="session")
+def browser_context(playwright_instance):
+    """Single browser context shared across the session."""
+    browser = playwright_instance.chromium.launch(headless=HEADLESS, slow_mo=SLOW_MO)
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        accept_downloads=True,
+    )
+    context.set_default_timeout(30000)
+    yield context
+    context.close()
+    browser.close()
+
+@pytest.fixture
+def second_browser(playwright_instance):
+    """Factory for an independent second browser (separate cookies/session).
+    Used by TC-26 to simulate the same user logging in from another machine.
+    Cleans up every browser it hands out."""
+    browsers = []
+
+    def _launch():
+        browser = playwright_instance.chromium.launch(headless=True)
+        browsers.append(browser)
+        return browser
+
+    yield _launch
+
+    for b in browsers:
+        b.close()
 
 @pytest.fixture(scope="function")
 def page(browser_context):

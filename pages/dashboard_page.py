@@ -46,3 +46,5 @@ class DashboardPage(BasePage):
     def home_link(self):
         return self.page.get_by_role("link", name="← Home")
 
+    def get_url(self) -> str:
+        return self.page.url
