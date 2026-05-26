@@ -9,7 +9,7 @@ class HomePage(BasePage):
 
     @property
     def logout_button(self):
-        return self.page.locator("//div[@class='text-blue-200']//following-sibling::a")
+        return self.page.locator("//a[text()='Logout']").first
 
     @property
     def nav_home_link(self):
@@ -35,10 +35,7 @@ class HomePage(BasePage):
 
     @property
     def continue_application_button(self):
-        return self.page.locator(
-            "//a[contains(normalize-space(.),'Continue Application')] | "
-            "//button[contains(normalize-space(.),'Continue Application')]"
-        ).first
+        return self.page.locator("//a[contains(normalize-space(.),'Continue Application')]").first
 
     # ── My Application Status Card ────────────────────────────────────────────
 
@@ -68,79 +65,72 @@ class HomePage(BasePage):
     # ── Form Completion Progress ──────────────────────────────────────────────
 
     @property
-    def form_completion_progress_section(self):
-        return self.page.locator(
-            "//div[contains(.,'Form Completion Progress')]"
-        ).first
+    def form_completion_progress_label(self):
+        return self.page.locator(".prog-label").first
 
     @property
-    def completion_percentage(self):
-        return self.page.locator(
-            "//div[contains(.,'Form Completion Progress')]//span[contains(text(),'%')]"
-        ).first
+    def form_completion_percentage(self):
+        return self.page.locator(".prog-pct").first
 
     @property
     def progress_bar(self):
-        return self.page.locator(
-            "//div[contains(@class,'progress-bar') or @role='progressbar']"
-        ).first
+        return self.page.locator(".prog-track").first
 
     def part_step(self, part_label: str):
         """Returns the step tile for a given label, e.g. 'Part A', 'Docs', 'Decl.', 'Auth.'"""
-        return self.page.locator(
-            f"//div[contains(@class,'part') or contains(@class,'step')]"
-            f"[contains(normalize-space(.),'{part_label}')]"
-        ).first
+        return self.page.locator(f"//span[contains(text(),'{part_label}')]//preceding-sibling::div//parent::div").first
 
     @property
     def continue_filling_form_link(self):
         return self.page.locator("//a[contains(normalize-space(.),'Continue Filling Form')]")
 
-    @property
-    def no_application_prompt(self):
-        """Shown when the user has pre-registered but not yet started the 8-step wizard."""
-        return self.page.locator(
-            "//p[contains(text(),'not yet submitted')] | "
-            "//div[contains(text(),'not yet submitted')] | "
-            "//p[contains(text(),'begin')] | "
-            "//a[contains(text(),'begin')]"
-        ).first
-
     # ── Track Application Card ────────────────────────────────────────────────
 
     @property
     def track_application_card(self):
-        return self.page.locator(
-            "//div[contains(@class,'card') and contains(.,'Track Application')]"
-        ).first
+        return self.page.locator("//span[contains(text(),'Track Now')]//parent::div").first
+
+    @property
+    def track_application_card_text(self):
+        return self.page.locator("//p[text()='Track Application']//following-sibling::p")
 
     @property
     def track_now_link(self):
-        return self.page.locator("//a[contains(normalize-space(.),'TRACK NOW')]")
+        return self.page.locator("//span[contains(text(),'Track Now')]")
+
+    @property
+    def track_application_modal(self):
+        return self.page.locator("//h3[contains(text(),'Track Application Status')]//parent::div//parent::div").first
+
+    @property
+    def track_application_input(self):
+        return self.page.locator("#trackInput")
+
+    @property
+    def track_application_button(self):
+        return self.page.locator("//button[text()='Track']")
+
+    @property
+    def track_application_close_button(self):
+        return self.page.locator("//h3[contains(text(),'Track Application Status')]//following-sibling::button")
+
+    @property
+    def track_application_error(self):
+        return self.page.locator("//div[@id='trackResult']//div")
 
     # ── Notice Board ──────────────────────────────────────────────────────────
 
     @property
     def notice_board_section(self):
-        return self.page.locator(
-            "//div[contains(normalize-space(.),('NOTICE BOARD'))]"
-        ).first
+        return self.page.locator("//div[contains(text(),'Notice Board')]").first
 
     @property
     def notice_items(self):
-        return self.page.locator(
-            "//div[contains(@class,'notice-item')] | "
-            "//li[contains(@class,'notice')]"
-        )
+        return self.page.locator("//div[@class='notice-item']")
 
     @property
     def notice_type_badges(self):
-        return self.page.locator(
-            "//span[normalize-space(text())='NEW' or "
-            "normalize-space(text())='ALERT' or "
-            "normalize-space(text())='INFO' or "
-            "normalize-space(text())='URGENT']"
-        )
+        return self.page.locator("//div[@class='notice-item']//span[@class='notice-badge']")
 
     @property
     def view_all_notices_link(self):
@@ -157,12 +147,16 @@ class HomePage(BasePage):
 
     @property
     def quick_links_section(self):
-        return self.page.locator(
-            "//div[contains(normalize-space(.),('QUICK LINKS'))]"
-        ).first
+        return self.page.locator("//div[contains(text(),'Quick Links')]").first
 
     def quick_link(self, text: str):
         return self.page.locator(f"//a[contains(normalize-space(.),'{text}')]")
+
+    # ──  Submit Appeal ───────────────────────────────────────────────────────────────
+    @property
+    def submit_appeal_card(self):
+        return self.page.locator("//p[text()='Submit Appeal']//parent::a")
+
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
@@ -195,3 +189,10 @@ class HomePage(BasePage):
     @allure.step("Logout")
     def logout(self):
         self.logout_button.click()
+
+    def enter_registration_id(self, registration_id_value:str):
+        self.track_application_input.fill(registration_id_value)
+
+
+    no_application_found_with_id = "⚠️No application found with ID: 2627521016"
+    invalid_registration_id_format = "⚠️Invalid ID format. Expected 10-digit ID e.g. 2627100001."
