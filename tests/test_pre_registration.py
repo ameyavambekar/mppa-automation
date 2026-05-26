@@ -31,6 +31,7 @@ import pytest
 from playwright.sync_api import expect
 
 from test_data.agency_registration_factory import AgencyRegistrationFactory
+from utils.aio import aio_case
 
 # ---------------------------------------------------------------------------
 # Marks
@@ -45,6 +46,7 @@ pytestmark = [
 # TC-01 — Valid Username Entry
 # =============================================================================
 
+@aio_case("KAN-TC-3")
 @allure.story("TC-01: Valid Username Entry")
 @allure.title("Successful username entry with valid input — no error shown")
 def test_tc01_valid_username_accepted(registration_page, valid_registration_data):
@@ -73,6 +75,7 @@ def test_tc01_valid_username_accepted(registration_page, valid_registration_data
 # TC-02 — Username: Blank Submission
 # =============================================================================
 
+@aio_case("KAN-TC-1")
 @allure.story("TC-02: Username — Blank Submission")
 @allure.title("Error shown when Username is left blank on submission")
 def test_tc02_blank_username_shows_error(registration_page):
@@ -98,6 +101,7 @@ def test_tc02_blank_username_shows_error(registration_page):
 # TC-03 — Username: Too Short
 # =============================================================================
 
+@aio_case("KAN-TC-2")
 @allure.story("TC-03: Username — Too Short")
 @allure.title("Error shown when Username has fewer than 6 characters")
 def test_tc03_short_username_shows_error(registration_page, short_username_data):
@@ -122,6 +126,7 @@ def test_tc03_short_username_shows_error(registration_page, short_username_data)
 # TC-04 — Username: Already Taken
 # =============================================================================
 
+@aio_case("KAN-TC-5")
 @allure.story("TC-04: Username — Already Taken")
 @allure.title("Error shown when Username already exists in the system")
 def test_tc04_username_already_taken_shows_inline_error(
@@ -151,6 +156,7 @@ def test_tc04_username_already_taken_shows_inline_error(
 # TC-05 — Valid Password Entry with Strength Indicator
 # =============================================================================
 
+@aio_case("KAN-TC-6")
 @allure.story("TC-05: Password Strength Indicator")
 @allure.title("Strength indicator updates in real-time as password complexity increases")
 def test_tc05_password_strength_indicator_updates(registration_page):
@@ -190,6 +196,7 @@ def test_tc05_password_strength_indicator_updates(registration_page):
 # TC-06 — Password: Missing Complexity Rules
 # =============================================================================
 
+@aio_case("KAN-TC-7")
 @allure.story("TC-06: Password — Missing Complexity Rules")
 @allure.title("Inline error shown for each violated password complexity rule")
 def test_tc06_password_missing_complexity_shows_error(registration_page,password_no_symbol_data,password_no_number_data,password_no_uppercase_data,short_password_data):
@@ -238,6 +245,7 @@ def test_tc06_password_missing_complexity_shows_error(registration_page,password
 # TC-07 — Confirm Password: Mismatch
 # =============================================================================
 
+@aio_case("KAN-TC-8")
 @allure.story("TC-07: Confirm Password — Mismatch")
 @allure.title("Error shown when Confirm Password does not match Password")
 def test_tc07_confirm_password_mismatch_shows_error(registration_page, password_mismatch_data):
@@ -270,6 +278,7 @@ def test_tc07_confirm_password_mismatch_shows_error(registration_page, password_
 # TC-08 — Password Show / Hide Toggle
 # =============================================================================
 
+@aio_case("KAN-TC-9")
 @allure.story("TC-08: Password Show / Hide Toggle")
 @allure.title("Password visibility toggles correctly between masked and plain text")
 def test_tc08_password_show_hide_toggle(registration_page, ec5_show_hide_data):
@@ -344,6 +353,7 @@ def test_tc09_valid_credentials_accepted_and_strength_shown(
 # ===========================================================================
 # TC-10 — OTP Delivery on Email Submit
 # ===========================================================================
+@aio_case("KAN-TC-10")
 @allure.story("TC-10: OTP Delivery")
 @allure.title("OTP is sent and countdown timer appears after clicking Get OTP")
 def test_tc10_otp_sent_on_email_submit(registration_page, valid_registration_data):
@@ -372,6 +382,7 @@ def test_tc10_otp_sent_on_email_submit(registration_page, valid_registration_dat
 # =============================================================================
 # TC-11 — Successful OTP Verification (AC-3)
 # =============================================================================
+@aio_case("KAN-TC-11")
 @pytest.mark.wait_before(60)
 @allure.story("TC-11: Successful OTP Verification")
 @allure.title("Email is verified after entering correct OTP within validity window")
@@ -407,6 +418,7 @@ def test_tc11_email_verified_after_correct_otp(registration_page, valid_registra
 # =============================================================================
 # TC-12 — OTP: Incorrect OTP Entry
 # =============================================================================
+@aio_case("KAN-TC-12")
 @pytest.mark.wait_before(60)
 @allure.story("TC-12: OTP — Incorrect Entry")
 @allure.title("Error shown when an incorrect OTP is submitted")
@@ -441,6 +453,7 @@ def test_tc12_incorrect_otp_shows_error(registration_page, valid_registration_da
 # =============================================================================
 # TC-13 — OTP: Expired OTP + Resend (EC-2)
 # =============================================================================
+@aio_case("KAN-TC-13")
 @pytest.mark.wait_before
 @allure.story("TC-13: OTP — Expired OTP")
 @allure.title("Expired OTP is rejected and resend issues a fresh OTP")
@@ -491,6 +504,7 @@ def test_tc13_expired_otp_rejected_resend_works(registration_page, valid_registr
 # =============================================================================
 # TC-14 — OTP: Undeliverable Email (EC-3)
 # =============================================================================
+@aio_case("KAN-TC-14")
 @pytest.mark.wait_before
 @allure.story("TC-14: OTP — Undeliverable Email")
 @allure.title("Error shown when OTP cannot be delivered to a non-existent domain")
@@ -524,6 +538,7 @@ def test_tc14_undeliverable_email_shows_error(registration_page, invalid_email_d
 # TC-15 — Valid PAN Entry with Auto-Uppercase (EC-4)
 # =============================================================================
 
+@aio_case("KAN-TC-15")
 @allure.story("TC-15: Valid PAN Entry — Auto-Uppercase")
 @allure.title("PAN entered in lowercase is auto-converted to uppercase in real-time")
 def test_tc15_valid_pan_auto_uppercased(registration_page, ec4_pan_lowercase_data):
@@ -551,6 +566,7 @@ def test_tc15_valid_pan_auto_uppercased(registration_page, ec4_pan_lowercase_dat
 # =============================================================================
 # TC-16 — PAN: Duplicate PAN Blocked (AC-7)
 # =============================================================================
+@aio_case("KAN-TC-17")
 @pytest.mark.wait_before(240)
 @allure.story("TC-16: PAN — Duplicate PAN Blocked")
 @allure.title("Submission blocked when PAN is already registered in the system")
@@ -598,6 +614,7 @@ def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
 # =============================================================================
 # TC-17 — District Dropdown Selection
 # =============================================================================
+@aio_case("KAN-TC-18")
 @pytest.mark.wait_before
 @allure.story("TC-17: District Dropdown Selection")
 @allure.title("District dropdown accepts a valid selection and shows error when skipped")
@@ -655,6 +672,7 @@ def test_tc17_district_dropdown_selection(registration_page, valid_registration_
 # TC-18 — CAPTCHA: Valid Entry
 # =============================================================================
 
+@aio_case("KAN-TC-19")
 @allure.story("TC-18: CAPTCHA — Valid Entry")
 @allure.title("Correct CAPTCHA characters pass validation and produce no captcha error")
 def test_tc18_valid_captcha_passes_validation(registration_page, valid_registration_data):
@@ -698,6 +716,7 @@ def test_tc18_valid_captcha_passes_validation(registration_page, valid_registrat
 # TC-19 — CAPTCHA: Incorrect Entry
 # =============================================================================
 
+@aio_case("KAN-TC-20")
 @allure.story("TC-19: CAPTCHA — Incorrect Entry")
 @allure.title("Error shown when CAPTCHA characters are entered incorrectly")
 def test_tc19_incorrect_captcha_shows_error(registration_page, valid_registration_data):
@@ -740,6 +759,7 @@ def test_tc19_incorrect_captcha_shows_error(registration_page, valid_registratio
 # TC-20 — CAPTCHA: Refresh Generates New CAPTCHA (EC-1)
 # =============================================================================
 
+@aio_case("KAN-TC-21")
 @allure.story("TC-20: CAPTCHA — Refresh Generates New Value")
 @allure.title("Refresh button generates a new CAPTCHA, clears input, and invalidates old value")
 def test_tc20_captcha_refresh_generates_new_value(registration_page, valid_registration_data):
@@ -801,6 +821,7 @@ def test_tc20_captcha_refresh_generates_new_value(registration_page, valid_regis
 # =============================================================================
 # TC-21 — Declaration Checkbox: Mandatory Check
 # =============================================================================
+@aio_case("KAN-TC-22")
 @pytest.mark.wait_before
 @allure.story("TC-21: Declaration Checkbox — Mandatory")
 @allure.title("Submit blocked when Declaration checkbox is unchecked; unblocked after check")
@@ -853,6 +874,7 @@ def test_tc21_declaration_checkbox_mandatory(registration_page, valid_registrati
 # TC-22 — Already Registered User Link Visible (EC-8)
 # =============================================================================
 
+@aio_case("KAN-TC-25")
 @allure.story("TC-22: Already Registered User — Login Link Visible")
 @allure.title("'Already registered? Login' link is visible and redirects to login page")
 def test_tc22_already_registered_login_link_visible(registration_page,login_page):
@@ -881,6 +903,7 @@ def test_tc22_already_registered_login_link_visible(registration_page,login_page
 # TC-23 — Self-Declaration Text is Read-Only
 # =============================================================================
 
+@aio_case("KAN-TC-27")
 @allure.story("TC-23: Self-Declaration Text — Read-Only")
 @allure.title("The 6 declaratory clauses in Section 4 are displayed in a non-editable block")
 def test_tc23_declaration_text_is_readonly(registration_page):
@@ -915,6 +938,7 @@ def test_tc23_declaration_text_is_readonly(registration_page):
 # TC-24 — Page Header and Mandatory Field Indicator Display
 # =============================================================================
 
+@aio_case("KAN-TC-28")
 @allure.story("TC-24: Static UI Elements")
 @allure.title("Page header, subtitle, mandatory badge, and support footer render correctly")
 def test_tc24_static_ui_elements_display_correctly(registration_page):
@@ -954,6 +978,7 @@ def test_tc24_static_ui_elements_display_correctly(registration_page):
 # =============================================================================
 # TC-25 — Full Valid Submission: Registration ID Generated (AC-5 & AC-6)
 # =============================================================================
+@aio_case("KAN-TC-23")
 @pytest.mark.wait_before
 @allure.story("TC-25: Full Valid Submission — Registration ID Generated")
 @allure.title("Successful E2E pre-registration generates a unique Registration ID")
