@@ -36,6 +36,24 @@ def wrong_captcha_data() -> LoginData:
 
 
 @pytest.fixture
+def blank_username_login_data() -> LoginData:
+    """KAN-TC-33 — Username blank, password + CAPTCHA filled correctly."""
+    return LoginFactory.blank_username()
+
+
+@pytest.fixture
+def blank_password_login_data() -> LoginData:
+    """KAN-TC-34 — Username filled, password blank, CAPTCHA filled correctly."""
+    return LoginFactory.blank_password()
+
+
+@pytest.fixture
+def blank_captcha_login_data() -> LoginData:
+    """KAN-TC-35 — Username + password filled, CAPTCHA blank."""
+    return LoginFactory.blank_captcha()
+
+
+@pytest.fixture
 def lockout_test_data() -> LoginData:
     """Uses a dedicated lockout-test account set via LOCKOUT_TEST_USERNAME env var.
     Set LOCKOUT_TEST_USERNAME to a real registered username before running TC-10.
