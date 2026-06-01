@@ -62,6 +62,10 @@ class HomePage(BasePage):
             "//div[contains(@class,'status-message') or contains(@class,'status-description')]"
         ).first
 
+    @property
+    def view_full_application(self):
+        return self.page.locator("//a[contains(text(),'View Full Application')]").first
+
     # ── Form Completion Progress ──────────────────────────────────────────────
 
     @property
@@ -196,3 +200,6 @@ class HomePage(BasePage):
 
     no_application_found_with_id = "⚠️No application found with ID: 2627521016"
     invalid_registration_id_format = "⚠️Invalid ID format. Expected 10-digit ID e.g. 2627100001."
+
+    def click_view_full_application(self):
+        self.view_full_application.click()

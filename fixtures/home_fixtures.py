@@ -66,3 +66,13 @@ def rejected_agency_user_page(page):
     login.open()
     login.login(username, password)
     page.wait_for_url("**/home**", timeout=15000)
+
+
+@pytest.fixture
+def agency_user_with_submitted_form(page):
+    username = os.getenv("submitted_form_username")
+    password = os.getenv("submitted_form_password")
+    login = LoginPage(page)
+    login.open()
+    login.login(username,password)
+    yield page

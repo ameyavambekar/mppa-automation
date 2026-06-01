@@ -20,7 +20,7 @@ set RESULTS_DIR=reports\allure-results
 set HTML_DIR=reports\allure-html
 set DEST_DIR=reports
 set COMBINED_FILE=reports\allure-report.html
-set RAW_COMBINED=reports\allure-html.html
+set RAW_COMBINED=reports\complete.html
 set ZIP_FILE=reports\allure-report.zip
 
 REM ── Step 1: Clean previous results ───────────────────────────────────────────
