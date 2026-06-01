@@ -3,11 +3,6 @@ import allure
 from .base_page import BasePage
 
 
-def handle_dialog(dialog):
-    dialog_message = [dialog.message]
-    dialog.dismiss()
-    return dialog_message
-
 class DashboardPage(BasePage):
 
     # ── Logout ────────────────────────────────────────────────────────────────

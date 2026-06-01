@@ -37,6 +37,7 @@ pytest_plugins = [
     "fixtures.dashboard_fixtures",
     "fixtures.home_fixtures",
     "fixtures.step1_fixtures",
+    "fixtures.admin_fixtures",
 ]
 
 
