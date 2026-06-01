@@ -67,6 +67,10 @@ class LoginPage(BasePage):
         return self.page.locator("div[class*='alert-error']")
 
     @property
+    def alert_info(self):
+        return self.page.locator("div[class='alert-info']")
+
+    @property
     def admin_login_link(self):
         return self.page.locator("//a[contains(text(),'Admin Login')]")
 
@@ -152,3 +156,5 @@ class LoginPage(BasePage):
 
     def get_url(self) -> str:
         return self.page.url
+
+    alert_info_logged_out_successfully = "Your session expired after 20 minutes. Please log in again."

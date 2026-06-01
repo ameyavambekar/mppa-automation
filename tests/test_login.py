@@ -372,12 +372,12 @@ def test_tc10_account_lockout(login_page: LoginPage, lockout_test_data: LoginDat
         expect(login_page.account_locked_message).to_be_visible()
         assert "Too many failed login attempts. Please wait 10 minutes and try again." in login_page.account_locked_message.text_content()
 
-
+@pytest.mark.wait_before(610)
 # ---------------------------------------------------------------------------
 # TC-11  AC-4  Session Auto-Expiry After 20 Minutes of Inactivity
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-39")
-@pytest.mark.skip(reason="Requires 20-minute idle wait — run manually when validating session timeout.")
+#@pytest.mark.skip(reason="Requires 20-minute idle wait — run manually when validating session timeout.")
 @allure.story("Agency Login")
 @allure.title("TC-11 (AC-4): Session expires after 20 minutes of inactivity")
 def test_tc11_session_expiry(login_page: LoginPage, dashboard_page: DashboardPage, valid_login_data: LoginData):
@@ -399,11 +399,8 @@ def test_tc11_session_expiry(login_page: LoginPage, dashboard_page: DashboardPag
     with allure.step("Wait 20 minutes (1200 seconds) without any interaction"):
         time.sleep(1200)
 
-    with allure.step("Interact with the page to trigger session check"):
-        login_page.reload()
-
     with allure.step("Verify session-expired message is shown on login page"):
-        assert "expired" in login_page.get_url()
+        assert login_page.alert_info_logged_out_successfully in login_page.alert_info.text_content()
 
 
 # ---------------------------------------------------------------------------
@@ -506,9 +503,8 @@ def test_tc14_continue_filling_form_link(fresh_agency_user_home_page, home_page:
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-43")
 @allure.story("Portal Dashboard")
-@pytest.mark.skip(reason="No user available with part a page")
 @allure.title("TC-15 (EC-9): 'View Full Application →' opens a read-only view of the submitted application")
-def test_tc15_view_full_application(logged_in_agency_page, dashboard_page: DashboardPage, agency_user_with_part_a_page):
+def test_tc15_view_full_application(agency_user_with_submitted_form, dashboard_page: DashboardPage,home_page:HomePage):
     """
     Given I have a submitted application and am on the dashboard
     When  I click "View Full Application →" on the My Application Status card
@@ -516,18 +512,18 @@ def test_tc15_view_full_application(logged_in_agency_page, dashboard_page: Dashb
 
     Notion: TC-14 | EC-9 | data: agency_user_with_part_a
     """
-    page, user = agency_user_with_part_a_page
+    page = agency_user_with_submitted_form
 
     with allure.step("Verify 'View Full Application →' link is visible"):
-        expect(dashboard_page.view_full_application_link).to_be_visible()
+        expect(home_page.view_full_application).to_be_visible()
 
     with allure.step("Click 'View Full Application →'"):
-        dashboard_page.click_view_full_application()
-        page.wait_for_load_state("networkidle")
+        home_page.click_view_full_application()
+        dashboard_page.wait_for_load()
 
-    with allure.step("Verify navigation away from the main dashboard"):
-        assert page.url != "", "Page should have navigated"
-
+    with allure.step("Verify navigation to a read-only view of all 8 wizard steps"):
+        expect(dashboard_page.submitted_application_read_only_preview).to_be_visible()
+    dashboard_page.logout_button.click()
 
 
 # ---------------------------------------------------------------------------
@@ -882,7 +878,7 @@ def test_tc25_double_login(logged_in_agency_page, dashboard_page, second_browser
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-55")
 @allure.story("Portal Dashboard")
-@allure.title("TC-26 (EC-6): ")
+@allure.title("TC-26 (EC-6): Dashboard — No Application Started Yet Shows Progress 0%")
 def test_tc26_no_application_started(fresh_agency_user_home_page, home_page: HomePage):
     """
     Given I completed pre-registration but have NOT started the 8-step wizard

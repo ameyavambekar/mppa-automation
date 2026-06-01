@@ -34,6 +34,15 @@ def agency_user_with_part_a_page(page):
 
 
 @pytest.fixture
+def agency_user_with_submitted_form(page):
+    username = os.getenv("submitted_form_username")
+    password = os.getenv("submitted_form_password")
+    login = LoginPage(page)
+    login.open()
+    login.login(username,password)
+    yield page
+
+@pytest.fixture
 def fresh_agency_user_page(page):
     """Yields (page, user) for an agency user who has NOT started the 8-step wizard."""
     user = TestStateStore().get_agency_user_with_no_form()
