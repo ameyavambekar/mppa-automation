@@ -1,3 +1,5 @@
+import time
+
 import allure
 import pytest
 from playwright.sync_api import expect
@@ -237,7 +239,6 @@ def test_tc174_admin_creds_rejected_on_agency(
 @aio_case("KAN-TC-175")
 @allure.story("Admin Login")
 @allure.title("TC-175: Expired idle admin session redirects to login with expiry message")
-@pytest.mark.wait_before(1810)
 def test_tc175_idle_session_expiry(
     admin_login_page: AdminLoginPage,
     admin_dashboard_page: AdminDashboardPage,
@@ -250,12 +251,19 @@ def test_tc175_idle_session_expiry(
     And   a message reads "Your session has expired. Please log in again."
 
     Notion: KAN-TC-175 | data: valid_super_admin
-    Note:   @pytest.mark.wait_before(1810) idles ~30 min before the test body.
+    Note:   The idle wait happens INSIDE the test (after login), so the active
+            admin session is what times out.
     """
+    # Idle just past the configured session timeout (~30 min).
+    IDLE_SECONDS = 1810
+
     with allure.step("Login and arrive at the admin dashboard"):
         admin_login_page.open()
         admin_login_page.login(valid_admin_login_data.username, valid_admin_login_data.password)
         expect(admin_dashboard_page.role_badge).to_be_visible()
+
+    with allure.step(f"Remain idle for {IDLE_SECONDS}s to let the session expire"):
+        time.sleep(IDLE_SECONDS)
 
     with allure.step("After the idle period, attempt an interaction to trigger redirect"):
         admin_dashboard_page.open_audit_log()
