@@ -1,5 +1,6 @@
 import allure
 
+from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
 
 
@@ -7,8 +8,17 @@ class AdminDashboardPage(BasePage):
     """Page object for the Admin Dashboard (post-login landing) plus the
     Audit Log and Session Management areas reachable from it.
 
-    Many selectors below are scaffolds — confirm against the live admin portal.
+    Sidebar navigation is delegated to the reusable ``AdminSidebar`` component
+    via ``self.sidebar``. Many other selectors are scaffolds — confirm against
+    the live admin portal.
     """
+
+    # ── Reusable components ───────────────────────────────────────────────────
+
+    @property
+    def sidebar(self) -> AdminSidebar:
+        """The shared left-nav sidebar component (#adm-sb)."""
+        return AdminSidebar(self.page)
 
     # ── Dashboard overview ────────────────────────────────────────────────────
 
@@ -26,21 +36,21 @@ class AdminDashboardPage(BasePage):
     @property
     def sidebar_role_label(self):
         """Role label under the sidebar user card, e.g. 'Superadmin'."""
-        return self.page.locator("#adm-sb .sb-user .rl")
+        return self.sidebar.user_role
 
     @property
     def logout_button(self):
-        return self.page.locator("//a[contains(@href,'/auth/logout.php')]").first
+        return self.sidebar.logout_link
 
-    # ── Navigation ────────────────────────────────────────────────────────────
+    # ── Navigation (delegated to the sidebar component) ───────────────────────
 
     @property
     def audit_log_link(self):
-        return self.page.locator("//a[contains(@href,'/audit/index.php')]").first
+        return self.sidebar.audit_log_link
 
     @property
     def session_management_link(self):
-        return self.page.locator("//a[contains(@href,'/sessions/index.php')]").first
+        return self.sidebar.sessions_link
 
     # ── Audit Log (page: /module/admin/audit/index.php) ──────────────────────
     # The audit log is a custom feed, NOT a `.stbl` table. Each entry is a
