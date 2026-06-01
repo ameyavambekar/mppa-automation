@@ -8,6 +8,13 @@ from test_data.admin_login_factory import AdminLoginData, AdminLoginFactory
 from utils.state_store import TestStateStore, UserRecord
 
 
+# ── Default dev sub-admin (seeded in state/test_state.db) ──────────────────────
+# Dedicated sub-admin account used by TC-179 (lockout) and TC-181 (killed
+# session). Overridable via ADMIN_SUB_USERNAME / ADMIN_SUB_PASSWORD env vars.
+DEFAULT_SUB_ADMIN_USERNAME = "Test"
+DEFAULT_SUB_ADMIN_PASSWORD = "Qwerty@123"
+
+
 # ── Credential helpers ─────────────────────────────────────────────────────────
 
 def _super_admin_or_skip() -> UserRecord:
@@ -36,28 +43,19 @@ def _super_admin_or_skip() -> UserRecord:
 
 
 def _sub_admin_or_skip() -> UserRecord:
-    """Returns a sub-admin (role='admin') UserRecord.
+    """Returns the dedicated sub-admin (role='admin') UserRecord.
 
-    The ``.env`` file is the source of truth: ADMIN_SUB_USERNAME /
-    ADMIN_SUB_PASSWORD are read first and synced into the state store. Only if
-    those env vars are unset do we fall back to a previously recorded sub-admin.
-    Use a DEDICATED account — TC-179 will lock it.
+    Uses the seeded dev sub-admin (DEFAULT_SUB_ADMIN_USERNAME /
+    DEFAULT_SUB_ADMIN_PASSWORD = 'Test' / 'Qwerty@123'), overridable via the
+    ADMIN_SUB_USERNAME / ADMIN_SUB_PASSWORD env vars. The credentials are
+    upserted into the state store and resolved by username, so the SAME
+    account is always returned. Use a DEDICATED account — TC-179 will lock it.
     """
     store = TestStateStore()
-    username = os.getenv("ADMIN_SUB_USERNAME")
-    password = os.getenv("ADMIN_SUB_PASSWORD")
-    if username and password:
-        store.record_user(role="admin", username=username, password=password)
-        return store.get_user_by_username(username)
-
-    user = store.get_any_admin()
-    if user is not None:
-        return user
-
-    pytest.skip(
-        "Set ADMIN_SUB_USERNAME / ADMIN_SUB_PASSWORD in .env to a DEDICATED "
-        "account (TC-179 will lock it), or seed a sub-admin in the state store."
-    )
+    username = os.getenv("ADMIN_SUB_USERNAME", DEFAULT_SUB_ADMIN_USERNAME)
+    password = os.getenv("ADMIN_SUB_PASSWORD", DEFAULT_SUB_ADMIN_PASSWORD)
+    store.record_user(role="admin", username=username, password=password)
+    return store.get_user_by_username(username)
 
 
 def _agency_user_or_skip() -> UserRecord:
