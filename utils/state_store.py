@@ -88,7 +88,7 @@ class TestStateStore:
 
          Also validates that existing tables have the expected columns.
          If a stale table is detected (e.g. DB created by an older version of
-         this file that lacked the ``part`` column), the table is dropped and
+         this file that lacked the ``step`` column), the table is dropped and
          recreated cleanly.  User rows are preserved when only
          ``form_applications`` is stale because the drop-recreate only targets
          the table whose schema is wrong.
@@ -99,7 +99,7 @@ class TestStateStore:
             "id", "role", "username", "password",
             "email", "pan", "district", "registration_id", "created_at",
         }
-        EXPECTED_FORM_COLS = {"user_id", "part", "status", "updated_at"}
+        EXPECTED_FORM_COLS = {"user_id", "step", "status", "updated_at"}
 
         with self._connect() as conn:
             # ── Detect and fix stale form_applications table ──────────────────
