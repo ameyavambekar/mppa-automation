@@ -38,6 +38,7 @@ pytest_plugins = [
     "fixtures.home_fixtures",
     "fixtures.step1_fixtures",
     "fixtures.admin_fixtures",
+    "fixtures.notices_fixtures",
 ]
 
 
@@ -98,12 +99,15 @@ def browser_context(playwright_instance):
 @pytest.fixture
 def second_browser(playwright_instance):
     """Factory for an independent second browser (separate cookies/session).
-    Used by TC-26 to simulate the same user logging in from another machine.
-    Cleans up every browser it hands out."""
+    Used by TC-26 to simulate the same user logging in from another machine,
+    and by the Notices dual-role tests to open an agency session alongside the
+    admin one. Honours the project HEADLESS / SLOW_MO settings so the second
+    window is visible and its interactions are paced just like the primary
+    browser. Cleans up every browser it hands out."""
     browsers = []
 
     def _launch():
-        browser = playwright_instance.chromium.launch(headless=True)
+        browser = playwright_instance.chromium.launch(headless=HEADLESS, slow_mo=SLOW_MO)
         browsers.append(browser)
         return browser
 
