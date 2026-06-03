@@ -147,25 +147,6 @@ class HomePage(BasePage):
             "//div[contains(text(),'No notices available')]"
         ).first
 
-    def notice_item_by_title(self, title: str):
-        """Returns the notice card that contains the given title text."""
-        return self.page.locator(
-            f"//div[contains(@class,'notice-item') and "
-            f".//text()[contains(.,'{title}')]]"
-        ).first
-
-    def notice_badge_for_title(self, title: str):
-        """Returns the badge element inside the notice card for the given title."""
-        return self.notice_item_by_title(title).locator(
-            "span[class*='notice-badge'], span[class*='badge']"
-        ).first
-
-    def notice_download_link(self, title: str):
-        """Returns the attachment download link inside a specific notice card."""
-        return self.notice_item_by_title(title).locator(
-            "a[download], a[href*='upload'], a[href*='attach']"
-        ).first
-
     # ── Quick Links ───────────────────────────────────────────────────────────
 
     @property
