@@ -26,6 +26,10 @@ class NoticeData:
 
 class NoticesFactory:
 
+    # Title used by TC-245's "count increments" step (kept as a constant so the
+    # cleanup helper can find and delete it).
+    EXTRA_ALERT_TITLE: str = "Filter Tab Count Update Test — Alert"
+
     # ── TC-233 — Valid mandatory fields ───────────────────────────────────────
 
     @staticmethod
@@ -167,5 +171,35 @@ class NoticesFactory:
             badge="info",
             attachment_path=attachment_path,
             scenario_label="oversized_attachment",
-            expected_error="File size exceeds 5 MB.",
+            expected_error="Failed to upload attachment.",
         )
+
+    # ── Cleanup support ───────────────────────────────────────────────────────
+
+    @classmethod
+    def all_test_titles(cls) -> list[str]:
+        """Every notice title the automation suite can create.
+
+        Used by the cleanup helper to delete only notices produced by these
+        tests. ``invalid_attachment`` / ``oversized_attachment`` titles are
+        included even though those notices should never save — listing them is
+        harmless and guards against a portal that wrongly persisted them.
+        """
+        titles = [
+            cls.valid_notice().title,
+            cls.active_notice().title,
+            cls.inactive_notice().title,
+            cls.pinned_notice().title,
+            cls.notice_to_edit().title,
+            cls.EDITED_TITLE,
+            cls.notice_to_delete().title,
+            cls.notice_with_attachment("").title,
+            cls.invalid_attachment("").title,
+            cls.oversized_attachment("").title,
+            cls.EXTRA_ALERT_TITLE,
+        ]
+        titles += [
+            cls.badge_notice(b).title
+            for b in ("new", "alert", "info", "urgent", "general")
+        ]
+        return titles

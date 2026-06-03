@@ -213,14 +213,74 @@ class AdminNoticesPage(BasePage):
         self.submit_form()
 
     @allure.step("Deactivate all active notices in the table")
-    def deactivate_all_active(self):
-        """Iterates every row and clicks the Active toggle until none are active."""
-        while True:
-            active_btns = self.page.locator("button.act-tog:has-text('Active')")
-            if active_btns.count() == 0:
-                break
-            active_btns.first.click()
+    def deactivate_all_active(self) -> list[str]:
+        """Clicks the status toggle on every Active row until none remain.
+
+        Active rows are matched by the green ``.dot-on`` indicator — matching the
+        button's 'Active' label alone is unsafe because 'Inactive' contains it as
+        a substring (Playwright ``:has-text`` is a case-insensitive substring
+        match).
+
+        Returns the titles of the notices it deactivated (captured before each
+        toggle), so a cleanup step can re-activate exactly those — see
+        :meth:`activate_notices`.
+        """
+        deactivated: list[str] = []
+        guard = 0
+        while self.page.locator("button.act-tog:has(.dot-on)").count() > 0:
+            btn = self.page.locator("button.act-tog:has(.dot-on)").first
+            row = btn.locator("xpath=ancestor::tr[1]")
+            title = row.locator("div[style*='font-weight:600']").first.inner_text().strip()
+            btn.click()
             self.wait_for_load()
+            if title:
+                deactivated.append(title)
+            guard += 1
+            if guard > 200:
+                break
+        return deactivated
+
+    # ── Cleanup helpers ───────────────────────────────────────────────────────
+
+    @allure.step("Re-activate the given notices")
+    def activate_notices(self, titles) -> int:
+        """Re-activates each notice in ``titles`` that is currently inactive.
+
+        Cleanup helper for TC-244: pass the list returned by
+        :meth:`deactivate_all_active` to restore exactly those notices (leaving
+        notices that were already inactive untouched). A row is only toggled if
+        it still shows the grey ``.dot-off`` indicator, so the call is safe to
+        repeat. Returns the number of notices re-activated.
+        """
+        reactivated = 0
+        for title in titles:
+            toggle = self.notice_status_button(title)
+            if toggle.count() > 0 and toggle.locator(".dot-off").count() > 0:
+                toggle.click()
+                self.wait_for_load()
+                reactivated += 1
+        return reactivated
+
+    @allure.step("Delete every notice whose title is in the given list")
+    def delete_notices_matching(self, titles) -> int:
+        """Deletes all notice rows whose title matches any entry in ``titles``.
+
+        Cleanup helper that removes notices created by the automation suite.
+        Switches to the unfiltered 'All' view first so rows hidden behind a badge
+        filter are still found. Returns the number of notices deleted.
+        """
+        self.click_filter("All")
+        deleted = 0
+        for title in titles:
+            guard = 0
+            while self.notice_row(title).count() > 0:
+                self.delete_notice(title)
+                self.wait_for_load()
+                deleted += 1
+                guard += 1
+                if guard > 50:
+                    break
+        return deleted
 
     @allure.step("Logout from admin panel")
     def logout(self):

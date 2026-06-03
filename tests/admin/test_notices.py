@@ -3,11 +3,15 @@ Notices Management — Admin Portal
 ==================================
 Covers KAN-TC-233 through KAN-TC-245.
 
-Dual-role tests (TC-234, TC-235, TC-236, TC-237, TC-240, TC-244) use
-``second_browser`` to open a separate agency session independently of the
-admin session still held by the main ``page`` fixture.
+Dual-role tests (TC-234, TC-235, TC-236, TC-237, TC-238, TC-239, TC-240,
+TC-244) use the ``open_agency_board`` fixture to open a separate agency session
+(via ``second_browser``) independently of the admin session held by the main
+``page`` fixture. That fixture logs the agency user out on teardown; the admin
+session is logged out by the ``logged_in_admin_notices_page`` fixture — both
+matter because the main browser context is shared across the whole session.
 """
 
+import os
 import re
 
 import allure
@@ -16,8 +20,8 @@ from playwright.sync_api import expect
 
 from pages.admin.login_page import AdminLoginPage
 from pages.admin.notices_page import AdminNoticesPage
-from pages.home_page import HomePage
 from pages.login_page import LoginPage
+from pages.notice_board_page import NoticeBoardPage
 from test_data.notices_factory import NoticeData, NoticesFactory
 from utils.aio import aio_case
 from utils.state_store import TestStateStore
@@ -27,9 +31,15 @@ from utils.state_store import TestStateStore
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _open_agency_home(second_browser):
-    """Launch a headless browser, log in as an agency user, return HomePage."""
-    import os
+def _open_notice_board(second_browser):
+    """Open a visible second browser, log in as an agency user, and land on the
+    public Notice Board page (/module/notices.php).
+
+    After login the agency user lands on the dashboard; we then navigate to the
+    dedicated Notice Board page where every active notice is rendered as a
+    ``.notice-card``. The second browser honours the project HEADLESS / SLOW_MO
+    settings, so its interactions are visible alongside the admin window.
+    """
     store = TestStateStore()
     agency = store.get_any_agency_user()
     if agency is None:
@@ -39,13 +49,65 @@ def _open_agency_home(second_browser):
     ctx = browser.new_context(viewport={"width": 1280, "height": 800})
     p = ctx.new_page()
 
-    base = os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
     login = LoginPage(p)
     login.open()
     login.login(agency.username, agency.password)
-    home = HomePage(p)
-    home.open()
-    return home
+    board = NoticeBoardPage(p)
+    board.open()
+    return board
+
+
+def _delete_all_test_notices(admin_notices_page: AdminNoticesPage) -> int:
+    """Cleanup helper — deletes every notice the automation suite may have
+    created. Pass a logged-in AdminNoticesPage already on the Notices page
+    (e.g. the ``logged_in_admin_notices_page`` fixture). Returns the count
+    deleted."""
+    return admin_notices_page.delete_notices_matching(NoticesFactory.all_test_titles())
+
+
+@pytest.fixture
+def cleanup_notices(logged_in_admin_notices_page: AdminNoticesPage):
+    """Teardown fixture: after the test, deletes every automation-created notice
+    so each run self-cleans.
+
+    Depends on ``logged_in_admin_notices_page``, so it shares the SAME page
+    instance the test already uses — request both from a test (the test keeps
+    using ``logged_in_admin_notices_page`` for its body) and this fixture's
+    teardown handles the cleanup. Wired into every test that persists a notice.
+    """
+    yield logged_in_admin_notices_page
+    logged_in_admin_notices_page.open()
+    _delete_all_test_notices(logged_in_admin_notices_page)
+
+
+AGENCY_LOGOUT_URL = (
+    os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
+    + "/logout.php"
+)
+
+
+@pytest.fixture
+def open_agency_board(second_browser):
+    """Factory that logs an agency user into a fresh (visible) second browser
+    and opens the public Notice Board, returning the NoticeBoardPage.
+
+    On teardown it logs every agency session it opened out, then ``second_browser``
+    closes the browser — so no agency session leaks into the next test.
+    """
+    boards = []
+
+    def _open():
+        board = _open_notice_board(second_browser)
+        boards.append(board)
+        return board
+
+    yield _open
+
+    for board in boards:
+        try:
+            board.page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +118,7 @@ def _open_agency_home(second_browser):
 @allure.title("TC-233: Mandatory fields save notice and reflect immediately in admin list")
 def test_tc233_add_notice_mandatory_fields(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
     valid_notice_data: NoticeData,
 ):
     """
@@ -100,8 +163,9 @@ def test_tc233_add_notice_mandatory_fields(
 @allure.title("TC-234: Active notice is visible to agency users on the portal homepage")
 def test_tc234_active_notice_visible_on_public_board(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
     active_notice_data: NoticeData,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given I am logged in as Admin
@@ -125,11 +189,11 @@ def test_tc234_active_notice_visible_on_public_board(
         expect(np.notice_row(active_notice_data.title)).to_be_visible()
         expect(np.notice_status_button(active_notice_data.title)).to_contain_text("Active")
 
-    with allure.step("Log in as agency user and visit portal homepage"):
-        home = _open_agency_home(second_browser)
+    with allure.step("Log in as agency user and open the public Notice Board"):
+        board = open_agency_board()
 
     with allure.step("Verify notice is visible on the public Notice Board"):
-        expect(home.notice_item_by_title(active_notice_data.title)).to_be_visible()
+        expect(board.notice_card(active_notice_data.title)).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -140,8 +204,9 @@ def test_tc234_active_notice_visible_on_public_board(
 @allure.title("TC-235: Inactive notice does not appear on agency-facing notice board")
 def test_tc235_inactive_notice_hidden_from_public_board(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
     inactive_notice_data: NoticeData,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given I am logged in as Admin
@@ -167,11 +232,11 @@ def test_tc235_inactive_notice_hidden_from_public_board(
     with allure.step("Verify admin panel shows Inactive indicator (not 'Active' button)"):
         expect(np.notice_status_button(inactive_notice_data.title)).not_to_contain_text("Active")
 
-    with allure.step("Log in as agency user and view notice board"):
-        home = _open_agency_home(second_browser)
+    with allure.step("Log in as agency user and open the public Notice Board"):
+        board = open_agency_board()
 
     with allure.step("Verify notice does NOT appear on the public notice board"):
-        expect(home.notice_item_by_title(inactive_notice_data.title)).not_to_be_visible()
+        expect(board.notice_card(inactive_notice_data.title)).not_to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +247,9 @@ def test_tc235_inactive_notice_hidden_from_public_board(
 @allure.title("TC-236: Pinned notice appears at the top of the public notice board")
 def test_tc236_pinned_notice_at_top_of_board(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
     pinned_notice_data: NoticeData,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given at least two other active unpinned notices exist
@@ -207,15 +273,17 @@ def test_tc236_pinned_notice_at_top_of_board(
     with allure.step("Verify admin list shows Pinned indicator"):
         expect(np.notice_pin_button(pinned_notice_data.title)).to_contain_text("Pinned")
 
-    with allure.step("View public notice board as agency user"):
-        home = _open_agency_home(second_browser)
+    with allure.step("Open the public Notice Board as agency user"):
+        board = open_agency_board()
 
-    with allure.step("Verify pinned notice is the first item on the board"):
-        first_notice = home.notice_items.first
-        expect(first_notice).to_contain_text(pinned_notice_data.title)
+    with allure.step("Verify pinned notice is the first card on the board"):
+        expect(board.first_notice_card).to_contain_text(pinned_notice_data.title)
 
-    with allure.step("Verify other notices follow below the pinned notice"):
-        expect(home.notice_items).to_have_count(home.notice_items.count())
+    with allure.step("Verify the first card carries the 'Pinned' indicator"):
+        expect(board.first_notice_card.locator(".pin-icon")).to_contain_text("Pinned")
+
+    with allure.step("Verify other notices follow below (more than one card present)"):
+        assert board.notice_cards.count() > 1
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +294,8 @@ def test_tc236_pinned_notice_at_top_of_board(
 @allure.title("TC-237: Each badge type renders the correct colour on the public notice board")
 def test_tc237_badge_colours_on_public_board(
     logged_in_admin_notices_page: AdminNoticesPage,
-    second_browser,
+    cleanup_notices,
+    open_agency_board,
 ):
     """
     Given I create one active notice for each badge type
@@ -244,22 +313,28 @@ def test_tc237_badge_colours_on_public_board(
             np.add_notice(title=data.title, body=data.body, badge=data.badge, active=True)
             expect(np.notice_row(data.title)).to_be_visible()
 
-    with allure.step("Agency user views the public notice board"):
-        home = _open_agency_home(second_browser)
+    with allure.step("Agency user opens the public Notice Board"):
+        board = open_agency_board()
 
+    # Each badge chip carries a colour-specific class, e.g. 'nbadge nbadge-alert'.
     badge_class_pattern = {
-        "new":     re.compile(r"new",     re.IGNORECASE),
-        "alert":   re.compile(r"alert",   re.IGNORECASE),
-        "info":    re.compile(r"info",    re.IGNORECASE),
-        "urgent":  re.compile(r"urgent",  re.IGNORECASE),
-        "general": re.compile(r"general", re.IGNORECASE),
+        "new":     re.compile(r"nbadge-new"),
+        "alert":   re.compile(r"nbadge-alert"),
+        "info":    re.compile(r"nbadge-info"),
+        "urgent":  re.compile(r"nbadge-urgent"),
+        "general": re.compile(r"nbadge-general"),
+    }
+    badge_label = {
+        "new": "NEW", "alert": "ALERT", "info": "INFO",
+        "urgent": "URGENT", "general": "GENERAL",
     }
 
     for badge in badges:
         data = NoticesFactory.badge_notice(badge)
-        with allure.step(f"Verify {badge.upper()} badge renders correct colour class"):
-            badge_el = home.notice_badge_for_title(data.title)
+        with allure.step(f"Verify {badge.upper()} badge renders correct colour class and label"):
+            badge_el = board.notice_badge(data.title)
             expect(badge_el).to_have_class(badge_class_pattern[badge])
+            expect(badge_el).to_have_text(badge_label[badge])
 
 
 # ---------------------------------------------------------------------------
@@ -270,8 +345,9 @@ def test_tc237_badge_colours_on_public_board(
 @allure.title("TC-238: Editing a notice pre-fills all fields; save updates it everywhere")
 def test_tc238_edit_notice_prefills_and_updates(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
     notice_to_edit_data: NoticeData,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given at least one active notice exists in the admin list
@@ -312,8 +388,9 @@ def test_tc238_edit_notice_prefills_and_updates(
         expect(np.notice_table).not_to_contain_text(notice_to_edit_data.title)
 
     with allure.step("Verify updated title is visible on the public notice board"):
-        home = _open_agency_home(second_browser)
-        expect(home.notice_item_by_title(NoticesFactory.EDITED_TITLE)).to_be_visible()
+        board = open_agency_board()
+        expect(board.notice_card(NoticesFactory.EDITED_TITLE)).to_be_visible()
+        expect(board.notice_card(notice_to_edit_data.title)).not_to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +402,7 @@ def test_tc238_edit_notice_prefills_and_updates(
 def test_tc239_delete_notice_permanently(
     logged_in_admin_notices_page: AdminNoticesPage,
     notice_to_delete_data: NoticeData,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given at least one active notice exists in the admin list
@@ -356,8 +433,8 @@ def test_tc239_delete_notice_permanently(
         expect(np.notice_table).not_to_contain_text(notice_to_delete_data.title)
 
     with allure.step("Verify notice no longer appears on the public notice board"):
-        home = _open_agency_home(second_browser)
-        expect(home.notice_item_by_title(notice_to_delete_data.title)).not_to_be_visible()
+        board = open_agency_board()
+        expect(board.notice_card(notice_to_delete_data.title)).not_to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -368,8 +445,9 @@ def test_tc239_delete_notice_permanently(
 @allure.title("TC-240: PDF attachment uploaded with notice is downloadable on the public board")
 def test_tc240_attachment_download_link_on_public_board(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
     notice_with_attachment_data: NoticeData,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given I prepare a valid PDF under 5 MB and set the notice to Active
@@ -393,12 +471,13 @@ def test_tc240_attachment_download_link_on_public_board(
     with allure.step("Verify notice saved successfully in admin list"):
         expect(np.notice_row(notice_with_attachment_data.title)).to_be_visible()
 
-    with allure.step("Agency user views notice on public board"):
-        home = _open_agency_home(second_browser)
+    with allure.step("Agency user opens the public Notice Board"):
+        board = open_agency_board()
 
-    with allure.step("Verify download link for attachment is visible on the notice card"):
-        download_link = home.notice_download_link(notice_with_attachment_data.title)
+    with allure.step("Verify attachment download link is visible on the notice card"):
+        download_link = board.notice_attachment_link(notice_with_attachment_data.title)
         expect(download_link).to_be_visible()
+        expect(download_link).to_have_attribute("href", re.compile(r".+"))
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +602,7 @@ def test_tc243_oversized_attachment_size_error(
 @allure.title("TC-244: Public board shows 'No notices available' when all notices are inactive")
 def test_tc244_no_active_notices_shows_placeholder(
     logged_in_admin_notices_page: AdminNoticesPage,
-    second_browser,
+    open_agency_board,
 ):
     """
     Given I deactivate all currently active notices in the admin panel
@@ -531,25 +610,32 @@ def test_tc244_no_active_notices_shows_placeholder(
     Then  the placeholder "No notices available at this time." is shown
     And   the page renders correctly with no broken layout
 
-    NOTE: This test deactivates ALL active notices. Run in an isolated
-    environment or restore notice states manually after this test.
+    NOTE: This test deactivates ALL active notices, then re-activates exactly
+    the notices it switched off in a finally block — restoring the public notice
+    board without touching notices that were already inactive.
 
     Notion: KAN-TC-244
     """
     np = logged_in_admin_notices_page
+    deactivated: list[str] = []
 
-    with allure.step("Deactivate all currently active notices"):
-        np.deactivate_all_active()
+    try:
+        with allure.step("Deactivate all currently active notices"):
+            deactivated = np.deactivate_all_active()
 
-    with allure.step("Agency user visits the public notice board"):
-        home = _open_agency_home(second_browser)
+        with allure.step("Agency user opens the public Notice Board"):
+            board = open_agency_board()
 
-    with allure.step("Verify 'No notices available' placeholder is shown"):
-        expect(home.no_notices_placeholder).to_be_visible()
-        expect(home.no_notices_placeholder).to_contain_text("No notices available")
+        with allure.step("Verify 'No notices available' placeholder is shown"):
+            expect(board.empty_state).to_be_visible()
+            expect(board.empty_state).to_contain_text("No notices found.")
 
-    with allure.step("Verify page renders correctly (notice board section exists)"):
-        expect(home.notice_board_section).to_be_visible()
+        with allure.step("Verify page renders correctly (board hero still visible)"):
+            expect(board.board_heading).to_be_visible()
+    finally:
+        with allure.step("Cleanup: re-activate exactly the notices we deactivated"):
+            np.open()
+            np.activate_notices(deactivated)
 
 
 # ---------------------------------------------------------------------------
@@ -560,6 +646,7 @@ def test_tc244_no_active_notices_shows_placeholder(
 @allure.title("TC-245: Each filter tab in admin panel shows only notices of that badge type")
 def test_tc245_filter_tabs_by_badge_type(
     logged_in_admin_notices_page: AdminNoticesPage,
+    cleanup_notices,
 ):
     """
     Given at least one notice of each badge type exists
@@ -574,16 +661,20 @@ def test_tc245_filter_tabs_by_badge_type(
     """
     np = logged_in_admin_notices_page
 
+    # Only the "All (N)" pill carries a numeric count in the admin panel; the
+    # per-badge pills (New, Alert, …) have no count. So the "Alert count" is
+    # derived from the number of rows shown while the Alert filter is active.
+    def _all_count() -> int:
+        digits = "".join(filter(str.isdigit, np.filter_pill("All").text_content()))
+        return int(digits) if digits else 0
+
     with allure.step("Ensure at least one Alert notice exists"):
         seed = NoticesFactory.badge_notice("alert")
         np.add_notice(title=seed.title, body=seed.body, badge="alert", active=True)
         expect(np.notice_row(seed.title)).to_be_visible()
 
-    with allure.step("Note the current 'All' and 'Alert' tab counts"):
-        all_pill_text   = np.filter_pill("All").text_content()
-        alert_pill_text = np.filter_pill("Alert").text_content()
-        all_count   = int("".join(filter(str.isdigit, all_pill_text)))
-        alert_count = int("".join(filter(str.isdigit, alert_pill_text)))
+    with allure.step("Note the current 'All' tab count (total notices)"):
+        all_count = _all_count()
 
     with allure.step("Click 'Alert' filter tab"):
         np.click_filter("Alert")
@@ -593,29 +684,28 @@ def test_tc245_filter_tabs_by_badge_type(
             badge_text = row.locator(".nbadge").text_content().strip().upper()
             assert badge_text == "ALERT", f"Expected only ALERT rows, found: {badge_text}"
 
-    with allure.step("Verify visible row count matches the Alert tab count"):
-        assert np.notice_rows.count() == alert_count
+    with allure.step("Record the current number of Alert notices"):
+        alert_count = np.notice_rows.count()
 
     with allure.step("Click 'All' tab"):
         np.click_filter("All")
 
-    with allure.step("Verify all notices are shown and count matches"):
+    with allure.step("Verify all notices are shown and row count matches the 'All' tab count"):
         assert np.notice_rows.count() == all_count
 
     with allure.step("Add a new Alert notice"):
         extra = NoticeData(
-            title="Filter Tab Count Update Test — Alert",
+            title=NoticesFactory.EXTRA_ALERT_TITLE,
             body="Extra alert notice to verify tab count increments.",
             badge="alert",
         )
         np.add_notice(title=extra.title, body=extra.body, badge="alert", active=True)
 
     with allure.step("Verify 'All' tab count incremented by 1"):
-        new_all_text = np.filter_pill("All").text_content()
-        new_all_count = int("".join(filter(str.isdigit, new_all_text)))
-        assert new_all_count == all_count + 1
+        np.click_filter("All")
+        assert _all_count() == all_count + 1
+        assert np.notice_rows.count() == all_count + 1
 
-    with allure.step("Verify 'Alert' tab count incremented by 1"):
-        new_alert_text = np.filter_pill("Alert").text_content()
-        new_alert_count = int("".join(filter(str.isdigit, new_alert_text)))
-        assert new_alert_count == alert_count + 1
+    with allure.step("Verify the number of Alert notices incremented by 1"):
+        np.click_filter("Alert")
+        assert np.notice_rows.count() == alert_count + 1

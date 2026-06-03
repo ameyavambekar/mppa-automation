@@ -14,6 +14,8 @@ VALID_PDF     = os.path.join(_DOC_DIR, "valid_doc.pdf")
 INVALID_FILE  = os.path.join(_DOC_DIR, "invalid.docx")
 OVERSIZED_PDF = os.path.join(_DOC_DIR, "oversized.pdf")
 
+ADMIN_LOGOUT_URL = "https://devmppa.sppuef.in/module/admin/auth/logout.php"
+
 
 # ── Credential helpers ─────────────────────────────────────────────────────────
 
@@ -49,14 +51,24 @@ def admin_notices_page(page) -> AdminNoticesPage:
 
 @pytest.fixture
 def logged_in_admin_notices_page(page) -> AdminNoticesPage:
-    """Logs in as super admin then navigates directly to Notices Management."""
+    """Logs in as super admin then navigates directly to Notices Management.
+
+    Logs the admin out on teardown: the browser context is shared across the
+    whole session, so the admin session cookie would otherwise persist and the
+    next test's ``login.open()`` would redirect straight to the dashboard,
+    breaking its login flow.
+    """
     admin = _super_admin_or_skip()
     login = AdminLoginPage(page)
     login.open()
     login.login(admin.username, admin.password)
     notices = AdminNoticesPage(page)
     notices.open()
-    return notices
+    yield notices
+    try:
+        page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
+    except Exception:
+        pass
 
 
 @pytest.fixture
