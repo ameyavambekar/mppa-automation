@@ -876,7 +876,7 @@ def test_tc25_double_login(logged_in_agency_page, dashboard_page, second_browser
 # ---------------------------------------------------------------------------
 # TC-26  EC-6  Dashboard — No Application Started Yet Shows Progress 0%
 # ---------------------------------------------------------------------------
-@aio_case("KAN-TC-55")
+@aio_case("KAN-TC-56")
 @allure.story("Portal Dashboard")
 @allure.title("TC-26 (EC-6): Dashboard — No Application Started Yet Shows Progress 0%")
 def test_tc26_no_application_started(fresh_agency_user_home_page, home_page: HomePage):
