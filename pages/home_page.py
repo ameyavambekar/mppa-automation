@@ -88,6 +88,131 @@ class HomePage(BasePage):
     def continue_filling_form_link(self):
         return self.page.locator("//a[contains(normalize-space(.),'Continue Filling Form')]")
 
+    # ── Hero Section (Expired State) ─────────────────────────────────────────
+
+    @property
+    def renew_now_hero_button(self):
+        return self.page.locator("//a[contains(normalize-space(.),'Renew Now')]").first
+
+    @property
+    def view_cert_hero_button(self):
+        return self.page.locator("//a[contains(normalize-space(.),'View Cert')]").first
+
+    # ── Expired Certificate Card ──────────────────────────────────────────────
+
+    @property
+    def expired_cert_card(self):
+        return self.page.locator(".cert-card.expired").first
+
+    @property
+    def expired_cert_title(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//div[contains(text(),'Certificate Expired')]"
+        ).first
+
+    @property
+    def expired_cert_subtitle(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//div[contains(text(),'Renew immediately')]"
+        ).first
+
+    @property
+    def expired_cert_badge(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//span[contains(@class,'sbadge-rejected')]"
+        ).first
+
+    @property
+    def expired_cert_mppa_number(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//span[contains(@class,'mppa-badge')]"
+        ).first
+
+    @property
+    def expired_cert_valid_from_value(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//div[text()='Valid From']/following-sibling::div"
+        ).first
+
+    @property
+    def expired_cert_valid_until_value(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//div[text()='Valid Until']/following-sibling::div"
+        ).first
+
+    @property
+    def expired_cert_days_overdue_text(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//span[contains(text(),'days overdue')]"
+        ).first
+
+    @property
+    def view_expired_cert_button(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//a[contains(@class,'cert-btn-view')]"
+        ).first
+
+    @property
+    def start_renewal_from_cert_button(self):
+        return self.page.locator(
+            "//div[contains(@class,'cert-card') and contains(@class,'expired')]"
+            "//a[contains(@class,'cert-btn-renew')]"
+        ).first
+
+    # ── Renewal Service Card ──────────────────────────────────────────────────
+
+    @property
+    def renewal_service_card(self):
+        return self.page.locator("a.service-card.red").first
+
+    @property
+    def renewal_service_card_title(self):
+        return self.page.locator(
+            "//a[contains(@class,'service-card') and contains(@class,'red')]"
+            "//p[contains(@class,'card-title')]"
+        ).first
+
+    @property
+    def renewal_service_card_expiry_date(self):
+        return self.page.locator(
+            "//a[contains(@class,'service-card') and contains(@class,'red')]"
+            "//p[contains(@class,'card-desc')]//strong"
+        ).first
+
+    # ── Sidebar Expired Warning ───────────────────────────────────────────────
+
+    @property
+    def cert_expired_sidebar_warning(self):
+        return self.page.locator(
+            "//p[contains(text(),'Certificate Expired!')]/parent::div"
+        ).first
+
+    @property
+    def cert_expired_sidebar_title(self):
+        return self.page.locator(
+            "//p[contains(text(),'Certificate Expired!')]"
+        ).first
+
+    @property
+    def cert_expired_sidebar_message(self):
+        return self.page.locator(
+            "//p[contains(text(),'Certificate Expired!')]/following-sibling::p"
+        ).first
+
+    @property
+    def cert_expired_sidebar_renew_button(self):
+        return self.page.locator(
+            "//p[contains(text(),'Certificate Expired!')]/following-sibling::a"
+        ).first
+
     # ── Track Application Card ────────────────────────────────────────────────
 
     @property
@@ -203,3 +328,27 @@ class HomePage(BasePage):
 
     def click_view_full_application(self):
         self.view_full_application.click()
+
+    @allure.step("Click 'Renew Now' (hero)")
+    def click_renew_now_hero(self):
+        self.renew_now_hero_button.click()
+
+    @allure.step("Click 'View Cert' (hero)")
+    def click_view_cert_hero(self):
+        self.view_cert_hero_button.click()
+
+    @allure.step("Click 'View (Expired)' on certificate card")
+    def click_view_expired_cert(self):
+        self.view_expired_cert_button.click()
+
+    @allure.step("Click 'Start Renewal' on certificate card")
+    def click_start_renewal_from_cert(self):
+        self.start_renewal_from_cert_button.click()
+
+    @allure.step("Click renewal service card")
+    def click_renewal_service_card(self):
+        self.renewal_service_card.click()
+
+    @allure.step("Click 'Start Renewal' in sidebar warning")
+    def click_start_renewal_from_sidebar(self):
+        self.cert_expired_sidebar_renew_button.click()
