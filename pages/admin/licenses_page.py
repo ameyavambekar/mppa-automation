@@ -1,3 +1,6 @@
+import re
+from datetime import datetime
+
 import allure
 
 from pages.admin.components.sidebar import AdminSidebar
@@ -56,6 +59,10 @@ class AdminLicensesPage(BasePage):
         """The big number on a filter chip."""
         return self.stat_chip(status).locator(".n")
 
+    def stat_chip_label(self, status: str):
+        """The label text on a filter chip, e.g. 'Approved', 'Expiring (30d)'."""
+        return self.stat_chip(status).locator(".l")
+
     @property
     def selected_stat_chip(self):
         # The currently applied filter (carries the 'sel' class)
@@ -76,6 +83,16 @@ class AdminLicensesPage(BasePage):
         # "📋 Issue / Renew License" — opens the modal in Issue mode
         return self.page.locator("//button[contains(normalize-space(.),'Issue / Renew License')]")
 
+    # ── Alerts ────────────────────────────────────────────────────────────────
+
+    @property
+    def success_alert(self):
+        return self.page.locator(".salt-s")
+
+    @property
+    def error_alert(self):
+        return self.page.locator(".salt-e")
+
     # ── Licenses table ────────────────────────────────────────────────────────
 
     @property
@@ -83,9 +100,24 @@ class AdminLicensesPage(BasePage):
         return self.page.locator("table.tb")
 
     @property
+    def table_headers(self):
+        return self.page.locator("table.tb thead th")
+
+    def table_header(self, label: str):
+        """A column header by its label, e.g. 'MPPA Reg No.', 'Days Left'."""
+        return self.page.locator(
+            f"//table[contains(@class,'tb')]//thead//th[contains(normalize-space(.),'{label}')]"
+        )
+
+    @property
     def license_rows(self):
         """Main data rows only (detail rows excluded)."""
         return self.page.locator("table.tb tbody tr:not(.det-row)")
+
+    def rows_with_status(self, status: str):
+        """Status badges of all main rows in a given state.
+        status: 'active', 'expiring', 'expired' or 'revoked'."""
+        return self.page.locator(f"table.tb tbody tr:not(.det-row) .lb.lb-{status}")
 
     def sort_link(self, field: str):
         """Column-header sort link. field: 'agency_name', 'eff_start',
@@ -169,6 +201,16 @@ class AdminLicensesPage(BasePage):
     def modal_agency_select(self):
         # Disabled (pre-selected) when opened via a row's Renew button
         return self.page.locator("#mod-agency")
+
+    @property
+    def modal_selected_agency_option(self):
+        # The currently selected <option> in the agency dropdown
+        return self.modal_agency_select.locator("option:checked")
+
+    @property
+    def modal_quick_duration_buttons(self):
+        # All four +N Year(s) shortcut buttons
+        return self.issue_modal.locator("button[onclick^='setDur']")
 
     @property
     def modal_license_number_input(self):
@@ -332,3 +374,35 @@ class AdminLicensesPage(BasePage):
         if notes is not None:
             self.fill_modal_notes(notes)
         self.save_modal()
+
+    # ── Read helpers (queries, not assertions) ────────────────────────────────
+
+    def get_agency_name(self, row_index: int = 0) -> str:
+        """Agency name shown in the given main row (0-based)."""
+        cell = self.license_rows.nth(row_index).locator("td").nth(1).locator("div").first
+        return cell.text_content().strip()
+
+    def get_row_validity_dates(self, agency_name: str) -> tuple:
+        """(valid_from, valid_upto) for an agency's row as ISO yyyy-mm-dd
+        strings, parsed from the table's 'dd Mon yyyy' display format."""
+        def _iso(cell_text: str) -> str:
+            match = re.search(r"\d{1,2} \w{3} \d{4}", cell_text)
+            return datetime.strptime(match.group(), "%d %b %Y").date().isoformat()
+
+        return (
+            _iso(self.valid_from_cell(agency_name).text_content()),
+            _iso(self.valid_upto_cell(agency_name).text_content()),
+        )
+
+    def get_modal_agency_validation_message(self) -> str:
+        """The native HTML5 validation message on the required agency select
+        (non-empty after attempting to save with no agency chosen)."""
+        return self.modal_agency_select.evaluate("el => el.validationMessage")
+
+    def get_stat_chip_count(self, status: str) -> int:
+        """Numeric count on a filter chip."""
+        return int(self.stat_chip_count(status).text_content().strip())
+
+    def count_rows_with_status(self, status: str) -> int:
+        """Number of table rows currently in the given license state."""
+        return self.rows_with_status(status).count()

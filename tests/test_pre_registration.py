@@ -567,7 +567,7 @@ def test_tc15_valid_pan_auto_uppercased(registration_page, ec4_pan_lowercase_dat
 # TC-16 — PAN: Duplicate PAN Blocked (AC-7)
 # =============================================================================
 @aio_case("KAN-TC-17")
-@pytest.mark.wait_before(4000)
+@pytest.mark.wait_before(1000)
 @allure.story("TC-16: PAN — Duplicate PAN Blocked")
 @allure.title("Submission blocked when PAN is already registered in the system")
 def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
