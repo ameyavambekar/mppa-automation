@@ -19,12 +19,16 @@ Handling the destructive actions safely:
   dismisses it; it never terminates sessions. The live build guards Kill-All
   with a native ``confirm('Kill ALL active sessions now?')`` rather than the
   spec's longer sentence, so the asserted fragment is the realistic 'active'.
-* TC-256 needs a dataset with zero active sessions; it skips (with a clear
-  reason) when the dev environment has live/stale sessions, which is the honest
-  outcome rather than a forced pass.
+* TC-256 asserts Kill-All availability tracks whether active sessions actually
+  exist (available when they do, hidden/disabled when they don't), so it does
+  real work in either dataset instead of skipping or passing vacuously.
 
-Count assertions tolerate pagination by checking per-user row counts or in-DOM
-(non-reloaded) tile values rather than whole-table totals.
+Whether active sessions exist is derived from the killable table rows, NOT the
+summary tiles: the Live/Stale tiles can read 0 while active rows still render,
+which previously let the gated tests skip or pass spuriously. The page object's
+``count_killable_sessions()`` walks every table page and counts the actual Kill-
+button rows, so these gates see whole-table reality rather than a single page or
+a possibly-stale tile.
 """
 
 import re
@@ -91,6 +95,66 @@ def test_tc246_dashboard_tiles_visible_and_consistent(
 
 
 # ---------------------------------------------------------------------------
+# Tiles vs table — the count tiles must equal the table's own per-status tally.
+# Deepens TC-246 ('tiles reflect accurate counts from the sessions database');
+# left undecorated because TC-246's @aio_case is already claimed by the
+# visibility/consistency test above and one key per test avoids duplicate runs.
+# ---------------------------------------------------------------------------
+@allure.story("Session Management")
+@allure.title("Summary tiles match the live table tally (Total/Live/Stale/Ended, all pages)")
+def test_tiles_match_table_tally(
+    logged_in_admin_sessions_page: AdminSessionsPage,
+):
+    """
+    Given I am logged in as Admin on the Session Management dashboard
+    When  I tally every session row across all table pages by status badge
+    Then  the Live Now / Stale / Ended tiles each equal the table's count for
+          that status
+    And   the Total tile equals all rows tallied (live + stale + ended)
+
+    This is the table-derived counterpart to TC-246: rather than only checking
+    the tiles are internally consistent, it asserts they reflect the actual
+    rows. Counts come from the rows themselves (see
+    ``AdminSessionsPage.count_sessions_by_status``), so a tile that drifts from
+    the table — e.g. a Stale tile stuck at 0 while Stale rows are listed — fails
+    here instead of passing silently.
+
+    Related AIO: KAN-TC-246 (kept undecorated to avoid a duplicate case upload).
+    """
+    sp = logged_in_admin_sessions_page
+
+    with allure.step("Read the four count tiles on the All tab"):
+        tile = {
+            "live": sp.get_stat_chip_count("live"),
+            "stale": sp.get_stat_chip_count("stale"),
+            "ended": sp.get_stat_chip_count("ended"),
+        }
+        total_tile = sp.get_stat_chip_count("all")
+
+    with allure.step("Tally every session row across all pages by status badge"):
+        table = sp.count_sessions_by_status()
+        allure.attach(str(table), name="table tally (live/stale/ended)")
+
+    with allure.step("Verify each status tile equals the table's count for that status"):
+        mismatches = {
+            status: (tile[status], table[status])
+            for status in ("live", "stale", "ended")
+            if tile[status] != table[status]
+        }
+        assert not mismatches, (
+            "Tile vs table mismatch (tile, table): "
+            + ", ".join(f"{s}={t_tile} vs {t_tbl}" for s, (t_tile, t_tbl) in mismatches.items())
+        )
+
+    with allure.step("Verify the Total tile equals all rows tallied across pages"):
+        table_total = table["live"] + table["stale"] + table["ended"]
+        assert total_tile == table_total, (
+            f"Total tile shows {total_tile} but the table holds {table_total} "
+            f"session row(s) across all pages."
+        )
+
+
+# ---------------------------------------------------------------------------
 # TC-247  All tab lists every session type, all columns, reverse-chronological
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-247")
@@ -149,13 +213,15 @@ def test_tc248_live_tab_shows_only_live(
     """
     sp = logged_in_admin_sessions_page
 
-    with allure.step("Skip if there are no live sessions to inspect"):
-        if sp.get_stat_chip_count("live") == 0:
-            pytest.skip("No live sessions in the current dev dataset.")
-
     with allure.step("Click the 'Live' tab"):
         sp.filter_by_tab("live")
         expect(sp.active_filter_tab).to_contain_text("Live")
+
+    with allure.step("Skip if there are no live sessions to inspect"):
+        # Gate on the Live tab's actual killable rows, not the Live tile —
+        # the tile can read 0 while live rows still render (see TC-256).
+        if sp.killable_rows.count() == 0:
+            pytest.skip("No live sessions in the current dev dataset.")
 
     with allure.step("Verify rows are shown and every one carries a Live badge"):
         expect(sp.session_rows.first).to_be_visible()
@@ -304,8 +370,7 @@ def test_tc251_kill_all_shows_confirmation(
     data = kill_all_confirmation_data
 
     with allure.step("Skip if there are no active (Live or Stale) sessions"):
-        active = sp.get_stat_chip_count("live") + sp.get_stat_chip_count("stale")
-        if active == 0:
+        if sp.count_killable_sessions() == 0:
             pytest.skip("No active sessions — Kill All would be unavailable (see TC-256).")
 
     with allure.step("Verify the Kill All button is available and names a count"):
@@ -339,35 +404,41 @@ def test_tc252_kill_all_cancel_aborts(
     """
     Given at least one active (Live or Stale) session exists
     When  I click 'Kill All Active' and then Cancel the confirmation dialog
-    Then  no session is terminated — the page does not reload and the Live /
-          Stale counts are unchanged
+    Then  no session is terminated — a specific watched session is still active
+          (still carries an enabled Kill button) afterwards
 
-    Cancelling must NOT navigate: a real kill reloads the page and drops the
-    counts, so unchanged in-DOM tile values prove the action was aborted.
+    Cancelling must NOT submit the form: a real Kill-All reloads the page and
+    ends every active session, which would strip the watched session's Kill form
+    so ``row_by_session_id`` could no longer find it. Tracking a concrete session
+    by id is tile-independent — the summary tiles can read 0 while active rows
+    still render (see TC-256).
 
     AIO: KAN-TC-252 | data: kill_all_confirmation
     """
     sp = logged_in_admin_sessions_page
 
-    with allure.step("Read the active counts and skip if there are none"):
-        live_before = sp.get_stat_chip_count("live")
-        stale_before = sp.get_stat_chip_count("stale")
-        if live_before + stale_before == 0:
+    with allure.step("Skip if there are no active (Live or Stale) sessions to protect"):
+        if sp.count_killable_sessions() == 0:
             pytest.skip("No active sessions to protect — see TC-256.")
+
+    with allure.step("Pick an active session to watch by its session id"):
+        sp.filter_by_tab("live")
+        if sp.killable_rows.count() == 0:
+            sp.filter_by_tab("stale")
+        watched = sp.killable_rows.first
+        expect(watched).to_be_visible()
+        watched_id = sp.get_session_id(watched)
+        allure.attach(watched_id or "", name="watched session_id")
 
     with allure.step("Click 'Kill All Active' then Cancel the confirmation dialog"):
         message = sp.kill_all(action="dismiss")
         assert message, "Kill All did not raise a confirmation dialog."
 
-    with allure.step("Verify nothing was terminated (no reload, counts unchanged)"):
+    with allure.step("Verify nothing was terminated (the watched session is still active)"):
         expect(sp.kill_all_button).to_be_visible()
-        expect(sp.session_rows.first).to_be_visible()
-        assert sp.get_stat_chip_count("live") == live_before, (
-            "Live count changed after cancelling Kill All."
-        )
-        assert sp.get_stat_chip_count("stale") == stale_before, (
-            "Stale count changed after cancelling Kill All."
-        )
+        watched_row = sp.row_by_session_id(watched_id)
+        expect(watched_row).to_be_visible()
+        expect(sp.kill_button(watched_row)).to_be_enabled()
 
 
 # ---------------------------------------------------------------------------
@@ -497,38 +568,42 @@ def test_tc255_no_ping_displayed(
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-256")
 @allure.story("Session Management")
-@allure.title("TC-256: Kill All is hidden or disabled when no active sessions exist")
+@allure.title("TC-256: Kill All availability tracks whether active sessions exist")
 def test_tc256_kill_all_unavailable_when_no_active(
     logged_in_admin_sessions_page: AdminSessionsPage,
     kill_all_disabled_data: SessionData,
 ):
     """
-    Given no agency users are logged in (Live = 0 and Stale = 0)
-    When  I view the Session Management dashboard
-    Then  the 'Kill All Active' button is hidden or disabled
+    Given the Session Management dashboard
+    When  I determine whether any active (Live or Stale) sessions actually exist
+    Then  with zero active sessions the 'Kill All Active' button is hidden or
+          disabled
+    And   with one or more active sessions the button is visible and enabled
 
-    This requires a dataset with zero active sessions. When the dev environment
-    has active sessions the precondition cannot be met, so the test skips with a
-    clear reason rather than forcing a pass.
+    'Active sessions exist' is derived from the killable rows in the Live and
+    Stale tabs (rows carrying a per-row Kill button), NOT from the summary
+    tiles. The dashboard's Live/Stale tiles can read 0 while active rows still
+    render in the table, so gating on the tiles let this case pass even when
+    live sessions were present (the tiles, the hidden Kill-All button and the
+    circular ``live == 0`` assertion all agreed on a wrong 0). Asserting the
+    rule in whichever direction the live dataset allows means the test always
+    does real work instead of passing vacuously.
 
     AIO: KAN-TC-256 | data: kill_all_disabled (live table state)
     """
     sp = logged_in_admin_sessions_page
 
-    with allure.step("Read the Live and Stale tile counts"):
-        live = sp.get_stat_chip_count("live")
-        stale = sp.get_stat_chip_count("stale")
+    with allure.step("Determine whether any active (killable) sessions exist"):
+        active = sp.count_killable_sessions()  # leaves the page on the All tab
 
-    if live + stale > 0:
-        pytest.skip(
-            f"Precondition not met: {live} live + {stale} stale active session(s) exist. "
-            "This case requires a dataset with zero active sessions."
-        )
-
-    with allure.step("Verify both Live and Stale tiles read 0"):
-        assert live == 0 and stale == 0
-
-    with allure.step("Verify the Kill All button is hidden or disabled"):
-        assert not sp.is_kill_all_available(), (
-            "Kill All is still available despite there being no active sessions."
-        )
+    if active > 0:
+        with allure.step(
+            f"{active} active session(s) exist → Kill All must be visible and enabled"
+        ):
+            expect(sp.kill_all_button).to_be_visible()
+            expect(sp.kill_all_button).to_be_enabled()
+    else:
+        with allure.step("No active sessions exist → Kill All must be hidden or disabled"):
+            assert not sp.is_kill_all_available(), (
+                "Kill All is still available despite there being no active sessions."
+            )

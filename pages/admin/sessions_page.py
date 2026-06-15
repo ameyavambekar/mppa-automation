@@ -148,6 +148,16 @@ class AdminSessionsPage(BasePage):
     def ended_rows(self):
         return self.page.locator("table.stbl tbody tr:has(.badge-ended)")
 
+    @property
+    def killable_rows(self):
+        """Rows exposing a per-row Kill button — i.e. active (live/stale)
+        sessions the admin can terminate. Excludes ended rows (no Kill button)
+        and any empty-state row. This is a more reliable 'are there active
+        sessions?' signal than the summary tiles, which can read 0 while active
+        rows still render in the table. The global Kill-All button lives in the
+        toolbar (not the table), so it is never counted here."""
+        return self.page.locator("table.stbl tbody tr:has(button.btn-r)")
+
     def rows_for_username(self, username: str):
         """All rows whose Username column equals ``username``."""
         return self.page.locator(
@@ -240,6 +250,12 @@ class AdminSessionsPage(BasePage):
     def page_link(self, number: int):
         return self.pagination.locator(f"a[href*='page={number}']")
 
+    @property
+    def next_page_link(self):
+        """The '›' next-page link (absent on the last page and when the
+        result set fits on a single page)."""
+        return self.pagination.locator("a", has_text="›")
+
     # ── Actions ───────────────────────────────────────────────────────────────
 
     @allure.step("Open the Session Management dashboard directly")
@@ -289,6 +305,58 @@ class AdminSessionsPage(BasePage):
         if action == "accept":
             self.wait_for_load()
         return message
+
+    def _walk_pages(self, type_: str = "all"):
+        """Generator that walks EVERY page of the given tab, yielding once per
+        page with that page loaded so the caller can read its rows. Follows the
+        '›' next-page link until it disappears on the last page, then resets to
+        page 1 of the tab. A 5000-page hard ceiling guards against an unexpected
+        non-terminating strip; the next-link check is the real exit.
+
+        Counts read inside the loop reflect a live snapshot — if sessions are
+        killed/created mid-walk the totals can drift, so call the public
+        counters on a quiescent dataset (they are read-only themselves)."""
+        self.filter_by_tab(type_)
+        pages_walked = 0
+        while pages_walked < 5000:
+            yield
+            pages_walked += 1
+            if self.next_page_link.count() == 0:
+                break
+            self.next_page_link.first.click()
+            self.wait_for_load()
+        self.filter_by_tab(type_)  # back to page 1
+
+    @allure.step("Count killable (live/stale) sessions across all table pages")
+    def count_killable_sessions(self) -> int:
+        """Total number of killable (live + stale) sessions, counted from the
+        actual table rows across EVERY page — not the summary tiles, which can
+        read 0 while active rows still render (see TC-256). Each killable row
+        carries a per-row Kill button; ended rows do not."""
+        total = 0
+        for _ in self._walk_pages("all"):
+            total += self.killable_rows.count()
+        return total
+
+    @allure.step("Tally live / stale / ended sessions across all table pages")
+    def count_sessions_by_status(self) -> dict:
+        """Per-status session totals read from the actual table rows across
+        EVERY page, by parsing each row's status badge (``badge-live`` /
+        ``badge-stale`` / ``badge-ended``). Returns::
+
+            {"live": int, "stale": int, "ended": int}
+
+        The three buckets partition the table — every row carries exactly one
+        status badge — so their sum is the whole-table session total and
+        ``live + stale`` equals ``count_killable_sessions()``. Derived from the
+        rows themselves, so it stays correct even when the summary tiles drift
+        from the table (see TC-256)."""
+        totals = {"live": 0, "stale": 0, "ended": 0}
+        for _ in self._walk_pages("all"):
+            totals["live"] += self.live_rows.count()
+            totals["stale"] += self.stale_rows.count()
+            totals["ended"] += self.ended_rows.count()
+        return totals
 
     @allure.step("Go to results page {number}")
     def go_to_page(self, number: int):
