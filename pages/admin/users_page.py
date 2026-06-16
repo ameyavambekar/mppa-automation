@@ -91,6 +91,10 @@ class AdminUsersPage(BasePage):
     def error_alert(self):
         return self.page.locator(".salt-e")
 
+    @property
+    def duplicate_error_alert(self):
+        return self.page.locator("//div[contains(text(),'Username or email already exists.')]")
+
     # ── Admin users table (rows keyed by username) ────────────────────────────
 
     @property
