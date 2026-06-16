@@ -30,6 +30,9 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+# Test state store (local SQLite — built per environment, not committed)
+state/test_state.db
+
 # Environment variables
 .env
 .env.local
