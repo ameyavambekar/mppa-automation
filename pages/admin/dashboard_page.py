@@ -29,6 +29,10 @@ class AdminDashboardPage(BasePage):
         )
 
     @property
+    def admin_username(self):
+        return self.page.locator(".tb-user strong")
+
+    @property
     def role_badge(self):
         """Top-bar role badge, e.g. '👑 Super Admin' (class badge-superadmin)."""
         return self.page.locator("#adm-topbar .tb-badge")

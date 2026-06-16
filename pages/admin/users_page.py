@@ -91,6 +91,10 @@ class AdminUsersPage(BasePage):
     def error_alert(self):
         return self.page.locator(".salt-e")
 
+    @property
+    def duplicate_error_alert(self):
+        return self.page.locator("//div[contains(text(),'Username or email already exists.')]")
+
     # ── Admin users table (rows keyed by username) ────────────────────────────
 
     @property
@@ -103,6 +107,22 @@ class AdminUsersPage(BasePage):
 
     def admin_row(self, username: str):
         return self.page.locator(f"//table[contains(@class,'stbl')]//tbody/tr[td[normalize-space(text())='{username}']]")
+
+    @property
+    def superadmin_row(self):
+        """The protected Super Admin row, located by its role badge (so it is
+        found regardless of which username holds the superadmin role)."""
+        return self.page.locator(
+            "//table[contains(@class,'stbl')]/tbody/tr[.//span[contains(@class,'sb-superadmin')]]"
+        )
+
+    @property
+    def subadmin_rows(self):
+        """Deletable sub-admin rows — those exposing a Perms button (the
+        Super Admin row shows 'Protected' instead and is excluded)."""
+        return self.page.locator(
+            "//table[contains(@class,'stbl')]/tbody/tr[.//button[contains(normalize-space(.),'Perms')]]"
+        )
 
     def full_name_cell(self, username: str):
         return self.admin_row(username).locator("td").nth(2)
@@ -240,6 +260,17 @@ class AdminUsersPage(BasePage):
         """Clicks the toggle track (the checkbox itself is visually hidden)."""
         self.admin_row(username).locator(".stog-track").click()
 
+    @allure.step("Toggle active state for admin '{username}' and wait for the save")
+    def toggle_admin_active_and_wait(self, username: str):
+        """Toggles the active state and waits for the AJAX save to complete.
+
+        The toggle POSTs ``toggle_admin`` via ``fetch`` (no page reload) and the
+        label is updated in the response handler, so callers that reload
+        immediately can race the save. Waiting for the POST response makes the
+        change deterministic before any reload."""
+        with self.page.expect_response(lambda r: r.request.method == "POST"):
+            self.toggle_admin_active(username)
+
     @allure.step("Delete admin '{username}' (confirm dialog: {action})")
     def delete_admin(self, username: str, action: str = "accept") -> str:
         """Clicks the row's delete button and answers the 'Delete this admin?'
@@ -330,3 +361,26 @@ class AdminUsersPage(BasePage):
             if checkbox.is_checked():
                 checked.append(checkbox.get_attribute("value"))
         return checked
+
+    # ── Read helpers (queries, not assertions) ────────────────────────────────
+
+    def get_title_count(self) -> int:
+        """The N from the 'Admin User Management (N)' page heading."""
+        import re
+        match = re.search(r"\((\d+)\)", self.page_title.text_content() or "")
+        return int(match.group(1)) if match else 0
+
+    def row_exists(self, username: str) -> bool:
+        return self.admin_row(username).count() > 0
+
+    def get_username_of_row(self, row) -> str:
+        """Username (column 2) of a given row locator."""
+        return row.locator("td").nth(1).text_content().strip()
+
+    def get_email_of_row(self, row) -> str:
+        """Email (column 4) of a given row locator."""
+        return row.locator("td").nth(3).text_content().strip()
+
+    def get_active_state(self, username: str) -> str:
+        """The current 'Active' / 'Inactive' label text for an admin row."""
+        return self.active_status_label(username).text_content().strip()
