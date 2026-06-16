@@ -317,37 +317,66 @@ def test_tc273_deactivate_subadmin(
 
 
 # ---------------------------------------------------------------------------
-# TC-274  Reactivating a sub-admin persists the Active state
+# TC-274  Reactivating a sub-admin restores its login
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-274")
 @allure.story("Admin User Management")
-@allure.title("TC-274: Toggling a deactivated sub-admin back to Active saves and persists")
+@allure.title("TC-274: Reactivating a sub-admin saves, persists, and restores its login")
 def test_tc274_reactivate_subadmin(
     logged_in_admin_users_page: AdminUsersPage,
     inactive_throwaway_admin: AdminUserData,
+    second_browser,
 ):
     """
-    Given a currently Inactive sub-admin account
+    Given a currently Inactive sub-admin account whose login is blocked
     When  I switch its Active toggle back to Active
-    Then  the row's status label changes to 'Active'
-    And   the Active state persists after a page reload (login access restored)
+    Then  the row's status label changes to 'Active' and persists after reload
+    And   the sub-admin can log in again — the admin login succeeds and leaves
+          the login page
+
+    The mirror of TC-273: the precondition (login blocked while Inactive) and the
+    outcome (login restored after reactivation) are both checked in a SEPARATE
+    browser so the Super Admin's own session is untouched; the admin login's
+    CAPTCHA is read from the DOM, so the attempts are deterministic. The account
+    is created fresh and deleted on teardown.
 
     AIO: KAN-TC-274 | data: throwaway sub-admin (pre-set Inactive)
     """
     sp = logged_in_admin_users_page
     user = inactive_throwaway_admin
+    browser2 = second_browser()
 
     with allure.step("Confirm the account starts Inactive"):
         expect(sp.active_status_label(user.username)).to_have_text("Inactive")
 
-    with allure.step("Toggle the account back to Active"):
+    with allure.step("Precondition: the sub-admin cannot log in while Inactive"):
+        ctx = browser2.new_context()
+        login = AdminLoginPage(ctx.new_page())
+        login.open()
+        login.login(user.username, user.password)
+        expect(login.error_message).to_be_visible()
+        assert "login.php" in login.get_url(), (
+            "Inactive sub-admin was not kept on the login page."
+        )
+        ctx.close()
+
+    with allure.step("Toggle the account back to Active and verify the state persists"):
         sp.toggle_admin_active_and_wait(user.username)
         expect(sp.active_status_label(user.username)).to_have_text("Active")
-
-    with allure.step("Verify the Active state persists after a reload"):
         sp.open()
         expect(sp.active_toggle(user.username)).to_be_checked()
         expect(sp.active_status_label(user.username)).to_have_text("Active")
+
+    with allure.step("Verify the reactivated sub-admin can log in again"):
+        ctx = browser2.new_context()
+        login = AdminLoginPage(ctx.new_page())
+        login.open()
+        login.login(user.username, user.password)
+        login.wait_for_load()
+        assert "login.php" not in login.get_url(), (
+            "Reactivated sub-admin could not log in — still on the login page."
+        )
+        ctx.close()
 
 
 # ---------------------------------------------------------------------------
