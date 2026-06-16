@@ -24,11 +24,12 @@ Assumptions worth knowing:
   specific error-banner selector, since the error markup isn't known up front.
   The post-submit page text is attached to Allure so the exact message can be
   inspected and a tighter assertion added later if desired.
-* Deactivation/deletion's downstream effects (login blocked, live session
-  terminated, audit-log entry) are the documented intent but are asserted here
-  through their reliable UI projection — the persisted toggle state and the row's
-  removal. End-to-end login/session verification is out of scope (admin login is
-  CAPTCHA-gated and would make these tests flaky).
+* TC-273 verifies the deactivation->login-block end to end: a second browser
+  attempts an admin login as the sub-admin (the CAPTCHA is read from the DOM, so
+  the attempt is deterministic) and is rejected once the account is Inactive.
+  Deletion's downstream effects (live-session termination, audit-log entry) are
+  still asserted only through their UI projection — the row's removal — not end
+  to end.
 """
 
 import re
@@ -37,6 +38,7 @@ import allure
 import pytest
 from playwright.sync_api import expect
 
+from pages.admin.login_page import AdminLoginPage
 from pages.admin.users_page import AdminUsersPage
 from test_data.admin_users_factory import AdminUserData, AdminUsersFactory
 from utils.aio import aio_case
@@ -198,7 +200,7 @@ def test_tc271_duplicate_username_rejected(
         sp.wait_for_load()
 
     with allure.step("Verify the duplicate was rejected — no second account created"):
-        allure.attach(sp.page.inner_text("body"), name="page after submit")
+        expect(sp.duplicate_error_alert).to_be_visible()
         expect(sp.page_title).to_contain_text(f"({before})")
         assert sp.admin_row(existing).count() == 1, (
             f"A duplicate row for username '{existing}' was created."
@@ -242,7 +244,7 @@ def test_tc272_duplicate_email_rejected(
         sp.wait_for_load()
 
     with allure.step("Verify the duplicate was rejected — no account created"):
-        allure.attach(sp.page.inner_text("body"), name="page after submit")
+        expect(sp.duplicate_error_alert).to_be_visible()
         expect(sp.page_title).to_contain_text(f"({before})")
         assert not sp.row_exists(data.username), (
             "An account was created despite the duplicate email."
@@ -250,42 +252,68 @@ def test_tc272_duplicate_email_rejected(
 
 
 # ---------------------------------------------------------------------------
-# TC-273  Deactivating a sub-admin persists the Inactive state
+# TC-273  Deactivating a sub-admin blocks its login
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-273")
 @allure.story("Admin User Management")
-@allure.title("TC-273: Setting a sub-admin to Inactive saves and persists")
+@allure.title("TC-273: Deactivating a sub-admin saves, persists, and blocks its login")
 def test_tc273_deactivate_subadmin(
     logged_in_admin_users_page: AdminUsersPage,
     throwaway_admin: AdminUserData,
+    second_browser,
 ):
     """
-    Given an active sub-admin account
+    Given a freshly created sub-admin that can log in
     When  I switch its Active toggle to Inactive
-    Then  the row's status label changes to 'Inactive'
-    And   the Inactive state persists after a page reload (the stored flag that
-          gates the account's login is now off)
+    Then  the row's status label changes to 'Inactive' and persists after reload
+    And   the sub-admin can no longer log in — the admin login is rejected and
+          stays on the login page
 
-    The login-block / session-termination this enables is the documented
-    downstream effect; verifying it end-to-end (a second CAPTCHA-gated login) is
-    out of scope — the persisted Inactive flag is the reliable signal.
+    Login attempts run in a SEPARATE browser so the Super Admin's own session is
+    untouched; the admin login's CAPTCHA is read from the DOM, so the attempt is
+    deterministic. The account is created fresh and deleted on teardown
+    (``throwaway_admin`` -> ``created_admins``), so no shared account is affected.
 
     AIO: KAN-TC-273 | data: throwaway sub-admin
     """
     sp = logged_in_admin_users_page
     user = throwaway_admin
+    browser2 = second_browser()
 
     with allure.step("Confirm the account starts Active"):
         expect(sp.active_status_label(user.username)).to_have_text("Active")
 
-    with allure.step("Toggle the account to Inactive"):
+    with allure.step("Baseline: the sub-admin can log in while Active (second browser)"):
+        ctx = browser2.new_context()
+        login = AdminLoginPage(ctx.new_page())
+        login.open()
+        login.login(user.username, user.password)
+        login.wait_for_load()
+        can_login_active = "login.php" not in login.get_url()
+        ctx.close()
+        if not can_login_active:
+            pytest.skip(
+                "Freshly created sub-admin could not log in while Active, so "
+                "blocking-on-deactivation cannot be meaningfully verified."
+            )
+
+    with allure.step("Toggle the account to Inactive and verify the state persists"):
         sp.toggle_admin_active_and_wait(user.username)
         expect(sp.active_status_label(user.username)).to_have_text("Inactive")
-
-    with allure.step("Verify the Inactive state persists after a reload"):
         sp.open()
         expect(sp.active_toggle(user.username)).not_to_be_checked()
         expect(sp.active_status_label(user.username)).to_have_text("Inactive")
+
+    with allure.step("Verify the deactivated sub-admin can no longer log in"):
+        ctx = browser2.new_context()
+        login = AdminLoginPage(ctx.new_page())
+        login.open()
+        login.login(user.username, user.password)
+        expect(login.error_message).to_be_visible()
+        assert "login.php" in login.get_url(), (
+            "Deactivated sub-admin reached a page beyond login — login was not blocked."
+        )
+        ctx.close()
 
 
 # ---------------------------------------------------------------------------
