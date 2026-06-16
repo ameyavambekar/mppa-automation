@@ -38,6 +38,7 @@ import allure
 import pytest
 from playwright.sync_api import expect
 
+from pages.admin.dashboard_page import AdminDashboardPage
 from pages.admin.login_page import AdminLoginPage
 from pages.admin.users_page import AdminUsersPage
 from test_data.admin_users_factory import AdminUserData, AdminUsersFactory
@@ -369,13 +370,17 @@ def test_tc274_reactivate_subadmin(
 
     with allure.step("Verify the reactivated sub-admin can log in again"):
         ctx = browser2.new_context()
-        login = AdminLoginPage(ctx.new_page())
+        pg = ctx.new_page()
+        login = AdminLoginPage(pg)
+        dash = AdminDashboardPage(pg)
         login.open()
         login.login(user.username, user.password)
-        login.wait_for_load()
-        assert "login.php" not in login.get_url(), (
-            "Reactivated sub-admin could not log in — still on the login page."
-        )
+        # Assert against the SECOND browser's page — where the sub-admin logs in
+        # — NOT the admin_dashboard_page fixture (which wraps the Super Admin's
+        # page). role_badge auto-waits past the post-login redirect; the topbar
+        # 'strong' shows the full name, so match on full_name rather than username.
+        expect(dash.role_badge).to_be_visible()
+        expect(dash.admin_username).to_contain_text(user.full_name)
         ctx.close()
 
 
