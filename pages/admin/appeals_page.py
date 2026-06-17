@@ -15,8 +15,9 @@ class AdminAppealsPage(BasePage):
 
     In the action panel the Confirm & Save button stays disabled until a
     decision button (Allow / Allow Partial / Reject / Under Review) is
-    selected; remarks are mandatory (native ``required`` textarea). Rows are
-    keyed by the appeal id baked into the row's ``openAppeal(N)`` handler.
+    selected; remarks are mandatory (native ``required`` textarea), so clicking
+    Save with blank remarks is blocked by a validation tooltip. Rows are keyed
+    by the appeal id baked into the row's ``openAppeal(N)`` handler.
     """
 
     # status values used by badges and the ?status= filter
@@ -235,7 +236,8 @@ class AdminAppealsPage(BasePage):
 
     @property
     def confirm_decision_button(self):
-        # Disabled until a decision button is selected
+        # Disabled until a decision is selected; with a decision picked it is
+        # enabled, and saving with blank remarks is blocked by a native tooltip
         return self.page.locator("#dec-submit")
 
     @property
