@@ -43,6 +43,7 @@ pytest_plugins = [
     "fixtures.agencies_fixtures",
     "fixtures.sessions_fixtures",
     "fixtures.admin_users_fixtures",
+    "fixtures.first_appeal_fixtures",
 ]
 
 
