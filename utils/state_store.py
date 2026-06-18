@@ -70,6 +70,10 @@ class UserRecord:
 
 
 class TestStateStore:
+    # Not a pytest test class — the leading 'Test' in the name otherwise makes
+    # pytest try (and fail) to collect it because of the __init__ constructor.
+    __test__ = False
+
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
         self._ensure_schema()
