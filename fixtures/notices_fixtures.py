@@ -8,13 +8,13 @@ from pages.login_page import LoginPage
 from pages.home_page import HomePage
 from test_data.notices_factory import NoticeData, NoticesFactory
 from utils.state_store import TestStateStore, UserRecord
+from config import ADMIN_LOGOUT_URL
 
 _DOC_DIR = os.path.join(os.path.dirname(__file__), "..", "test_data", "documents")
 VALID_PDF     = os.path.join(_DOC_DIR, "valid_doc.pdf")
 INVALID_FILE  = os.path.join(_DOC_DIR, "invalid.docx")
 OVERSIZED_PDF = os.path.join(_DOC_DIR, "oversized.pdf")
 
-ADMIN_LOGOUT_URL = "https://devmppa.sppuef.in/module/admin/auth/logout.php"
 
 
 # ── Credential helpers ─────────────────────────────────────────────────────────
@@ -75,7 +75,6 @@ def logged_in_admin_notices_page(page) -> AdminNoticesPage:
 def agency_home_page(page) -> HomePage:
     """Logs in as an agency user and returns the HomePage object."""
     agency = _agency_user_or_skip()
-    base = os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
     login = LoginPage(page)
     login.open()
     login.login(agency.username, agency.password)

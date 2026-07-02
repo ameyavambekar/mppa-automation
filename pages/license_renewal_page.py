@@ -1,6 +1,7 @@
 import allure
 
 from pages.base_page import BasePage
+from config import FORMS_BASE
 
 
 class LicenseRenewalPage(BasePage):
@@ -185,9 +186,7 @@ class LicenseRenewalPage(BasePage):
 
     @allure.step("Open the Part-D Renewal Details page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_FORMS_BASE_URL", "https://devmppa.sppuef.in/module/agency/forms")
-        self.navigate(f"{base}/partD.php")
+        self.navigate(f"{FORMS_BASE}/partD.php")
 
     @allure.step("Fill Existing Registration Number: {registration_number}")
     def fill_registration_number(self, registration_number: str):

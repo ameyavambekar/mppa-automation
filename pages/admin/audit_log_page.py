@@ -2,6 +2,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminAuditLogPage(BasePage):
@@ -200,9 +201,7 @@ class AdminAuditLogPage(BasePage):
 
     @allure.step("Open the Audit Log page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/audit/index.php")
+        self.navigate(f"{ADMIN_BASE}/audit/index.php")
 
     @allure.step("Search audit log for: {query}")
     def search(self, query: str):

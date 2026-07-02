@@ -1,8 +1,9 @@
 import allure
 
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
-ADMIN_LOGIN_URL = "https://devmppa.sppuef.in/module/admin/auth/login.php"
+ADMIN_LOGIN_URL = f"{ADMIN_BASE}/auth/login.php"
 
 
 class AdminLoginPage(BasePage):

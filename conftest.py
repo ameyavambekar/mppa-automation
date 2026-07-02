@@ -10,6 +10,7 @@ import pytest_html
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
+from config import BASE_URL
 from pages.dashboard_page import DashboardPage
 from pages.home_page import HomePage
 from pages.login_page import LoginPage
@@ -21,7 +22,6 @@ from utils import aio_client
 # ── Allure output dir ─────────────────────────────────────────────────────────
 load_dotenv()
 ALLURE_RESULTS_DIR = os.path.join(os.path.dirname(__file__), "reports", "allure-results")
-BASE_URL = os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
 HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 SLOW_MO = int(os.getenv("SLOW_MO", "100"))
 REPORT_DIR  = os.path.join(os.path.dirname(__file__), "reports")

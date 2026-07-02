@@ -4,6 +4,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminAgencyViewPage(BasePage):
@@ -147,9 +148,7 @@ class AdminAgencyViewPage(BasePage):
 
     @allure.step("Open agency detail view for id: {agency_id}")
     def open(self, agency_id: int):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/dashboard/agency_view.php?id={agency_id}")
+        self.navigate(f"{ADMIN_BASE}/dashboard/agency_view.php?id={agency_id}")
 
     @allure.step("Click '← Back to List'")
     def click_back_to_list(self):

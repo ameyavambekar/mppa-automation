@@ -1,11 +1,10 @@
-import os
-
 import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
-NOTICES_URL = "https://devmppa.sppuef.in/module/admin/notices/Admin%20notices%20manage.php"
+NOTICES_URL = f"{ADMIN_BASE}/notices/Admin%20notices%20manage.php"
 
 
 class AdminNoticesPage(BasePage):

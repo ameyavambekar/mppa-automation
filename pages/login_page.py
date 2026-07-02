@@ -1,6 +1,7 @@
 import allure
 
 from .base_page import BasePage
+from config import AUTH_BASE
 
 class LoginPage(BasePage):
 
@@ -92,7 +93,7 @@ class LoginPage(BasePage):
 
     # Actions
     def open(self):
-        self.navigate("https://devmppa.sppuef.in/module/agency/auth/login.php")
+        self.navigate(f"{AUTH_BASE}/login.php")
 
     @allure.step("Fill username: {username}")
     def fill_username(self, username: str):

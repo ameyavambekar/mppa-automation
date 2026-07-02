@@ -5,6 +5,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminLicensesPage(BasePage):
@@ -250,9 +251,7 @@ class AdminLicensesPage(BasePage):
 
     @allure.step("Open the Licenses dashboard directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/licenses/licenses.php")
+        self.navigate(f"{ADMIN_BASE}/licenses/licenses.php")
 
     @allure.step("Filter licenses by status: {status}")
     def filter_by_status(self, status: str):

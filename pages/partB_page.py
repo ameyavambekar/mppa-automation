@@ -1,6 +1,7 @@
 import allure
 
 from pages.base_page import BasePage
+from config import FORMS_BASE
 
 
 class PartBPage(BasePage):
@@ -194,9 +195,7 @@ class PartBPage(BasePage):
 
     @allure.step("Open the Part-B Key Persons page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_FORMS_BASE_URL", "https://devmppa.sppuef.in/module/agency/forms")
-        self.navigate(f"{base}/partB.php")
+        self.navigate(f"{FORMS_BASE}/partB.php")
 
     @allure.step("Row {row}: Fill Full Name: {name}")
     def fill_full_name(self, row: int, name: str):

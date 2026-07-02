@@ -1,6 +1,7 @@
 import allure
 
 from pages.base_page import BasePage
+from config import FORMS_BASE
 
 
 class PartFPage(BasePage):
@@ -130,9 +131,7 @@ class PartFPage(BasePage):
 
     @allure.step("Open the Part-F Additional Information page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_FORMS_BASE_URL", "https://devmppa.sppuef.in/module/agency/forms")
-        self.navigate(f"{base}/partF.php")
+        self.navigate(f"{FORMS_BASE}/partF.php")
 
     @allure.step("Fill Contract Labour Certificate No.: {number}")
     def fill_contract_labour_cert(self, number: str):

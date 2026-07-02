@@ -1,6 +1,7 @@
 import allure
 
 from pages.base_page import BasePage
+from config import FORMS_BASE
 
 
 class EnclosuresPage(BasePage):
@@ -108,9 +109,7 @@ class EnclosuresPage(BasePage):
 
     @allure.step("Open the Enclosures page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_FORMS_BASE_URL", "https://devmppa.sppuef.in/module/agency/forms")
-        self.navigate(f"{base}/enclosures.php")
+        self.navigate(f"{FORMS_BASE}/enclosures.php")
 
     @allure.step("Set document in slot {slot}: {path}")
     def set_document(self, slot: int, path: str):

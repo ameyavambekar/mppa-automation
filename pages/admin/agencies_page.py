@@ -2,6 +2,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminAgenciesPage(BasePage):
@@ -161,9 +162,7 @@ class AdminAgenciesPage(BasePage):
 
     @allure.step("Open the All Agencies list directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/agency/list.php")
+        self.navigate(f"{ADMIN_BASE}/agency/list.php")
 
     @allure.step("Filter agencies by status tab: {status}")
     def filter_by_status(self, status: str):

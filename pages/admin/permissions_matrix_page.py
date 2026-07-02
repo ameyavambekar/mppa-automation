@@ -2,6 +2,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminPermissionsMatrixPage(BasePage):
@@ -131,9 +132,7 @@ class AdminPermissionsMatrixPage(BasePage):
 
     @allure.step("Open the Permissions Matrix directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/admins/permissions.php")
+        self.navigate(f"{ADMIN_BASE}/admins/permissions.php")
 
     @allure.step("Go to Admin Users from the intro link")
     def go_to_admin_users(self):

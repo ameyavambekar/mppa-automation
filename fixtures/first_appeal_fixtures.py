@@ -32,8 +32,8 @@ from test_data.first_appeal_factory import (
 )
 from utils import file_manager
 from utils.state_store import TestStateStore, UserRecord
+from config import ADMIN_LOGOUT_URL
 
-ADMIN_LOGOUT_URL = "https://devmppa.sppuef.in/module/admin/auth/logout.php"
 
 
 # ── Credential helpers ─────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminSessionsPage(BasePage):
@@ -260,9 +261,7 @@ class AdminSessionsPage(BasePage):
 
     @allure.step("Open the Session Management dashboard directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/sessions/index.php")
+        self.navigate(f"{ADMIN_BASE}/sessions/index.php")
 
     @allure.step("Filter sessions by tab: {type_}")
     def filter_by_tab(self, type_: str):

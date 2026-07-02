@@ -1,8 +1,7 @@
-import os
-
 import allure
 
 from pages.base_page import BasePage
+from config import AGENCY_BASE
 
 
 class FirstAppealPage(BasePage):
@@ -194,8 +193,7 @@ class FirstAppealPage(BasePage):
 
     @allure.step("Open the First Appeal (FORM-III) form")
     def open(self):
-        base = os.getenv("MPPA_AGENCY_BASE_URL", "https://devmppa.sppuef.in/module/agency")
-        self.navigate(f"{base}/appeals/first.php")
+        self.navigate(f"{AGENCY_BASE}/appeals/first.php")
 
     @allure.step("Fill order details: number={order_number}, date={order_date}")
     def fill_order_details(self, order_number: str, order_date: str, order_authority: str):

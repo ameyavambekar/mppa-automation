@@ -1,6 +1,7 @@
 import allure
 
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminUsersPage(BasePage):
@@ -241,9 +242,7 @@ class AdminUsersPage(BasePage):
 
     @allure.step("Open the Admin Users management page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/admins/index.php")
+        self.navigate(f"{ADMIN_BASE}/admins/index.php")
 
     @allure.step("Click sidebar item: {label}")
     def click_sidebar_item(self, label: str):

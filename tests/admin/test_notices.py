@@ -11,7 +11,6 @@ session is logged out by the ``logged_in_admin_notices_page`` fixture — both
 matter because the main browser context is shared across the whole session.
 """
 
-import os
 import re
 
 import allure
@@ -23,6 +22,7 @@ from pages.admin.notices_page import AdminNoticesPage
 from pages.login_page import LoginPage
 from pages.notice_board_page import NoticeBoardPage
 from test_data.notices_factory import NoticeData, NoticesFactory
+from config import AUTH_BASE
 from utils.aio import aio_case
 from utils.state_store import TestStateStore
 
@@ -80,10 +80,7 @@ def cleanup_notices(logged_in_admin_notices_page: AdminNoticesPage):
     _delete_all_test_notices(logged_in_admin_notices_page)
 
 
-AGENCY_LOGOUT_URL = (
-    os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
-    + "/logout.php"
-)
+AGENCY_LOGOUT_URL = f"{AUTH_BASE}/logout.php"
 
 
 @pytest.fixture

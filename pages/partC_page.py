@@ -1,6 +1,7 @@
 import allure
 
 from pages.base_page import BasePage
+from config import FORMS_BASE
 
 
 class PartCPage(BasePage):
@@ -159,9 +160,7 @@ class PartCPage(BasePage):
 
     @allure.step("Open the Part-C Operational Details page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_FORMS_BASE_URL", "https://devmppa.sppuef.in/module/agency/forms")
-        self.navigate(f"{base}/partC.php")
+        self.navigate(f"{FORMS_BASE}/partC.php")
 
     @allure.step("Select Nature of Placement Activity: {value}")
     def select_placement_type(self, value: str):

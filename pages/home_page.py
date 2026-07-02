@@ -1,6 +1,7 @@
 import allure
 
 from .base_page import BasePage
+from config import AUTH_BASE
 
 
 class HomePage(BasePage):
@@ -291,9 +292,7 @@ class HomePage(BasePage):
 
     @allure.step("Open the Home page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
-        self.navigate(f"{base}/home.php")
+        self.navigate(f"{AUTH_BASE}/home.php")
 
     @allure.step("Click 'Continue Application'")
     def click_continue_application(self):

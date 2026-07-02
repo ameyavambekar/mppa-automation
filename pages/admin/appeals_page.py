@@ -2,6 +2,7 @@ import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
+from config import ADMIN_BASE
 
 
 class AdminAppealsPage(BasePage):
@@ -248,9 +249,7 @@ class AdminAppealsPage(BasePage):
 
     @allure.step("Open the Appeals Management page directly")
     def open(self):
-        import os
-        base = os.getenv("MPPA_ADMIN_BASE_URL", "https://devmppa.sppuef.in/module/admin")
-        self.navigate(f"{base}/appeals/index.php")
+        self.navigate(f"{ADMIN_BASE}/appeals/index.php")
 
     @allure.step("Search appeals for: {query}")
     def search(self, query: str):

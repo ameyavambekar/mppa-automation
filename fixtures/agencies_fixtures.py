@@ -7,8 +7,8 @@ from pages.admin.agency_view_page import AdminAgencyViewPage
 from pages.admin.login_page import AdminLoginPage
 from test_data.agencies_factory import AgenciesFactory, AgencyStatusData
 from utils.state_store import TestStateStore, UserRecord
+from config import ADMIN_LOGOUT_URL
 
-ADMIN_LOGOUT_URL = "https://devmppa.sppuef.in/module/admin/auth/logout.php"
 
 
 # ── Credential helpers ─────────────────────────────────────────────────────────

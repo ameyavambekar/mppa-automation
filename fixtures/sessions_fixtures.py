@@ -8,12 +8,9 @@ from pages.admin.sessions_page import AdminSessionsPage
 from pages.login_page import LoginPage
 from test_data.sessions_factory import SessionData, SessionsFactory
 from utils.state_store import TestStateStore, UserRecord
+from config import ADMIN_LOGOUT_URL, AUTH_BASE
 
-ADMIN_LOGOUT_URL = "https://devmppa.sppuef.in/module/admin/auth/logout.php"
-AGENCY_LOGOUT_URL = (
-    os.getenv("MPPA_BASE_URL", "https://devmppa.sppuef.in/module/agency/auth")
-    + "/logout.php"
-)
+AGENCY_LOGOUT_URL = f"{AUTH_BASE}/logout.php"
 
 
 # ── Credential helpers ─────────────────────────────────────────────────────────
