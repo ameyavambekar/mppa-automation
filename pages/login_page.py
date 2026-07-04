@@ -1,6 +1,7 @@
 import allure
 
 from .base_page import BasePage
+from config import AUTH_BASE
 
 class LoginPage(BasePage):
 
@@ -67,6 +68,10 @@ class LoginPage(BasePage):
         return self.page.locator("div[class*='alert-error']")
 
     @property
+    def alert_info(self):
+        return self.page.locator("div[class='alert-info']")
+
+    @property
     def admin_login_link(self):
         return self.page.locator("//a[contains(text(),'Admin Login')]")
 
@@ -82,10 +87,13 @@ class LoginPage(BasePage):
     def account_locked_message(self):
         return self.page.locator("div[class*='alert']").filter(has_text="failed")
 
+    @property
+    def footer_text(self):
+        return self.page.locator("//footer//div//p[text()='© 2026 Placement Agency Regulation Portal | Government System']")
 
     # Actions
     def open(self):
-        self.navigate("https://devmppa.sppuef.in/module/agency/auth/login.php")
+        self.navigate(f"{AUTH_BASE}/login.php")
 
     @allure.step("Fill username: {username}")
     def fill_username(self, username: str):
@@ -142,3 +150,12 @@ class LoginPage(BasePage):
         self.page.remove_listener("dialog", handle_dialog)  # clean up
         return dialog_message[0] if dialog_message else ""
 
+    @allure.step("Reload Login Page")
+    def reload(self):
+        self.page.reload()
+
+
+    def get_url(self) -> str:
+        return self.page.url
+
+    alert_info_logged_out_successfully = "Your session expired after 20 minutes. Please log in again."

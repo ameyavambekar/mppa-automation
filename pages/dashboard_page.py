@@ -23,7 +23,7 @@ class DashboardPage(BasePage):
 
     def step_card(self, part_label: str):
         """Returns the step node for a given step label, e.g. 'partA', 'partB','partC', 'enclosures', 'declaration','authorization','partE','partF' etc."""
-        return self.page.locator(f"//div[contains(text(),'Registration Steps')]//following-sibling::div[1]//div[contains(@onclick,'{part_label}')]").first    @property
+        return self.page.locator(f"//div[contains(text(),'Registration Steps')]//following-sibling::div[1]//div[contains(@onclick,'{part_label}')]").first
 
     @property
     def preview_and_submit_card(self):
@@ -41,8 +41,18 @@ class DashboardPage(BasePage):
     def about_step8_card(self):
         return self.page.get_by_text("💰 About Step 8 — Fees •")
 
+    @property
+    def submitted_application_read_only_preview(self):
+        return self.page.locator("//div//strong[contains(text(), 'Read-Only Preview')]")
+
+    def step_nav_item(self, step_number: int):
+        """Returns the clickable step indicator for step_number in the wizard progress bar."""
+        return self.page.locator(f"//p[contains(text(),'Step 0{step_number}')]").first
+
 
     @property
     def home_link(self):
         return self.page.get_by_role("link", name="← Home")
 
+    def get_url(self) -> str:
+        return self.page.url

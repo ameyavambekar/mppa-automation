@@ -4,8 +4,9 @@ from playwright.sync_api import expect
 
 from pages.base_page import BasePage
 from utils import email_otp
+from config import AUTH_BASE
 
-REGISTER_URL = "https://devmppa.sppuef.in/module/agency/auth/register.php"
+REGISTER_URL = f"{AUTH_BASE}/register.php"
 
 class RegistrationPage(BasePage):
 
