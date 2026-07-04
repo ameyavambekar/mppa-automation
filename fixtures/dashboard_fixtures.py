@@ -34,30 +34,19 @@ def agency_user_with_part_a_page(page):
 
 
 @pytest.fixture
+def agency_user_with_submitted_form(page):
+    username = os.getenv("submitted_form_username")
+    password = os.getenv("submitted_form_password")
+    login = LoginPage(page)
+    login.open()
+    login.login(username,password)
+    yield page
+
+@pytest.fixture
 def fresh_agency_user_page(page):
     """Yields (page, user) for an agency user who has NOT started the 8-step wizard."""
     user = TestStateStore().get_agency_user_with_no_form()
     if user is None:
         pytest.skip("No agency user without form applications found in state store.")
-    _login_and_wait(page, user)
-    yield page, user
-
-
-@pytest.fixture
-def rejected_agency_user_page(page):
-    """Yields (page, user) for a rejected applicant.
-    Requires REJECTED_AGENCY_USERNAME and REJECTED_AGENCY_PASSWORD env vars
-    pointing to an account whose application was rejected in the portal."""
-    username = os.getenv("REJECTED_AGENCY_USERNAME")
-    password = os.getenv("REJECTED_AGENCY_PASSWORD")
-    if not username or not password:
-        pytest.skip(
-            "Set REJECTED_AGENCY_USERNAME and REJECTED_AGENCY_PASSWORD env vars "
-            "to run TC-20 (rejected applicant flow)."
-        )
-    from utils.state_store import UserRecord
-    user = TestStateStore().get_user_by_username(username)
-    if user is None:
-        pytest.skip(f"User '{username}' not found in state store.")
     _login_and_wait(page, user)
     yield page, user
