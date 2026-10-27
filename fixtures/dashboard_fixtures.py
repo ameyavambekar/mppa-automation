@@ -53,4 +53,3 @@ def fresh_agency_user_page(page):
         pytest.skip("No agency user without form applications found in state store.")
     _login_and_wait(page, user)
     yield page, user
-

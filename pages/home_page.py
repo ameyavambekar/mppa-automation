@@ -41,7 +41,10 @@ class HomePage(BasePage):
 
     @property
     def continue_application_button(self):
-        return self.page.locator("//a[contains(normalize-space(.),'Continue Application')]").first
+        return self.page.locator(
+            "//a[contains(normalize-space(.),'Continue Application')] | "
+            "//button[contains(normalize-space(.),'Continue Application')]"
+        ).first
 
     # ── My Application Status Card ────────────────────────────────────────────
 
@@ -75,6 +78,18 @@ class HomePage(BasePage):
     # ── Form Completion Progress ──────────────────────────────────────────────
 
     @property
+    def form_completion_progress_section(self):
+        return self.page.locator(
+            "//div[contains(.,'Form Completion Progress')]"
+        ).first
+
+    @property
+    def completion_percentage(self):
+        return self.page.locator(
+            "//div[contains(.,'Form Completion Progress')]//span[contains(text(),'%')]"
+        ).first
+
+    @property
     def form_completion_progress_label(self):
         return self.page.locator(".prog-label").first
 
@@ -93,6 +108,16 @@ class HomePage(BasePage):
     @property
     def continue_filling_form_link(self):
         return self.page.locator("//a[contains(normalize-space(.),'Continue Filling Form')]")
+
+    @property
+    def no_application_prompt(self):
+        """Shown when the user has pre-registered but not yet started the 8-step wizard."""
+        return self.page.locator(
+            "//p[contains(text(),'not yet submitted')] | "
+            "//div[contains(text(),'not yet submitted')] | "
+            "//p[contains(text(),'begin')] | "
+            "//a[contains(text(),'begin')]"
+        ).first
 
     # ── Hero Section (Expired State) ─────────────────────────────────────────
 

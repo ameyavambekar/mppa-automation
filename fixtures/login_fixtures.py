@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-from pages.login_page import LoginPage
 from test_data.login_factory import LoginData, LoginFactory
 from utils.state_store import TestStateStore
 
@@ -65,5 +64,3 @@ def lockout_test_data() -> LoginData:
             "Set LOCKOUT_TEST_USERNAME env var to a dedicated test account before running TC-10."
         )
     return LoginFactory.lockout_attempt(username)
-
-
