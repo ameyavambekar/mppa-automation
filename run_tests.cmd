@@ -5,10 +5,13 @@ REM ============================================================================
 REM  MPPA Automation — run_tests.cmd
 REM  Usage:
 REM    run_tests                                              -> full pre-registration suite
+REM    run_tests all                                          -> entire suite (agency + admin)
+REM    run_tests agency                                       -> agency-only suite (tests\, admin excluded)
+REM    run_tests admin                                        -> admin-only suite (tests\admin)
 REM    run_tests tests\test_pre_registration.py              -> same, explicit
 REM    run_tests tests\                                       -> every test in the project
 REM    run_tests tests\test_pre_registration.py -k tc05      -> one TC from a file
-REM    run_tests tests\ -m slow                              -> marked tests across all files
+REM    run_tests all -m slow                                  -> marked tests across the whole suite
 REM =============================================================================
 
 REM ── Switch to the drive and folder containing this script ─────────────────────
@@ -34,11 +37,24 @@ mkdir "%RESULTS_DIR%"
 
 REM ── Step 2: Resolve test target and extra args ────────────────────────────────
 set TEST_TARGET=tests\test_pre_registration.py
+set IGNORE_ARGS=
 set EXTRA_ARGS=
 
 if not "%~1"=="" (
-    set TEST_TARGET=%~1
-    shift
+    if /i "%~1"=="all" (
+        set TEST_TARGET=tests
+        shift
+    ) else if /i "%~1"=="agency" (
+        set TEST_TARGET=tests
+        set IGNORE_ARGS=--ignore=tests\admin
+        shift
+    ) else if /i "%~1"=="admin" (
+        set TEST_TARGET=tests\admin
+        shift
+    ) else (
+        set TEST_TARGET=%~1
+        shift
+    )
 )
 
 :args_loop
@@ -51,9 +67,10 @@ goto :args_loop
 REM ── Step 3: Run pytest ────────────────────────────────────────────────────────
 echo.
 echo [2/4] Running pytest on: %TEST_TARGET%
+if not "!IGNORE_ARGS!"=="" echo       Ignoring:  !IGNORE_ARGS!
 if not "!EXTRA_ARGS!"=="" echo       Extra args:!EXTRA_ARGS!
 echo.
-pytest "%TEST_TARGET%" --alluredir="%RESULTS_DIR%" -v %EXTRA_ARGS%
+pytest "%TEST_TARGET%" %IGNORE_ARGS% --alluredir="%RESULTS_DIR%" -v %EXTRA_ARGS%
 set PYTEST_EXIT=%ERRORLEVEL%
 
 REM ── Step 4: Generate Allure HTML ─────────────────────────────────────────────

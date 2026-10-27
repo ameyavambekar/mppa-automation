@@ -4,6 +4,13 @@ from .base_page import BasePage
 
 
 class DashboardPage(BasePage):
+    """Application dashboard (forms/dashboard.php).
+
+    Since the portal redesign, login no longer lands here: incomplete
+    registrations go straight to the Form-I wizard (see ``PartAPage``), and
+    dashboard.php sends them back to the login page. Only submitted / paid
+    applications may still reach it — locators below are unverified for that.
+    """
 
     # ── Logout ────────────────────────────────────────────────────────────────
 

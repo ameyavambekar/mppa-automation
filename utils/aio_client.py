@@ -20,11 +20,13 @@ from typing import Optional
 import requests
 
 
-# pytest outcome -> AIO test run status (case-sensitive on the AIO side)
+# pytest outcome -> AIO test run status (case-sensitive on the AIO side).
+# The KAN project's run statuses are Not Run / In Progress / Passed / Failed /
+# Blocked (GET /project/KAN/config/testrun/status) — there is no "Skipped".
 _STATUS_MAP = {
     "passed": "Passed",
     "failed": "Failed",
-    "skipped": "Skipped",
+    "skipped": "Not Run",
 }
 
 

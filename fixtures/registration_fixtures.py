@@ -90,6 +90,18 @@ def short_password_data():
 # TC-11 uses valid_registration_data — the OTP is fetched live from testmail.app.
 
 @pytest.fixture
+def email_otp_required(registration_page):
+    """
+    TC-10 to TC-14 — Skips the test when Email OTP is switched off on the
+    server (EMAIL_OTP_ENABLED = false), because the OTP controls (#otpBtn,
+    #emailOTPBox, #verifyOtpBtn, #verifiedTag) are not rendered at all.
+    Apply with @pytest.mark.usefixtures("email_otp_required").
+    """
+    registration_page.ensure_on_registration_page()
+    if not registration_page.is_email_otp_enabled():
+        pytest.skip("Email OTP is disabled on the server (EMAIL_OTP_ENABLED = false) - OTP controls are not rendered.")
+
+@pytest.fixture
 def invalid_email_domain_data():
     """
     TC-14 / EC-3 — Syntactically valid email whose domain does not exist.
@@ -116,3 +128,46 @@ def duplicate_pan_data():
 def no_district_data():
     """TC-18 (negative path) — District left unselected; expects required error."""
     return AgencyRegistrationFactory.no_district_selected()
+
+# ── Redesigned-form fixtures (AIO KAN-TC-416 to KAN-TC-425) ──────────────────
+
+@pytest.fixture
+def agency_name_too_long_data():
+    """KAN-TC-416 — Agency name longer than the 150-character limit."""
+    return AgencyRegistrationFactory.agency_name_too_long()
+
+
+@pytest.fixture
+def mobile_with_non_digits_data():
+    """KAN-TC-417 — Mobile typed with letters/symbols; expects digits only, max 10."""
+    return AgencyRegistrationFactory.mobile_with_non_digits()
+
+
+@pytest.fixture
+def mobile_invalid_start_data():
+    """KAN-TC-417 — Mobile starting with 5; expects the invalid-mobile alert."""
+    return AgencyRegistrationFactory.mobile_invalid_start_digit()
+
+
+@pytest.fixture
+def mobile_too_short_data():
+    """KAN-TC-417 — Mobile shorter than 10 digits; expects the invalid-mobile alert."""
+    return AgencyRegistrationFactory.mobile_too_short()
+
+
+@pytest.fixture
+def alt_phone_invalid_chars_data():
+    """KAN-TC-418 — Alternate phone with brackets/letters; expects them stripped."""
+    return AgencyRegistrationFactory.alt_phone_with_invalid_chars()
+
+
+@pytest.fixture
+def district_other_data():
+    """KAN-TC-424 — District 'Other' with a valid City / Town."""
+    return AgencyRegistrationFactory.district_other_with_city()
+
+
+@pytest.fixture
+def city_invalid_chars_data():
+    """KAN-TC-424 — City / Town typed with digits/symbols; expects them stripped."""
+    return AgencyRegistrationFactory.city_with_invalid_chars()

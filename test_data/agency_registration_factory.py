@@ -52,18 +52,23 @@ class AgencyRegistrationData:
     Immutable-ish value object representing one set of form inputs.
     Fields map directly to the four form sections in the spec.
     """
-    # Section 1 — Login Credentials
+    # Section 1 — Agency & Login Credentials
+    agency_name: str = "Maharashtra Placement Agency"
     username: str = ""
     password: str = ""
     confirm_password: str = ""          # defaults to same as password
 
     # Section 2 — Contact & Identity Verification
     email: str = ""
+    mobile: str = "9876543210"
+    alt_phone: str = "02224567890"
     pan_number: str = ""
     district: str = "Pune"
+    city_name: str = ""                 # only used when district == "Other"
 
     # Meta — used by tests to assert expected outcomes
     expected_error: Optional[str] = field(default=None, repr=False)
+    expected_value: Optional[str] = field(default=None, repr=False)   # field value after on-input filtering
     scenario_label: str = field(default="", repr=False)
 
     def __post_init__(self):
@@ -109,7 +114,7 @@ class _PanGenerator:
         AC-7 / EC-9 — a PAN known to already exist in the test environment.
         Replace with the actual seeded duplicate PAN for your test DB.
         """
-        return "AZPPA6529G"        # ← replace with your test-env seeded value
+        return "QCYUX4811Y"        # ← replace with your test-env seeded value
 
 
 class _PasswordGenerator:
@@ -237,7 +242,7 @@ class AgencyRegistrationFactory:
     def username_already_taken(cls) -> AgencyRegistrationData:
         """EC-9: Username already exists — inline error on blur."""
         data = cls.valid()
-        data.username = "ameyavambekar"
+        data.username = "anayvarghese"
         data.expected_error = "❌ Username taken"
         data.scenario_label = "EC-9: username already taken"
         return data
@@ -379,6 +384,72 @@ class AgencyRegistrationFactory:
         data.district = ""
         data.expected_error = "Please select the district where your agency is located."
         data.scenario_label = "FV: district not selected"
+        return data
+
+    # ── Fields added in the redesigned form (AIO KAN-TC-416 … 425) ────────────
+
+    @classmethod
+    def agency_name_too_long(cls) -> AgencyRegistrationData:
+        """KAN-TC-416 — 160-character agency name; the field stops at 150 (maxlength)."""
+        data = cls.valid()
+        name = (fake.company() + " Placement Services ") * 20
+        data.agency_name = name[:160]
+        data.expected_value = name[:150]
+        data.scenario_label = "KAN-TC-416: agency name over 150 chars"
+        return data
+
+    @classmethod
+    def mobile_with_non_digits(cls) -> AgencyRegistrationData:
+        """KAN-TC-417 — letters / symbols are stripped and input is cut at 10 digits."""
+        data = cls.valid()
+        data.mobile = "98a7-6 5432109"
+        data.expected_value = "9876543210"
+        data.scenario_label = "KAN-TC-417: mobile with non-digits"
+        return data
+
+    @classmethod
+    def mobile_invalid_start_digit(cls) -> AgencyRegistrationData:
+        """KAN-TC-417 — 10 digits but starting with 5 (must start with 6–9)."""
+        data = cls.valid()
+        data.mobile = "5123456789"
+        data.expected_error = "Enter a valid 10-digit mobile number starting with 6, 7, 8 or 9."
+        data.scenario_label = "KAN-TC-417: mobile starting with 5"
+        return data
+
+    @classmethod
+    def mobile_too_short(cls) -> AgencyRegistrationData:
+        """KAN-TC-417 — fewer than 10 digits."""
+        data = cls.valid()
+        data.mobile = "98765"
+        data.expected_error = "Enter a valid 10-digit mobile number starting with 6, 7, 8 or 9."
+        data.scenario_label = "KAN-TC-417: mobile too short"
+        return data
+
+    @classmethod
+    def alt_phone_with_invalid_chars(cls) -> AgencyRegistrationData:
+        """KAN-TC-418 — brackets / letters stripped, input cut at 15 chars (maxlength)."""
+        data = cls.valid()
+        data.alt_phone = "+91 (22) 2456-7890x"
+        data.expected_value = "+91 22 2456-789"
+        data.scenario_label = "KAN-TC-418: alternate phone with invalid characters"
+        return data
+
+    @classmethod
+    def district_other_with_city(cls) -> AgencyRegistrationData:
+        """KAN-TC-424 — district 'Other' reveals the mandatory City / Town field."""
+        data = cls.valid()
+        data.district = "Other"
+        data.city_name = "Navi Mumbai"
+        data.scenario_label = "KAN-TC-424: district Other with city"
+        return data
+
+    @classmethod
+    def city_with_invalid_chars(cls) -> AgencyRegistrationData:
+        """KAN-TC-424 — only letters, spaces, hyphens and dots are kept in City / Town."""
+        data = cls.district_other_with_city()
+        data.city_name = "Navi Mumbai-2. Sector#5"
+        data.expected_value = "Navi Mumbai-. Sector"
+        data.scenario_label = "KAN-TC-424: city with digits and symbols"
         return data
 
     # ── Edge Cases ────────────────────────────────────────────────────────────

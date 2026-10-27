@@ -13,6 +13,7 @@ from playwright.sync_api import sync_playwright
 from config import BASE_URL
 from pages.dashboard_page import DashboardPage
 from pages.home_page import HomePage
+from pages.index_page import IndexPage
 from pages.login_page import LoginPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
@@ -63,6 +64,11 @@ def pytest_configure(config):
         "wait_before(seconds): pause for the given number of seconds before "
         "the test starts. Defaults to 60 seconds when no argument is supplied.",
     )
+    config.addinivalue_line(
+        "markers",
+        "deprecated(reason): the test's AIO case is Deprecated. The test is skipped "
+        "with the reason and no result is posted to AIO.",
+    )
 
     # Wire up pytest-html as a self-contained single file
     # (only if the user didn't already pass --html on the CLI)
@@ -73,11 +79,18 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(items):
     """Surface @aio_case keys on items so they appear in JUnit XML and are
-    available to the report hook for REST upload to AIO."""
+    available to the report hook for REST upload to AIO, and skip tests
+    marked @pytest.mark.deprecated."""
     for item in items:
         key = getattr(item.obj, "_aio_case_key", None)
         if key:
             item.user_properties.append(("aio_case_key", key))
+        deprecated = item.get_closest_marker("deprecated")
+        if deprecated:
+            reason = deprecated.kwargs.get("reason") or (deprecated.args[0] if deprecated.args else "")
+            item.add_marker(pytest.mark.skip(
+                reason=f"Deprecated in AIO{f' ({key})' if key else ''}: {reason}".rstrip(": ")
+            ))
 
 
 # ── Browser lifecycle ─────────────────────────────────────────────────────────
@@ -128,18 +141,6 @@ def page(browser_context):
     yield page
     page.close()
 
-@pytest.fixture
-def logged_in_page(request, page):
-    """Logs in as the given role before the test."""
-    role = request.param          # passed via indirect=
-    page.goto(f"{BASE_URL}/login.php")
-    page.fill("#user", role)
-    page.fill("#pass", "password")
-    page.click("button[type=submit]")
-    page.wait_for_url("**/dashboard")
-    yield page
-
-
 @pytest.fixture(autouse=True)
 def pause_before(request):
     """
@@ -185,6 +186,10 @@ def dashboard_page(page):
 def home_page(page):
     return HomePage(page)
 
+@pytest.fixture
+def index_page(page):
+    return IndexPage(page)
+
 
 # ── Test reporting: screenshot on failure + AIO Tests REST upload ───────────
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -192,21 +197,31 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report  = outcome.get_result()
 
-    if report.when != "call":
+    # A test skipped by a fixture (e.g. email_otp_required) never reaches the
+    # "call" phase, so its setup report is the only chance to post it to AIO.
+    skipped_in_setup = report.when == "setup" and report.skipped
+    if report.when != "call" and not skipped_in_setup:
         return
 
     # ── AIO Tests: POST status for every test that carries an @aio_case key ──
+    # (except deprecated tests — their AIO cases are Deprecated)
     aio_run_id = None
     case_key = next(
         (v for k, v in report.user_properties if k == "aio_case_key"), None
     )
-    if case_key:
+    if case_key and not item.get_closest_marker("deprecated"):
         status = aio_client.map_status(report.outcome)
         if status:
+            if report.failed:
+                comment = report.longreprtext
+            elif report.skipped and isinstance(report.longrepr, tuple):
+                comment = report.longrepr[2]          # (path, lineno, "Skipped: <reason>")
+            else:
+                comment = None
             aio_run_id = aio_client.post_test_run(
                 case_key,
                 status,
-                comment=report.longreprtext if report.failed else None,
+                comment=comment,
                 effort_ms=int(report.duration * 1000),
             )
 

@@ -1,0 +1,291 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e4]:
+    - generic [ref=e5]: Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra
+    - generic [ref=e6]:
+      - text: "Helpline: 1800-XXX-XXXX (Toll Free)"
+      - generic [ref=e9]: "| Mon–Fri, 9 AM – 6 PM"
+  - banner [ref=e10]:
+    - generic [ref=e11]:
+      - link "MPPA Portal home" [ref=e12] [cursor=pointer]:
+        - /url: index.php
+        - img "Government of Maharashtra" [ref=e14]
+        - generic [ref=e15]: MPPA Portal
+      - generic [ref=e16]:
+        - link "Register Agency" [ref=e17] [cursor=pointer]:
+          - /url: module/agency/auth/register.php
+        - button "Open menu" [ref=e18] [cursor=pointer]
+  - main [ref=e21]:
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]: Maharashtra Private Placement Agencies (Regulation) Act, 2025
+        - heading "One-Stop Portal for Placement Agency Registration & Regulation" [level=1] [ref=e28]
+        - paragraph [ref=e29]: Official portal of the Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra. Register, manage, renew and verify placement agency licences under Mah. Act XXIV of 2025.
+        - generic [ref=e30]:
+          - link "New Agency Registration" [ref=e31] [cursor=pointer]:
+            - /url: module/agency/auth/register.php
+          - link "Verify an Agency" [ref=e34] [cursor=pointer]:
+            - /url: "#verify"
+          - link "How to Register" [ref=e37] [cursor=pointer]:
+            - /url: "#guide"
+      - complementary "Quick facts" [ref=e40]:
+        - heading "Quick Facts" [level=2] [ref=e41]
+        - generic [ref=e42]:
+          - generic [ref=e43]:
+            - generic [ref=e44]: "8"
+            - text: Simple Steps
+          - generic [ref=e45]:
+            - generic [ref=e46]: 5 Yrs
+            - text: Certificate Validity
+          - generic [ref=e47]:
+            - generic [ref=e48]: 7 Days
+            - text: To Complete Application
+          - generic [ref=e49]:
+            - generic [ref=e50]: 45 Days
+            - text: Renewal Notice
+    - generic [ref=e52]:
+      - generic [ref=e53]:
+        - generic [ref=e54]: Public Verification
+        - heading "Verify Agency Certificate" [level=2] [ref=e57]
+      - generic [ref=e58]:
+        - heading "Is this Placement Agency registered?" [level=3] [ref=e59]
+        - paragraph [ref=e60]: Job seekers and employers can verify whether a placement agency is officially registered and approved under the Maharashtra Private Placement Agencies (Regulation) Act, 2025. Enter the agency's Registration ID or Certificate Number below.
+        - generic [ref=e61]:
+          - textbox "Registration ID or Certificate Number" [ref=e62]:
+            - /placeholder: Registration ID or Certificate No.
+          - button "Verify Now" [ref=e63] [cursor=pointer]
+        - paragraph [ref=e67]: e.g. 26274980143984 · This information is public and provided for verification only.
+    - generic [ref=e69]:
+      - generic [ref=e70]: Portal Services
+      - heading "Choose how you want to use the portal" [level=2] [ref=e73]
+      - paragraph [ref=e74]: Placement agencies, job seekers, employers and government officials can access the services they need through dedicated portal sections.
+      - generic [ref=e75]:
+        - article [ref=e76]:
+          - heading "New Agency Registration" [level=3] [ref=e80]
+          - paragraph [ref=e81]: Apply online for a Private Placement Agency licence. Complete the 8-step application, upload the required documents and pay the applicable fee. Receive your MPPA certificate upon approval.
+          - generic [ref=e82]:
+            - link "Register Now" [ref=e83] [cursor=pointer]:
+              - /url: module/agency/auth/register.php
+              - text: Register Now
+              - generic [aria-hidden] [ref=e84]: →
+            - link "Login" [ref=e85] [cursor=pointer]:
+              - /url: module/agency/auth/login.php
+        - article [ref=e86]:
+          - heading "Verify a Placement Agency" [level=3] [ref=e90]
+          - paragraph [ref=e91]: Check the registration status of a placement agency before engaging its services. Job seekers and employers can verify licence validity and jurisdiction to make informed decisions.
+          - link "Verify Agency" [ref=e93] [cursor=pointer]:
+            - /url: module/students/verify_agency.php
+            - text: Verify Agency
+            - generic [aria-hidden] [ref=e94]: →
+        - article [ref=e95]:
+          - heading "District / Registering Authority" [level=3] [ref=e99]
+          - paragraph [ref=e100]: Dedicated access for District Labour Officers and authorised officials to review applications, approve or reject registrations, generate certificates and monitor regulatory compliance.
+          - link "Admin Login" [ref=e102] [cursor=pointer]:
+            - /url: module/admin/auth/login.php
+            - text: Admin Login
+            - generic [aria-hidden] [ref=e103]: →
+    - generic [ref=e105]:
+      - generic [ref=e106]: Step 0 · Preparation
+      - heading "Before you start — keep these ready" [level=2] [ref=e109]
+      - paragraph [ref=e110]: Having everything at hand lets you finish the application in one sitting. You have 7 days from registration to complete all steps and pay.
+      - generic [ref=e111]:
+        - generic [ref=e112]:
+          - heading "Documents" [level=4] [ref=e113]
+          - list [ref=e114]:
+            - listitem [ref=e115]: PAN card of the agency (PDF, JPG or PNG, max 2 MB)
+            - listitem [ref=e116]: Aadhaar card of every key person and the authorised signatory
+            - listitem [ref=e117]: Agency letterhead with the authorised signatory's signature (max 5 MB at sign-up)
+            - listitem [ref=e118]: TAN / GSTIN certificates, if applicable
+            - listitem [ref=e119]: Incorporation / Registration certificate, address proof and office photograph
+            - listitem [ref=e120]: Licences — Contract Labour, Emigration, Security Agency, LIN — if you hold them
+        - generic [ref=e121]:
+          - heading "Also required" [level=4] [ref=e122]
+          - list [ref=e123]:
+            - listitem [ref=e124]: Active email & mobile — both are verified by OTP
+            - listitem [ref=e125]: Official agency email must differ from every key person's personal email
+            - listitem [ref=e126]: Maharashtra office — at least one office in Maharashtra is mandatory
+            - listitem [ref=e127]: Signing facility — declaration forms are printed, signed on letterhead, scanned and uploaded
+            - listitem [ref=e128]: Payment method — the registration fee is paid online at the end
+        - generic [ref=e129]:
+          - heading "General form rules" [level=4] [ref=e130]
+          - list [ref=e131]:
+            - listitem [ref=e132]: Dates in DD/MM/YYYY — future dates are not allowed
+            - listitem [ref=e133]: Pincodes — only Maharashtra pincodes (400000 – 445999)
+            - listitem [ref=e134]: Mandatory fields are marked with a red *
+            - listitem [ref=e135]: Save & continue — steps unlock in order; a saved step is read-only until you click “Edit this section”
+            - listitem [ref=e136]: Uploads in Enclosures and Declaration must be PDF, max 2 MB per file
+    - generic [ref=e138]:
+      - generic [ref=e139]:
+        - generic [ref=e140]:
+          - generic [ref=e141]: Registration Guide
+          - heading "How to Register — 8 Simple Steps" [level=2] [ref=e144]
+          - paragraph [ref=e145]: Follow the steps in order, exactly as they appear on the registration form. Tap a step to see what to fill in and upload.
+        - generic [ref=e146]:
+          - button "Expand all" [ref=e147] [cursor=pointer]
+          - button "Collapse all" [ref=e148] [cursor=pointer]
+      - list [ref=e149]:
+        - listitem [ref=e150]:
+          - generic [ref=e151]: "1"
+          - group [ref=e152]:
+            - generic "Create Account Credentials, email & mobile OTP, PAN, captcha" [ref=e153] [cursor=pointer]:
+              - generic [ref=e154]:
+                - generic [ref=e155]: Create Account
+                - generic [ref=e156]: Credentials, email & mobile OTP, PAN, captcha
+            - generic [ref=e161]:
+              - generic [ref=e162]:
+                - heading "What to do" [level=5] [ref=e163]
+                - list [ref=e164]:
+                  - listitem [ref=e165]: Choose a username and password — you will use these to log in and resume later.
+                  - listitem [ref=e166]: Enter the agency's active email and mobile; verify both with the OTP sent to you.
+                  - listitem [ref=e167]: Enter the agency PAN and upload the PAN card (PDF, JPG or PNG, max 2 MB).
+                  - listitem [ref=e168]: Upload the agency letterhead carrying the authorised signatory's signature (max 5 MB).
+                  - listitem [ref=e169]: Solve the captcha and submit to create your account.
+              - generic [ref=e170]:
+                - heading "Rules to remember" [level=5] [ref=e171]
+                - list [ref=e172]:
+                  - listitem [ref=e173]: The official agency email must be different from every key person's personal email.
+                  - listitem [ref=e174]: The 7-day window to complete the application starts at registration.
+                  - listitem [ref=e175]: Lost your session? Log in with the same username and password to resume.
+        - listitem [ref=e176]:
+          - generic [ref=e177]: "2"
+          - group [ref=e178]:
+            - generic "Part A — Agency Details Agency type, address, TAN/GSTIN, Maharashtra offices & branches" [ref=e179] [cursor=pointer]:
+              - generic [ref=e180]:
+                - generic [ref=e181]: Part A — Agency Details
+                - generic [ref=e182]: Agency type, address, TAN/GSTIN, Maharashtra offices & branches
+        - listitem [ref=e186]:
+          - generic [ref=e187]: "3"
+          - group [ref=e188]:
+            - generic "Part B — Key Persons Directors / Partners / Proprietors with Aadhaar & PAN" [ref=e189] [cursor=pointer]:
+              - generic [ref=e190]:
+                - generic [ref=e191]: Part B — Key Persons
+                - generic [ref=e192]: Directors / Partners / Proprietors with Aadhaar & PAN
+        - listitem [ref=e196]:
+          - generic [ref=e197]: "4"
+          - group [ref=e198]:
+            - generic "Part C — Operations Sectors, training, mobilization, digital platform" [ref=e199] [cursor=pointer]:
+              - generic [ref=e200]:
+                - generic [ref=e201]: Part C — Operations
+                - generic [ref=e202]: Sectors, training, mobilization, digital platform
+        - listitem [ref=e206]:
+          - generic [ref=e207]: "5"
+          - group [ref=e208]:
+            - generic "Part F — Certificates Existing licences — Contract Labour, Emigration, Security, LIN — and specimen signature" [ref=e209] [cursor=pointer]:
+              - generic [ref=e210]:
+                - generic [ref=e211]: Part F — Certificates
+                - generic [ref=e212]: Existing licences — Contract Labour, Emigration, Security, LIN — and specimen signature
+        - listitem [ref=e216]:
+          - generic [ref=e217]: "6"
+          - group [ref=e218]:
+            - generic "Enclosures Upload all required documents (PDF, max 2 MB each)" [ref=e219] [cursor=pointer]:
+              - generic [ref=e220]:
+                - generic [ref=e221]: Enclosures
+                - generic [ref=e222]: Upload all required documents (PDF, max 2 MB each)
+        - listitem [ref=e226]:
+          - generic [ref=e227]: "7"
+          - group [ref=e228]:
+            - generic "Declaration & Authorisation Signed FORM-I(A) self-declaration & FORM-I(B) letter of authorization" [ref=e229] [cursor=pointer]:
+              - generic [ref=e230]:
+                - generic [ref=e231]: Declaration & Authorisation
+                - generic [ref=e232]: Signed FORM-I(A) self-declaration & FORM-I(B) letter of authorization
+        - listitem [ref=e236]:
+          - generic [ref=e237]: "8"
+          - group [ref=e238]:
+            - generic "Preview & Payment Review, pay online, get Registration ID. Certificate on approval." [ref=e239] [cursor=pointer]:
+              - generic [ref=e240]:
+                - generic [ref=e241]: Preview & Payment
+                - generic [ref=e242]: Review, pay online, get Registration ID. Certificate on approval.
+      - generic [ref=e246]:
+        - link "Start Registration →" [ref=e247] [cursor=pointer]:
+          - /url: module/agency/auth/register.php
+        - link "Read User Manual" [ref=e248] [cursor=pointer]:
+          - /url: "#manual"
+    - generic [ref=e250]:
+      - generic [ref=e251]:
+        - generic [ref=e252]: After Submission
+        - heading "What happens next" [level=2] [ref=e255]
+        - paragraph [ref=e256]: "Track your application from your dashboard. Your status will be one of:"
+        - generic [ref=e257]:
+          - generic [ref=e258]:
+            - generic [ref=e259]: Submitted
+            - paragraph [ref=e260]: Under review by the Registering Authority.
+          - generic [ref=e261]:
+            - generic [ref=e262]: Approved
+            - paragraph [ref=e263]: Certificate is available to download.
+          - generic [ref=e264]:
+            - generic [ref=e265]: Rejected
+            - paragraph [ref=e266]: Read admin remarks and file an appeal.
+          - generic [ref=e267]:
+            - generic [ref=e268]: Suspended
+            - paragraph [ref=e269]: Contact the helpdesk or file an appeal.
+      - generic [ref=e270]: "Please note: the Registering Authority may inspect premises and records at any time. Need help? Call 1800-XXX-XXXX (Toll Free), Mon–Fri, 9 AM – 6 PM."
+    - generic [ref=e272]:
+      - generic [ref=e273]: Registration User Manual
+      - heading "Download the complete guide" [level=2] [ref=e276]
+      - generic [ref=e277]:
+        - generic [ref=e281]:
+          - heading "Placement Agency Registration User Manual" [level=3] [ref=e282]
+          - paragraph [ref=e283]: A step-by-step guide to registering a private placement agency under the Maharashtra Private Placement Agencies (Regulation) Act, 2025 (Mah. XXIV of 2025). Please read it before you start your application — you will be asked to accept it on the registration page.
+        - generic [ref=e284]:
+          - link "View Manual (PDF)" [ref=e285] [cursor=pointer]:
+            - /url: /assets/docs/MPPA_Registration_User_Manual.pdf
+          - link "Download" [ref=e288] [cursor=pointer]:
+            - /url: /assets/docs/MPPA_Registration_User_Manual.pdf
+    - generic [ref=e292]:
+      - generic [ref=e293]: About the Act
+      - heading "Protecting job seekers and employers" [level=2] [ref=e296]
+      - generic [ref=e297]:
+        - generic [ref=e298]:
+          - generic [ref=e299]: Mah. Act XXIV of 2025
+          - heading "Maharashtra Private Placement Agencies (Regulation) Act, 2025" [level=3] [ref=e300]
+          - paragraph [ref=e301]: The Act was enacted to regulate the functioning of private placement agencies in Maharashtra, protect the interests of job seekers and employers, and prevent exploitation through unregistered or fraudulent agencies. All placement agencies operating in Maharashtra must obtain a Certificate of Registration.
+        - generic [ref=e302]:
+          - generic [ref=e303]:
+            - generic [ref=e304]: 5 Years
+            - text: Certificate Validity
+          - generic [ref=e305]:
+            - generic [ref=e306]: 45 Days
+            - text: Renewal Notice Period
+          - link "Read Guidelines →" [ref=e307] [cursor=pointer]:
+            - /url: module/guidelines.php
+  - contentinfo [ref=e308]:
+    - generic [ref=e309]:
+      - generic [ref=e310]:
+        - generic [ref=e311]:
+          - heading "MPPA Portal" [level=4] [ref=e312]
+          - paragraph [ref=e313]: Official portal for registration and regulation of Private Placement Agencies under the Maharashtra Private Placement Agencies (Regulation) Act, 2025 (Mah. XXIV of 2025). Operated by the Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra.
+          - generic [ref=e314]: support@placementportal.gov.in 1800-XXX-XXXX (Toll Free) Mon–Fri, 9:00 AM – 6:00 PM
+        - generic [ref=e315]:
+          - heading "Quick Links" [level=4] [ref=e316]
+          - link "New Registration" [ref=e317] [cursor=pointer]:
+            - /url: module/agency/auth/register.php
+          - link "Agency Login" [ref=e318] [cursor=pointer]:
+            - /url: module/agency/auth/login.php
+          - link "Verify Agency" [ref=e319] [cursor=pointer]:
+            - /url: module/students/verify_agency.php
+          - link "Registration Guide" [ref=e320] [cursor=pointer]:
+            - /url: "#guide"
+          - link "Registration User Manual" [ref=e321] [cursor=pointer]:
+            - /url: "#manual"
+          - link "Download Manual (PDF)" [ref=e322] [cursor=pointer]:
+            - /url: /assets/docs/MPPA_Registration_User_Manual.pdf
+          - link "Guidelines" [ref=e323] [cursor=pointer]:
+            - /url: module/guidelines.php
+          - link "Contact Us" [ref=e324] [cursor=pointer]:
+            - /url: module/contact.php
+          - link "Notice Board" [ref=e325] [cursor=pointer]:
+            - /url: module/notices.php
+        - generic [ref=e326]:
+          - heading "Officials" [level=4] [ref=e327]
+          - link "Admin / RA Login" [ref=e328] [cursor=pointer]:
+            - /url: module/admin/auth/login.php
+          - link "Super Admin Login" [ref=e329] [cursor=pointer]:
+            - /url: module/admin/auth/login.php?role=super
+          - link "FAQ" [ref=e330] [cursor=pointer]:
+            - /url: module/guidelines.php#faq
+          - link "Terms & Conditions" [ref=e331] [cursor=pointer]:
+            - /url: module/guidelines.php#tnc
+      - generic [ref=e332]:
+        - generic [ref=e333]: © 2026 Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra. All rights reserved.
+        - generic [ref=e334]: Maharashtra Private Placement Agencies (Regulation) Act, 2025 (Mah. XXIV of 2025)

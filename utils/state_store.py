@@ -16,7 +16,7 @@ instead of re-registering every time.
 
 Usage
 -----
-After TC-23 generates a Registration ID::
+After the pre-registration form is accepted by the server (TC-25)::
 
     from utils.state_store import TestStateStore
 
@@ -25,16 +25,20 @@ After TC-23 generates a Registration ID::
         role="agency",
         username=data.username,
         password=data.password,
+        agency_name=data.agency_name,
         email=data.email,
+        mobile=data.mobile,
+        alt_phone=data.alt_phone,
         pan=data.pan_number,
         district=data.district,
-        registration_id=registration_id,
+        city_name=data.city_name or None,      # only when district == "Other"
+        registration_id=registration_id,       # None — no ID is issued at pre-registration any more
     )
 
 Reading back for later tests::
 
     user = TestStateStore().get_any_agency_user()
-    # user.username, user.password, user.registration_id, …
+    # user.username, user.password, user.agency_name, user.mobile, …
 
 The DB persists between test runs by design — it mirrors users actually
 registered in the dev environment.  Delete ``state/test_state.db`` only if you
@@ -65,6 +69,10 @@ class UserRecord:
     pan: Optional[str]
     district: Optional[str]
     registration_id: Optional[str]
+    agency_name: Optional[str] = None
+    mobile: Optional[str] = None
+    alt_phone: Optional[str] = None
+    city_name: Optional[str] = None     # set only when district == "Other"
     # {"A": "completed", "B": "in_progress", …} — empty dict until Form-I starts
     steps: dict[str, str] = field(default_factory=dict)
 
@@ -91,8 +99,10 @@ class TestStateStore:
          Creates tables and indexes if they do not already exist.
 
          Also validates that existing tables have the expected columns.
-         If a stale table is detected (e.g. DB created by an older version of
-         this file that lacked the ``step`` column), the table is dropped and
+         Optional user columns added after the table was first created
+         (``ADDED_USERS_COLS``) are added in place with ``ALTER TABLE`` so
+         existing rows survive.  Only if a *core* column is missing (e.g. a DB
+         created by a much older version of this file) is the table dropped and
          recreated cleanly.  User rows are preserved when only
          ``form_applications`` is stale because the drop-recreate only targets
          the table whose schema is wrong.
@@ -102,6 +112,13 @@ class TestStateStore:
         EXPECTED_USERS_COLS = {
             "id", "role", "username", "password",
             "email", "pan", "district", "registration_id", "created_at",
+        }
+        # Redesigned pre-registration form (Oct 2026) — nullable, migrated in place.
+        ADDED_USERS_COLS = {
+            "agency_name": "TEXT",
+            "mobile": "TEXT",
+            "alt_phone": "TEXT",
+            "city_name": "TEXT",
         }
         EXPECTED_FORM_COLS = {"user_id", "step", "status", "updated_at"}
 
@@ -131,6 +148,10 @@ class TestStateStore:
                 if not EXPECTED_USERS_COLS.issubset(actual_cols):
                     conn.execute("DROP TABLE IF EXISTS form_applications")
                     conn.execute("DROP TABLE users")
+                else:
+                    for col, col_type in ADDED_USERS_COLS.items():
+                        if col not in actual_cols:
+                            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
 
             # ── Create tables (no-ops if already correct) ─────────────────────
             conn.executescript("""
@@ -144,7 +165,11 @@ class TestStateStore:
                      pan             TEXT,
                      district        TEXT,
                      registration_id TEXT,
-                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                     agency_name     TEXT,
+                     mobile          TEXT,
+                     alt_phone       TEXT,
+                     city_name       TEXT
                  );
 
                  CREATE TABLE IF NOT EXISTS form_applications (
@@ -178,6 +203,10 @@ class TestStateStore:
             pan=row["pan"],
             district=row["district"],
             registration_id=row["registration_id"],
+            agency_name=row["agency_name"],
+            mobile=row["mobile"],
+            alt_phone=row["alt_phone"],
+            city_name=row["city_name"],
             steps=steps,
         )
 
@@ -193,20 +222,30 @@ class TestStateStore:
         pan: str = None,
         district: str = None,
         registration_id: str = None,
+        agency_name: str = None,
+        mobile: str = None,
+        alt_phone: str = None,
+        city_name: str = None,
     ) -> int:
         with self._connect() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO users (role, username, password, email, pan, district, registration_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (role, username, password, email, pan, district, registration_id,
+                                   agency_name, mobile, alt_phone, city_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(username) DO UPDATE SET
                     password=excluded.password,
                     email=excluded.email,
                     pan=excluded.pan,
                     district=excluded.district,
-                    registration_id=excluded.registration_id
+                    registration_id=excluded.registration_id,
+                    agency_name=excluded.agency_name,
+                    mobile=excluded.mobile,
+                    alt_phone=excluded.alt_phone,
+                    city_name=excluded.city_name
                 """,
-                (role, username, password, email, pan, district, registration_id),
+                (role, username, password, email, pan, district, registration_id,
+                 agency_name, mobile, alt_phone, city_name),
             )
             return cursor.lastrowid
 

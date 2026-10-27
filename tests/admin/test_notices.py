@@ -35,7 +35,7 @@ def _open_notice_board(second_browser):
     """Open a visible second browser, log in as an agency user, and land on the
     public Notice Board page (/module/notices.php).
 
-    After login the agency user lands on the dashboard; we then navigate to the
+    After login the agency user lands on the Form-I wizard; we then navigate to the
     dedicated Notice Board page where every active notice is rendered as a
     ``.notice-card``. The second browser honours the project HEADLESS / SLOW_MO
     settings, so its interactions are visible alongside the admin window.

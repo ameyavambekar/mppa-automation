@@ -18,3 +18,8 @@ VALID_PNG = get_document_path("valid_image.png")       # <2MB PNG
 INVALID_FORMAT = get_document_path("invalid.docx")    # Wrong format
 OVERSIZED_FILE = get_document_path("oversized.pdf")   # >2MB PDF
 VALID_SIGNATURE = get_document_path("signature.png")  # Signature image
+
+# Part A certificate uploads accept PDF/JPG/PNG between 10 KB and 2 MB.
+VALID_CERTIFICATE = get_document_path("certificate.pdf")         # ~360 KB PDF
+UNDERSIZED_FILE = get_document_path("valid_doc.pdf")             # <10 KB PDF
+UNSUPPORTED_CERTIFICATE = get_document_path("certificate.docx")  # >10 KB DOCX (wrong format, valid size)

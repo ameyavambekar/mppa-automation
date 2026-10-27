@@ -38,7 +38,8 @@ def _super_admin_or_skip() -> UserRecord:
 class AgencySessionHandle:
     """A live agency session opened in an independent second browser.
 
-    ``page`` is sitting on the agency dashboard right after login; ``username``
+    ``page`` is sitting where login lands (the Form-I wizard for incomplete
+    registrations); ``username``
     is what the admin Sessions table shows in its Username column for this
     session (so the admin side can locate and kill exactly this session)."""
     page: object

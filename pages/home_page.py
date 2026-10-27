@@ -5,6 +5,11 @@ from config import AUTH_BASE
 
 
 class HomePage(BasePage):
+    """Agency Home page (auth/home.php).
+
+    Returns 404 on dev since the portal redesign, so the fixtures in
+    ``fixtures/home_fixtures.py`` skip the tests that depend on it.
+    """
 
     # ── Navigation bar ────────────────────────────────────────────────────────
 

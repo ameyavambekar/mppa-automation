@@ -2,15 +2,18 @@ import os
 
 import pytest
 
+from config import FORMS_BASE
 from pages.login_page import LoginPage
 from utils.state_store import TestStateStore
 
 
 def _login_and_wait(page, user):
+    """Logs in and waits for the Form-I wizard, where login now lands for
+    incomplete registrations (Part A for users who haven't started it)."""
     login = LoginPage(page)
     login.open()
     login.login(user.username, user.password)
-    page.wait_for_url("**/dashboard**", timeout=15000)
+    page.wait_for_url(f"{FORMS_BASE}/**", timeout=15000)
 
 
 @pytest.fixture

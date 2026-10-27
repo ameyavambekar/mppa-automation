@@ -1,0 +1,107 @@
+- generic [active] [ref=f9e1]:
+  - paragraph [ref=f9e3]: OFFICIAL GOVERNMENT PORTAL — Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra
+  - generic [ref=f9e5]:
+    - img "Government of Maharashtra" [ref=f9e7]
+    - generic [ref=f9e8]:
+      - heading "Placement Agency Regulation Portal" [level=1] [ref=f9e9]
+      - paragraph [ref=f9e10]: Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra
+    - generic [ref=f9e11]:
+      - paragraph [ref=f9e12]: Helpline
+      - paragraph [ref=f9e13]: 1800-XXX-XXXX
+  - generic [ref=f9e15]:
+    - link "Home" [ref=f9e16] [cursor=pointer]:
+      - /url: ../../../index.php
+    - generic [ref=f9e17]: ›
+    - link "Agency Portal" [ref=f9e18] [cursor=pointer]:
+      - /url: "#"
+    - generic [ref=f9e19]: ›
+    - generic [ref=f9e20]: Login
+  - generic [ref=f9e22]:
+    - generic [ref=f9e23]:
+      - generic [ref=f9e24]:
+        - paragraph [ref=f9e25]: Login Instructions
+        - list [ref=f9e26]:
+          - listitem [ref=f9e27]:
+            - generic [ref=f9e28]: •
+            - text: Use the username and password created during registration.
+          - listitem [ref=f9e29]:
+            - generic [ref=f9e30]: •
+            - text: Session expires 20 minutes after login.
+          - listitem [ref=f9e31]:
+            - generic [ref=f9e32]: •
+            - text: Do not share your credentials with anyone.
+          - listitem [ref=f9e33]:
+            - generic [ref=f9e34]: •
+            - text: Captcha refreshes automatically after a wrong attempt.
+      - generic [ref=f9e35]:
+        - paragraph [ref=f9e36]: 🔒 Security Notice
+        - paragraph [ref=f9e37]: This is a restricted government system. Unauthorized access is punishable under the IT Act, 2000.
+    - generic [ref=f9e38]:
+      - generic [ref=f9e39]:
+        - heading "Agency Login" [level=2] [ref=f9e40]
+        - paragraph [ref=f9e41]: Access the Placement Agency Regulation Portal
+      - generic [ref=f9e42]:
+        - generic [ref=f9e43]:
+          - generic [ref=f9e44]:
+            - generic [ref=f9e45]: Username *
+            - textbox "Your registered username" [ref=f9e46]
+          - generic [ref=f9e47]:
+            - generic [ref=f9e48]: Password *
+            - generic [ref=f9e49]:
+              - textbox "Your password" [ref=f9e50]
+              - button "👁 SHOW" [ref=f9e51] [cursor=pointer]:
+                - generic [ref=f9e52]: 👁
+                - generic [ref=f9e53]: SHOW
+          - separator [ref=f9e54]
+          - generic [ref=f9e55]:
+            - generic [ref=f9e56]: Captcha *
+            - generic [ref=f9e57]:
+              - img "Captcha — enter the characters shown below" [ref=f9e58] [cursor=pointer]
+              - button "⟳ Refresh" [ref=f9e59] [cursor=pointer]
+            - textbox "Enter the characters shown" [ref=f9e60]
+            - paragraph [ref=f9e61]: Click the image or ⟳ Refresh to get a new captcha
+          - button "Login to Portal" [disabled] [ref=f9e62]
+          - generic [ref=f9e63]:
+            - link "Forgot Password?" [ref=f9e64] [cursor=pointer]:
+              - /url: forgot_password.php
+            - link "New Agency? Register →" [ref=f9e65] [cursor=pointer]:
+              - /url: register.php
+          - generic [ref=f9e66]:
+            - text: 📝
+            - strong [ref=f9e67]: Registration not finished yet?
+            - text: Log in with the
+            - strong [ref=f9e68]: same username and password
+            - text: you chose at registration to continue your form from where you stopped. You have
+            - strong [ref=f9e69]: 7 days
+            - text: from registration to complete it and pay.
+            - link "Forgot password? Continue with email OTP" [ref=f9e70] [cursor=pointer]:
+              - /url: resume.php
+        - generic [ref=f9e71]:
+          - generic [ref=f9e72]: 👮 Administrator?
+          - link "🔐 Admin Login" [ref=f9e73] [cursor=pointer]:
+            - /url: ../../admin/auth/login.php
+  - contentinfo [ref=f9e74]:
+    - generic [ref=f9e75]:
+      - generic [ref=f9e76]:
+        - generic [ref=f9e77]:
+          - paragraph [ref=f9e78]: Placement Agency Regulation Portal
+          - paragraph [ref=f9e79]: Skills, Employment, Entrepreneurship and Innovation Department
+          - paragraph [ref=f9e80]: Government of Maharashtra
+        - generic [ref=f9e81]:
+          - paragraph [ref=f9e82]: Important Links
+          - paragraph [ref=f9e83]:
+            - link "Privacy Policy" [ref=f9e84] [cursor=pointer]:
+              - /url: "#"
+          - paragraph [ref=f9e85]:
+            - link "Terms of Use" [ref=f9e86] [cursor=pointer]:
+              - /url: "#"
+          - paragraph [ref=f9e87]:
+            - link "Accessibility Statement" [ref=f9e88] [cursor=pointer]:
+              - /url: "#"
+        - generic [ref=f9e89]:
+          - paragraph [ref=f9e90]: Connect
+          - paragraph [ref=f9e91]: "Helpline: 1800-XXX-XXXX"
+          - paragraph [ref=f9e92]: "Email: support@placementportal.gov.in"
+      - generic [ref=f9e93]:
+        - paragraph [ref=f9e94]: © 2026 Placement Agency Regulation Portal | Government System
+        - paragraph [ref=f9e95]: Version 2.1.0

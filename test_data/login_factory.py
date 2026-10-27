@@ -57,7 +57,7 @@ class LoginFactory:
             username=user.username,
             password=user.password,
             scenario_label="wrong_captcha",
-            expected_error="Incorrect CAPTCHA",
+            expected_error="Incorrect captcha. Please try again.",
         )
 
     # ── Blank-field validations (TC-33 / TC-34 / TC-35) ───────────────────────
@@ -66,39 +66,39 @@ class LoginFactory:
     def blank_username() -> LoginData:
         """Username left blank on login (KAN-TC-33).
 
-        Form should reject the submission before checking credentials, so a
-        placeholder password is sufficient — no state-store dependency."""
+        'Login to Portal' stays disabled, so nothing is submitted and no error
+        message is shown — a placeholder password is sufficient."""
         return LoginData(
             username="",
             password="Secure@1234",
             scenario_label="blank_username_login",
-            expected_error="Username is required.",
+            expected_error=None,
         )
 
     @staticmethod
     def blank_password() -> LoginData:
         """Password left blank on login (KAN-TC-34).
 
-        Form should reject blank password before authenticating, so the
-        username does not need to map to a real account."""
+        'Login to Portal' stays disabled, so the username does not need to
+        map to a real account and no error message is shown."""
         return LoginData(
             username="NewAgency01",
             password="",
             scenario_label="blank_password_login",
-            expected_error="Password is required.",
+            expected_error=None,
         )
 
     @staticmethod
     def blank_captcha() -> LoginData:
         """CAPTCHA left blank on login (KAN-TC-35).
 
-        Username/password are valid-looking but irrelevant — CAPTCHA check
-        runs first and blocks submission."""
+        'Login to Portal' stays disabled until a 6-character CAPTCHA is
+        entered, so no error message is shown."""
         return LoginData(
             username="NewAgency01",
             password="Secure@1234",
             scenario_label="blank_captcha_login",
-            expected_error="Please enter the CAPTCHA.",
+            expected_error=None,
         )
 
     # ── Account-lockout helper (EC-1) ─────────────────────────────────────────

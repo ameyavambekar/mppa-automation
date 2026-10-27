@@ -1,0 +1,94 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]: Official Government Portal — Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img "Government of Maharashtra" [ref=e6]
+      - generic [ref=e7]:
+        - generic [ref=e8]: Placement Agency Regulation Portal
+        - generic [ref=e9]: Skills, Employment, Entrepreneurship and Innovation Department, Government of Maharashtra
+      - generic [ref=e10]:
+        - text: Helpline
+        - strong [ref=e11]: 1800-XXX-XXXX
+  - generic [ref=e13]:
+    - link "Home" [ref=e14] [cursor=pointer]:
+      - /url: ../../../index.php
+    - generic [ref=e15]: ›
+    - link "Agency Portal" [ref=e16] [cursor=pointer]:
+      - /url: "#"
+    - generic [ref=e17]: ›
+    - generic [ref=e18]: User Manual
+  - generic [ref=e19]:
+    - generic [ref=e20]:
+      - heading "Registration User Manual" [level=2] [ref=e21]
+      - paragraph [ref=e22]: Please read this manual carefully before starting your registration application.
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - heading "1. Before You Begin" [level=3] [ref=e25]
+        - list [ref=e26]:
+          - listitem [ref=e27]: "Keep the following ready as scanned PDF/JPG/PNG files: PAN card, Aadhaar card, agency letterhead with authorised signatory's signature, and (if applicable) TAN/GSTIN certificates."
+          - listitem [ref=e28]: Registration is done in multiple steps (Part A through Part F, Enclosures, Declaration, Authorisation, and Payment). You can save each step and continue later.
+          - listitem [ref=e29]: An active email address and mobile number are required — both will be verified by OTP before you can complete registration.
+        - heading "2. Filling the Form" [level=3] [ref=e30]
+        - list [ref=e31]:
+          - listitem [ref=e32]:
+            - text: All dates must be entered in
+            - strong [ref=e33]: DD/MM/YYYY
+            - text: format unless otherwise auto-filled.
+          - listitem [ref=e34]:
+            - text: Fields marked with a red
+            - strong [ref=e35]: "*"
+            - text: are mandatory.
+          - listitem [ref=e36]: Pincode fields only accept valid Maharashtra pincodes (400000–445999).
+          - listitem [ref=e37]: You may use the "Detect My Location" button to auto-fill address fields using your device's GPS, or type and select from the address search suggestions.
+          - listitem [ref=e38]: Once a step is saved, it becomes read-only. Use the "Edit this section" link on that step to make changes again.
+        - heading "3. Documents & Certificates" [level=3] [ref=e39]
+        - list [ref=e40]:
+          - listitem [ref=e41]: Each certificate has a file-size limit shown next to its upload field — files exceeding this limit will be rejected.
+          - listitem [ref=e42]: If you enter a Certificate/Licence Number for any document, its Date of Issue and file upload become mandatory.
+          - listitem [ref=e43]: The specimen signature must be a JPG or PNG image — PDF is not accepted for the signature field.
+        - heading "4. Fees & Payment" [level=3] [ref=e44]
+        - list [ref=e45]:
+          - listitem [ref=e46]: The registration fee is determined automatically by the jurisdiction you select and cannot be edited manually.
+          - listitem [ref=e47]:
+            - text: Fees paid are
+            - strong [ref=e48]: non-refundable
+            - text: once submitted.
+          - listitem [ref=e49]:
+            - text: Your Application ID is issued only
+            - strong [ref=e50]: after successful payment
+            - text: — not before.
+          - listitem [ref=e51]: A printable payment receipt is available immediately after successful payment, and again anytime from your dashboard.
+        - heading "5. Declarations" [level=3] [ref=e52]
+        - list [ref=e53]:
+          - listitem [ref=e54]: All information submitted must be true and complete. False information or suppression of facts may lead to rejection or cancellation of registration.
+          - listitem [ref=e55]: You must accept the Self-Declaration and the Authorisation & Consent before your application can be previewed and submitted.
+      - generic [ref=e57]:
+        - generic [ref=e58] [cursor=pointer]:
+          - checkbox "I have read and agree to the User Manual above and understand the registration process." [ref=e59]
+          - text: I have read and agree to the User Manual above and understand the registration process.
+        - button "Proceed to Registration →" [disabled] [ref=e60] [cursor=pointer]
+  - contentinfo [ref=e61]:
+    - generic [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - paragraph [ref=e65]: Placement Agency Regulation Portal
+          - paragraph [ref=e66]: Skills, Employment, Entrepreneurship and Innovation Department
+          - paragraph [ref=e67]: Government of Maharashtra
+        - generic [ref=e68]:
+          - paragraph [ref=e69]: Important Links
+          - paragraph [ref=e70]:
+            - link "Privacy Policy" [ref=e71] [cursor=pointer]:
+              - /url: "#"
+          - paragraph [ref=e72]:
+            - link "Terms of Use" [ref=e73] [cursor=pointer]:
+              - /url: "#"
+          - paragraph [ref=e74]:
+            - link "Accessibility Statement" [ref=e75] [cursor=pointer]:
+              - /url: "#"
+        - generic [ref=e76]:
+          - paragraph [ref=e77]: Connect
+          - paragraph [ref=e78]: "Helpline: 1800-XXX-XXXX"
+          - paragraph [ref=e79]: "Email: support@placementportal.gov.in"
+      - generic [ref=e80]:
+        - paragraph [ref=e81]: © 2026 Placement Agency Regulation Portal | Government System
+        - paragraph [ref=e82]: Version 2.1.0

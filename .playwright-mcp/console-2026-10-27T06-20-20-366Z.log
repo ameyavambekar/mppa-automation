@@ -1,0 +1,9 @@
+[     278ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/favicon.ico:0
+[     512ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[     512ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[   23937ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[   23937ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[   56209ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[   56209ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[   57302ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0
+[   57303ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ https://devmppa.sppuef.in/module/agency/auth/register.php:0

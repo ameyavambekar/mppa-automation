@@ -1,9 +1,14 @@
 """
-Data Factory — Step 1 (Agency Identity / Part A)
-=================================================
-All test-data construction for the Step 1 form wizard.
+Data Factory — Step 1 (Part A: Agency Basic Details)
+====================================================
+All test-data construction for Part A of the Form-I wizard (KAN-8).
 Each factory method maps to one Acceptance Criterion, Edge Case, or
-scenario referenced in the Notion test cases KAN-TC-57 through KAN-TC-80.
+scenario referenced in the AIO test cases KAN-TC-58 … KAN-TC-80 and
+KAN-TC-426 … KAN-TC-436.
+
+The head office defaults to Maharashtra, whose District is read-only and
+comes from registration (``AgencyRegistrationFactory`` registers agencies in
+Pune), so the head office Taluka must be a Pune taluka.
 
 Usage
 -----
@@ -11,28 +16,68 @@ Usage
 
     data = PartAFactory.valid_mandatory_fields()     # TC-58 happy path
     data = PartAFactory.future_date()                # TC-62
-    data = PartAFactory.invalid_tan_format()         # TC-64
+    data = PartAFactory.head_office_outside_maharashtra()  # TC-427 / TC-428
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
+
+from pages.partA_page import PartAPage
+from utils.file_manager import VALID_CERTIFICATE
+
+
+@dataclass
+class OfficeAddress:
+    """A Maharashtra office: the Primary Maharashtra Office block or a branch card."""
+    address: str
+    district: str          # district name as shown in the drop-down
+    taluka: str            # must belong to ``district``
+    city: str
+    pincode: str
+    premise_type: str = "" # branches only (PartAPage.PREMISE_TYPES)
+    premise_other: Optional[str] = None
+
+
+@dataclass
+class TypedInput:
+    """What is typed into a field and what the field shows afterwards."""
+    field: str             # PartAPage locator property name
+    typed: str
+    shown: str
 
 
 @dataclass
 class PartAData:
-    agency_name: str = ""
+    # Agency Constitution
     legal_constitution: str = ""
-    date_of_incorporation: str = ""
-    address_line1: str = ""
-    official_email: str = ""
-    mobile_number: str = ""
+    date_of_establishment: str = ""           # dd-mm-yyyy, set via the calendar
+    incorporation_no: str = ""
+    incorporation_certificate: Optional[str] = None
+    # Tax Registration
     tan_number: str = ""
-    gst_number: str = ""
+    tan_certificate: Optional[str] = None
+    gstin: str = ""
+    gst_certificate: Optional[str] = None
+    # Registered Office Address
+    state: str = "Maharashtra"
+    address_line1: str = ""
     address_line2: str = ""
-    branch_offices: str = ""
-    website_url: str = ""
+    district: str = ""                        # only typed for a head office outside Maharashtra
+    taluka: str = ""
+    city: str = ""
+    pincode: str = ""
+    mh_office: Optional[OfficeAddress] = None # required when state != Maharashtra
+    branches: list[OfficeAddress] = field(default_factory=list)
+    # Authorised Signatory
+    authorised_signatory: str = ""
+    designation: str = ""
+    aadhaar: str = ""
+    # Scenario-specific values
+    invalid_value: str = ""                   # the bad value a negative scenario enters
+    partial_value: str = ""                   # an incomplete value typed before the full one
+    forced_date_text: str = ""                # text forced into the read-only date box
     expected_error: Optional[str] = None
     scenario_label: str = ""
 
@@ -43,34 +88,43 @@ class PartAFactory:
 
     @staticmethod
     def valid_mandatory_fields() -> PartAData:
-        """TC-58: All mandatory fields filled; all optional fields left blank."""
+        """TC-58: every mandatory Part A field, Maharashtra head office, no branches."""
         return PartAData(
-            agency_name="Alpha Placement Agency",
             legal_constitution="Private Limited Company",
-            date_of_incorporation="15-03-2018",
-            address_line1="101, Green Tower, MG Road, Pune",
-            official_email="admin@alphaplacement.com",
-            mobile_number="9876543210",
+            date_of_establishment="15-03-2018",
+            incorporation_no="U74999MH2018PTC123456",
+            incorporation_certificate=VALID_CERTIFICATE,
+            tan_number="PNEC12345A",
+            tan_certificate=VALID_CERTIFICATE,
+            gstin="27ABCDE1234F1Z5",
+            gst_certificate=VALID_CERTIFICATE,
+            address_line1="101, Green Tower, MG Road",
+            taluka="Pune City",
+            city="Pune",
+            pincode="411001",
+            authorised_signatory="Ravi Kulkarni",
+            designation="Director",
             scenario_label="valid_mandatory_fields",
         )
 
-    # ── Date of Incorporation (TC-62, TC-63) ──────────────────────────────────
+    # ── Date of Establishment (TC-62, TC-63) ─────────────────────────────────
 
     @staticmethod
     def future_date() -> PartAData:
-        """TC-62: Date of incorporation is in the future."""
+        """TC-62: a future date forced into the read-only date box."""
         data = PartAFactory.valid_mandatory_fields()
-        data.date_of_incorporation = "01-01-2030"
-        data.expected_error = "Date of incorporation cannot be a future date."
+        data.forced_date_text = "01/01/2030"
+        data.expected_error = PartAPage.DATE_FUTURE_ALERT
         data.scenario_label = "future_date"
         return data
 
     @staticmethod
     def invalid_date_format() -> PartAData:
-        """TC-63: Date entered in an invalid format (not dd-mm-yyyy)."""
+        """TC-63: a typed value (ignored — the box is read-only) and a non DD/MM/YYYY value forced in."""
         data = PartAFactory.valid_mandatory_fields()
-        data.date_of_incorporation = "11-30-10000"
-        data.expected_error = "Please enter a valid date in dd-mm-yyyy format."
+        data.invalid_value = "11-30-10000"
+        data.forced_date_text = "2018-03-15"
+        data.expected_error = PartAPage.DATE_FORMAT_ALERT
         data.scenario_label = "invalid_date_format"
         return data
 
@@ -78,147 +132,136 @@ class PartAFactory:
 
     @staticmethod
     def invalid_tan_format() -> PartAData:
-        """TC-64 step 1: TAN in an incorrect format (not AAAA99999A)."""
+        """TC-64: a TAN that doesn't match 4 letters + 5 digits + 1 letter."""
         data = PartAFactory.valid_mandatory_fields()
-        data.tan_number = "TAN12345"
-        data.expected_error = "Invalid TAN format. Expected format: AAAA99999A."
+        data.invalid_value = "TAN12345"
         data.scenario_label = "invalid_tan_format"
-        return data
-
-    @staticmethod
-    def valid_tan() -> PartAData:
-        """TC-64 step 4: Correctly formatted TAN number."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.tan_number = "PNEC12345A"
-        data.scenario_label = "valid_tan"
         return data
 
     # ── GSTIN (TC-65) ─────────────────────────────────────────────────────────
 
     @staticmethod
     def invalid_gstin_format() -> PartAData:
-        """TC-65 step 1: GSTIN in an incorrect format (not 15-character)."""
+        """TC-65: 15 characters that don't match the GSTIN pattern (14th char is not Z)."""
         data = PartAFactory.valid_mandatory_fields()
-        data.gst_number = "27ABCDE123"
-        data.expected_error = "Invalid GSTIN format. Expected 15-character GST Identification Number."
+        data.partial_value = "27ABCDE123"
+        data.invalid_value = "27ABCDE1234F1X5"
+        data.expected_error = PartAPage.GSTIN_INVALID_HINT
         data.scenario_label = "invalid_gstin_format"
         return data
 
-    @staticmethod
-    def valid_gstin() -> PartAData:
-        """TC-65 step 3: Valid 15-character GSTIN."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.gst_number = "27ABCDE1234F1Z5"
-        data.scenario_label = "valid_gstin"
-        return data
-
-    # ── Email (TC-66) ─────────────────────────────────────────────────────────
-
-    @staticmethod
-    def invalid_email_format() -> PartAData:
-        """TC-66 step 1: Email address missing @ and domain."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.official_email = "adminalphaplacementcom"
-        data.expected_error = "Please enter a valid email address."
-        data.scenario_label = "invalid_email_format"
-        return data
-
-    # ── Mobile (TC-67, TC-75) ─────────────────────────────────────────────────
-
-    @staticmethod
-    def invalid_mobile_with_letters() -> PartAData:
-        """TC-67 step 1: Mobile number containing letters."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.mobile_number = "9876ABCD10"
-        data.expected_error = "Please enter a valid 10-digit mobile number."
-        data.scenario_label = "invalid_mobile_with_letters"
-        return data
-
-    @staticmethod
-    def invalid_mobile_too_short() -> PartAData:
-        """TC-67 step 3: Mobile number with fewer than 10 digits."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.mobile_number = "98765"
-        data.expected_error = "Please enter a valid 10-digit mobile number."
-        data.scenario_label = "invalid_mobile_too_short"
-        return data
-
-    @staticmethod
-    def invalid_mobile_starts_with_zero() -> PartAData:
-        """TC-75: 10-digit mobile number beginning with 0."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.mobile_number = "0987654321"
-        data.expected_error = "Please enter a valid 10-digit mobile number."
-        data.scenario_label = "invalid_mobile_starts_with_zero"
-        return data
-
-    # ── Website URL (TC-68) ───────────────────────────────────────────────────
-
-    @staticmethod
-    def invalid_website_url() -> PartAData:
-        """TC-68 step 1: URL without http:// or https:// prefix."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.website_url = "www.alphaplacement.com"
-        data.expected_error = "Please enter a valid website URL"
-        data.scenario_label = "invalid_website_url"
-        return data
-
-    @staticmethod
-    def valid_website_url() -> PartAData:
-        """TC-68 step 4: URL with https:// prefix."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.website_url = "https://www.alphaplacement.com"
-        data.scenario_label = "valid_website_url"
-        return data
-
-    # ── Agency Name (TC-74, TC-76) ────────────────────────────────────────────
-
-    @staticmethod
-    def agency_name_with_special_chars() -> PartAData:
-        """TC-74: Agency name containing @, #, ! characters."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.agency_name = "Alpha@Placement#2024!"
-        data.expected_error = "Agency name contains invalid characters."
-        data.scenario_label = "agency_name_with_special_chars"
-        return data
-
-    @staticmethod
-    def duplicate_agency_name() -> PartAData:
-        """TC-76: Agency name that already exists in the system (non-blocking warning)."""
-        data = PartAFactory.valid_mandatory_fields()
-        data.agency_name = "Alpha Placement Agency"
-        data.expected_error = "An agency with this name already exists."
-        data.scenario_label = "duplicate_agency_name"
-        return data
-
-    # ── Optional / partial fields (TC-71, TC-72, TC-73) ──────────────────────
+    # ── Branch offices (TC-71, TC-72, TC-431, TC-435) ────────────────────────
 
     @staticmethod
     def without_branch_offices() -> PartAData:
-        """TC-71: All mandatory fields filled; Branch Offices left blank."""
-        return PartAData(
-            agency_name="Test Agency",
-            legal_constitution="Partnership",
-            date_of_incorporation="14-10-2020",
-            address_line1="A-302, Greenfield Acres, Palmont Drive, Mumbai",
-            official_email="testmail@gmail.com",
-            mobile_number="9359283811",
-            scenario_label="without_branch_offices",
-        )
+        """TC-71: all mandatory fields, no branch office added."""
+        data = PartAFactory.valid_mandatory_fields()
+        data.scenario_label = "without_branch_offices"
+        return data
 
     @staticmethod
     def with_branch_offices() -> PartAData:
-        """TC-72: All mandatory fields plus two branch office addresses."""
+        """TC-72: all mandatory fields plus two branch offices."""
         data = PartAFactory.valid_mandatory_fields()
-        data.branch_offices = "22, Park Street, Mumbai\n5, Civil Lines, Nagpur"
+        data.branches = [
+            OfficeAddress("22, Park Street", "Pune", "Haveli", "Pune", "411028", "Rented Office Space"),
+            OfficeAddress("5, Civil Lines", "Nagpur", "Nagpur", "Nagpur", "440001", "Owned Office Space"),
+        ]
         data.scenario_label = "with_branch_offices"
         return data
 
     @staticmethod
+    def branch_premise_other() -> PartAData:
+        """TC-431: one branch whose premise type is Other, needing 'Please Specify'."""
+        data = PartAFactory.valid_mandatory_fields()
+        data.branches = [OfficeAddress("22, Park Street", "Pune", "Haveli", "Pune", "411028", "Other",
+                                       premise_other="Shared office in a residential society")]
+        data.scenario_label = "branch_premise_other"
+        return data
+
+    # ── Head office outside Maharashtra (TC-427, TC-428) ─────────────────────
+
+    @staticmethod
+    def head_office_outside_maharashtra() -> PartAData:
+        """TC-427 / TC-428: head office in Gujarat plus the Primary Maharashtra Office."""
+        data = PartAFactory.valid_mandatory_fields()
+        data.state = "Gujarat"
+        data.address_line1 = "12, Ashram Road"
+        data.district = "Ahmedabad"
+        data.taluka = "Ahmedabad City"
+        data.city = "Ahmedabad"
+        data.pincode = "380009"
+        data.mh_office = OfficeAddress("22, Park Street", "Pune", "Haveli", "Pune", "411028")
+        data.scenario_label = "head_office_outside_maharashtra"
+        return data
+
+    # ── Proprietorship (TC-430) ──────────────────────────────────────────────
+
+    @staticmethod
+    def proprietorship_without_incorporation() -> PartAData:
+        """TC-430: a Proprietorship saved without incorporation number or certificate."""
+        data = PartAFactory.valid_mandatory_fields()
+        data.legal_constitution = "Proprietorship"
+        data.incorporation_no = ""
+        data.incorporation_certificate = None
+        data.designation = "Proprietor"
+        data.scenario_label = "proprietorship_without_incorporation"
+        return data
+
+    # ── Partial data (TC-429, TC-80) ──────────────────────────────────────────
+
+    @staticmethod
     def partial_fields_only() -> PartAData:
-        """TC-73: Only Agency Name and Official Email filled; form not submitted."""
+        """TC-429: a few fields entered without saving; Designation added after reopening."""
         return PartAData(
-            agency_name="Alpha Placement",
-            official_email="admin@alpha.com",
+            incorporation_no="U74999MH2018PTC123456",
+            authorised_signatory="Ravi Kulkarni",
+            designation="Director",
             scenario_label="partial_fields_only",
         )
+
+    @staticmethod
+    def session_timeout_partial() -> PartAData:
+        """TC-80: fields entered before the session times out."""
+        return PartAData(
+            incorporation_no="U74999MH2018PTC123456",
+            authorised_signatory="Delta Kumar",
+            scenario_label="session_timeout_partial",
+        )
+
+    # ── Browser back (TC-78) ─────────────────────────────────────────────────
+
+    @staticmethod
+    def unsaved_signatory() -> PartAData:
+        """TC-78: one value entered and not saved before pressing browser back."""
+        return PartAData(authorised_signatory="Beta Kumar", scenario_label="unsaved_signatory")
+
+    # ── Pincode range (TC-434) ───────────────────────────────────────────────
+
+    @staticmethod
+    def pincode_outside_maharashtra() -> PartAData:
+        """TC-434: an out-of-range pincode, then one inside 400000–445999."""
+        data = PartAFactory.valid_mandatory_fields()
+        data.invalid_value = "380009"
+        data.pincode = "411001"
+        data.expected_error = PartAPage.PIN_INVALID_HINT
+        data.scenario_label = "pincode_outside_maharashtra"
+        return data
+
+    # ── As-you-type input rules (TC-436, TC-64 step 1) ───────────────────────
+
+    @staticmethod
+    def as_you_type_cases() -> list[TypedInput]:
+        """TC-436: what each Part A text field shows after typing raw input."""
+        return [
+            TypedInput("incorporation_no_input", "u74999-mh/2018 ptc#123", "U74999-MH/2018 PTC123"),
+            TypedInput("tan_number_input", "pnec-12345a", "PNEC12345A"),
+            TypedInput("gst_number_input", "27abcde1234f1z5", "27ABCDE1234F1Z5"),
+            TypedInput("aadhaar_input", "1234-5678-9012-34", "123456789012"),
+            TypedInput("pincode_input", "41100A12", "411001"),
+        ]
+
+    @staticmethod
+    def tan_typed_lowercase() -> TypedInput:
+        """TC-64 step 1: a lower-case TAN with separators is upper-cased and stripped."""
+        return TypedInput("tan_number_input", "pnec-12345a!", "PNEC12345A")

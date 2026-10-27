@@ -40,8 +40,14 @@ class AdminLoginPage(BasePage):
     # ── CAPTCHA ───────────────────────────────────────────────────────────────
 
     @property
+    def captcha_image(self):
+        """Server-side CAPTCHA image (#captchaImg); clicking it refreshes the captcha."""
+        return self.page.locator("#captchaImg")
+
+    @property
     def captcha_value(self):
-        return self.page.locator("#captcha")
+        """Alias of ``captcha_image`` — the value only lives in the PHP session, never in the DOM."""
+        return self.captcha_image
 
     @property
     def captcha_input(self):
@@ -110,19 +116,26 @@ class AdminLoginPage(BasePage):
     def toggle_password_visibility(self):
         self.password_show_toggle.click()
 
-    @allure.step("Read current CAPTCHA text from DOM")
-    def read_captcha_value(self) -> str:
-        return self.captcha_value.text_content().strip()
+    @allure.step("Read current CAPTCHA value via OCR")
+    def read_captcha_value(self, max_attempts: int = 5) -> str:
+        """Reads the CAPTCHA by OCR-ing #captchaImg (see BasePage.read_image_captcha)."""
+        return self.read_image_captcha(self.captcha_image, self._refresh_captcha_image, max_attempts)
 
     @allure.step("Fill CAPTCHA")
     def fill_captcha(self, captcha_text: str):
         self.captcha_input.fill(captcha_text)
 
+    def _refresh_captcha_image(self):
+        """Clicks Refresh and waits for a new #captchaImg to be requested."""
+        old_src = self.captcha_image.get_attribute("src") or ""
+        self.captcha_refresh_button.click()
+        self._wait_for_src_change(self.captcha_image, old_src)
+
     @allure.step("Refresh CAPTCHA")
     def refresh_captcha(self) -> str:
-        """Clicks Refresh and returns the new CAPTCHA value."""
-        self.captcha_refresh_button.click()
-        return self.captcha_value.text_content().strip()
+        """Clicks Refresh and returns the new CAPTCHA value (read via OCR)."""
+        self._refresh_captcha_image()
+        return self.read_captcha_value()
 
     # ── Composite actions ─────────────────────────────────────────────────────
 
