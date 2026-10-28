@@ -40,6 +40,28 @@ Reading back for later tests::
     user = TestStateStore().get_any_agency_user()
     # user.username, user.password, user.agency_name, user.mobile, …
 
+Form-I progress
+---------------
+``form_applications`` holds one row per (user, wizard step). Steps are named,
+not numbered — the portal numbers them differently on different screens (the
+public index counts "Create Account" as step 1, the forms count Part A as
+step 1) — and run in ``FORM_STEPS`` order: part_a, part_b, part_c, part_f,
+enclosures, declaration, payment.
+
+Each row also keeps a small JSON ``data`` snapshot of what was saved, limited
+to the facts later tests branch on (agency type, office state, …) — never
+documents or personal details. Record a step once the portal accepts it::
+
+    store.mark_form_step_status(
+        username=user.username, step="part_a", status="completed",
+        data={"legal_constitution": "Private Limited Company", "state": "Maharashtra", "branches": 0},
+    )
+
+and query by progress plus those facts::
+
+    store.get_agency_users_with_steps(["part_a"], legal_constitution="Proprietorship")
+    # user.steps == {"part_a": "completed"}; user.step_data["part_a"]["legal_constitution"]
+
 The DB persists between test runs by design — it mirrors users actually
 registered in the dev environment.  Delete ``state/test_state.db`` only if you
 also reset the dev environment.
@@ -47,12 +69,20 @@ also reset the dev environment.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 DEFAULT_DB_PATH = Path(__file__).parent.parent / "state" / "test_state.db"
+
+# Form-I wizard steps after account creation, in the order the portal unlocks them.
+FORM_STEPS = ("part_a", "part_b", "part_c", "part_f", "enclosures", "declaration", "payment")
+FORM_STEP_STATUSES = ("not_started", "in_progress", "completed")
+
+# Numbered steps written before steps were named ("1" was Part A, as in the forms' headings).
+_LEGACY_STEP_NAMES = {str(i): name for i, name in enumerate(FORM_STEPS, start=1)}
 
 
 @dataclass(frozen=True)
@@ -73,8 +103,10 @@ class UserRecord:
     mobile: Optional[str] = None
     alt_phone: Optional[str] = None
     city_name: Optional[str] = None     # set only when district == "Other"
-    # {"A": "completed", "B": "in_progress", …} — empty dict until Form-I starts
+    # {"part_a": "completed", "part_b": "in_progress", …} — empty dict until Form-I starts
     steps: dict[str, str] = field(default_factory=dict)
+    # {"part_a": {"legal_constitution": …}, …} — only steps saved with data
+    step_data: dict[str, dict] = field(default_factory=dict)
 
 
 class TestStateStore:
@@ -106,6 +138,10 @@ class TestStateStore:
          recreated cleanly.  User rows are preserved when only
          ``form_applications`` is stale because the drop-recreate only targets
          the table whose schema is wrong.
+
+         A ``form_applications`` table from before steps were named (numbered
+         steps, no ``data`` column) is rebuilt with its rows carried over —
+         "1" becomes "part_a" and so on (``_LEGACY_STEP_NAMES``).
          """
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -131,6 +167,7 @@ class TestStateStore:
                 ).fetchall()
             }
 
+            migrate_legacy_steps = False
             if "form_applications" in existing_tables:
                 actual_cols = {
                     row[1] for row in
@@ -139,6 +176,12 @@ class TestStateStore:
                 if not EXPECTED_FORM_COLS.issubset(actual_cols):
                     # Stale schema — drop and let CREATE TABLE rebuild it below
                     conn.execute("DROP TABLE form_applications")
+                elif "data" not in actual_cols:
+                    # Numbered steps — set aside, rows are copied back once the table is rebuilt.
+                    # The index would follow the renamed table and block its re-creation below.
+                    conn.execute("DROP INDEX IF EXISTS idx_form_app_status")
+                    conn.execute("ALTER TABLE form_applications RENAME TO form_applications_legacy")
+                    migrate_legacy_steps = True
 
             if "users" in existing_tables:
                 actual_cols = {
@@ -154,7 +197,9 @@ class TestStateStore:
                             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
 
             # ── Create tables (no-ops if already correct) ─────────────────────
-            conn.executescript("""
+            step_names = ",".join(f"'{s}'" for s in FORM_STEPS)
+            status_names = ",".join(f"'{s}'" for s in FORM_STEP_STATUSES)
+            conn.executescript(f"""
                  CREATE TABLE IF NOT EXISTS users (
                      id              INTEGER PRIMARY KEY AUTOINCREMENT,
                      role            TEXT NOT NULL
@@ -176,9 +221,10 @@ class TestStateStore:
                      user_id     INTEGER NOT NULL
                                  REFERENCES users(id) ON DELETE CASCADE,
                      step        TEXT NOT NULL
-                                 CHECK (step IN ('1','2','3','4','5','6','7','8')),
+                                 CHECK (step IN ({step_names})),
                      status      TEXT NOT NULL DEFAULT 'not_started'
-                                 CHECK (status IN ('not_started','in_progress','completed')),
+                                 CHECK (status IN ({status_names})),
+                     data        TEXT CHECK (data IS NULL OR json_valid(data)),
                      updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                      PRIMARY KEY (user_id, step)
                  );
@@ -189,11 +235,26 @@ class TestStateStore:
                  CREATE INDEX IF NOT EXISTS idx_form_app_status
                      ON form_applications(step, status);
              """)
+
+            if migrate_legacy_steps:
+                legacy = ",".join("?" * len(_LEGACY_STEP_NAMES))
+                case = " ".join(f"WHEN '{old}' THEN '{new}'" for old, new in _LEGACY_STEP_NAMES.items())
+                conn.execute(
+                    f"""
+                    INSERT OR IGNORE INTO form_applications (user_id, step, status, updated_at)
+                    SELECT user_id, CASE step {case} END, status, updated_at
+                    FROM form_applications_legacy
+                    WHERE step IN ({legacy})
+                    """,
+                    tuple(_LEGACY_STEP_NAMES),
+                )
+                conn.execute("DROP TABLE form_applications_legacy")
     def _row_to_record(self, row: sqlite3.Row, conn: sqlite3.Connection) -> UserRecord:
         steps_rows = conn.execute(
-            "SELECT step, status FROM form_applications WHERE user_id = ?", (row["id"],)
+            "SELECT step, status, data FROM form_applications WHERE user_id = ?", (row["id"],)
         ).fetchall()
         steps = {r["step"]: r["status"] for r in steps_rows}
+        step_data = {r["step"]: json.loads(r["data"]) for r in steps_rows if r["data"]}
         return UserRecord(
             id=row["id"],
             role=row["role"],
@@ -208,6 +269,7 @@ class TestStateStore:
             alt_phone=row["alt_phone"],
             city_name=row["city_name"],
             steps=steps,
+            step_data=step_data,
         )
 
     # ── Writers ───────────────────────────────────────────────────────────────
@@ -249,13 +311,21 @@ class TestStateStore:
             )
             return cursor.lastrowid
 
-    def mark_form_step_status(self, *, username: str, step: str, status: str) -> None:
+    def mark_form_step_status(
+        self, *, username: str, step: str, status: str, data: Optional[dict] = None
+    ) -> None:
         """
-               Upsert a Form-I part status for a given user.
+               Upsert a Form-I step status for a given user.
 
-               Call with ``status='in_progress'`` when a part is saved as draft,
-               and ``status='completed'`` when it is finalised / submitted.
+               ``step`` is one of ``FORM_STEPS`` ('part_a' … 'payment'). Call with
+               ``status='in_progress'`` when a step is saved as draft, and
+               ``status='completed'`` when it is finalised / submitted.
+
+               ``data`` replaces the step's stored snapshot; leave it ``None`` to
+               keep what was recorded before (e.g. when only the status changes).
         """
+        if step not in FORM_STEPS:
+            raise ValueError(f"Unknown Form-I step '{step}' — expected one of {FORM_STEPS}")
         with self._connect() as conn:
             user = conn.execute(
                 "SELECT id FROM users WHERE username = ?", (username,)
@@ -264,21 +334,32 @@ class TestStateStore:
                 raise ValueError(f"No user found with username '{username}'")
             conn.execute(
                 """
-                INSERT INTO form_applications (user_id, step, status, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO form_applications (user_id, step, status, data, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(user_id, step) DO UPDATE SET
                     status=excluded.status,
+                    data=COALESCE(excluded.data, form_applications.data),
                     updated_at=CURRENT_TIMESTAMP
                 """,
-                (user["id"], step, status),
+                (user["id"], step, status, json.dumps(data) if data is not None else None),
             )
 
     # ── Readers ───────────────────────────────────────────────────────────────
 
-    def get_any_agency_user(self) -> Optional[UserRecord]:
+    # "Other" at registration carries no Maharashtra district into Part A.
+    _LISTED_DISTRICT_SQL = "AND u.district IS NOT NULL AND u.district NOT IN ('', 'Other')"
+
+    def get_any_agency_user(
+        self, district: Optional[str] = None, listed_district_only: bool = False
+    ) -> Optional[UserRecord]:
+        """Returns any agency user — registered in ``district`` when one is given.
+        ``listed_district_only`` excludes users registered with "Other" (or no district),
+        i.e. users whose registration carries a Maharashtra district into Part A."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM users WHERE role = 'agency' LIMIT 1"
+                f"""SELECT * FROM users u WHERE u.role = 'agency' AND (? IS NULL OR u.district = ?)
+                    {self._LISTED_DISTRICT_SQL if listed_district_only else ''} LIMIT 1""",
+                (district, district),
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
 
@@ -296,11 +377,23 @@ class TestStateStore:
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
 
-    def get_agency_user_with_steps(self, steps: list[str]) -> Optional[UserRecord]:
-        """Returns an agency user where every listed part has status='completed'."""
+    def get_agency_user_with_steps(
+        self, steps: list[str], legal_constitution: Optional[str] = None
+    ) -> Optional[UserRecord]:
+        """Returns an agency user where every listed step has status='completed'
+        (see ``get_agency_users_with_steps``)."""
+        users = self.get_agency_users_with_steps(steps, legal_constitution)
+        return users[0] if users else None
+
+    def get_agency_users_with_steps(
+        self, steps: list[str], legal_constitution: Optional[str] = None
+    ) -> list[UserRecord]:
+        """Every agency user where each listed step has status='completed', oldest first.
+        ``legal_constitution`` keeps only users whose Part A was recorded with that
+        agency type — it decides the key-person label and fields in Part B."""
         with self._connect() as conn:
             placeholders = ",".join("?" * len(steps))
-            row = conn.execute(
+            rows = conn.execute(
                 f"""
                 SELECT u.* FROM users u
                 WHERE u.role = 'agency'
@@ -310,11 +403,16 @@ class TestStateStore:
                         AND fa.step IN ({placeholders})
                         AND fa.status = 'completed'
                   ) = ?
-                LIMIT 1
+                  AND (? IS NULL OR EXISTS (
+                      SELECT 1 FROM form_applications fa
+                      WHERE fa.user_id = u.id AND fa.step = 'part_a'
+                        AND json_extract(fa.data, '$.legal_constitution') = ?
+                  ))
+                ORDER BY u.id
                 """,
-                (*steps, len(steps)),
-            ).fetchone()
-            return self._row_to_record(row, conn) if row else None
+                (*steps, len(steps), legal_constitution, legal_constitution),
+            ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
 
     def get_agency_user_with_step_in_status(
         self, step: str, status: str
@@ -338,17 +436,24 @@ class TestStateStore:
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
 
-    def get_agency_user_with_no_form(self) -> Optional[UserRecord]:
-        """Returns an agency user who has not started the 8-step wizard at all."""
+    def get_agency_user_with_no_form(
+        self, district: Optional[str] = None, listed_district_only: bool = False
+    ) -> Optional[UserRecord]:
+        """Returns an agency user who has not started the Form-I wizard at all —
+        registered in ``district`` when one is given. ``listed_district_only``
+        excludes users registered with "Other" (see ``get_any_agency_user``)."""
         with self._connect() as conn:
             row = conn.execute(
-                """
+                f"""
                 SELECT * FROM users u
                 WHERE u.role = 'agency'
+                  AND (? IS NULL OR u.district = ?)
+                  {self._LISTED_DISTRICT_SQL if listed_district_only else ''}
                   AND NOT EXISTS (
                       SELECT 1 FROM form_applications fa WHERE fa.user_id = u.id
                   )
                 LIMIT 1
-                """
+                """,
+                (district, district),
             ).fetchone()
             return self._row_to_record(row, conn) if row else None

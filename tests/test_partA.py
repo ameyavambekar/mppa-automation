@@ -11,7 +11,7 @@ from playwright.sync_api import expect
 from config import FORMS_BASE
 from pages.login_page import LoginPage
 from pages.partA_page import PART_A_LOCKED_STEP_URL, PartAPage
-from test_data.step1_factory import PartAData, TypedInput
+from test_data.partA_factory import PartAData, PartAFactory, TypedInput
 from utils.aio import aio_case
 from utils.file_manager import OVERSIZED_FILE, UNDERSIZED_FILE, UNSUPPORTED_CERTIFICATE, VALID_CERTIFICATE
 from utils.state_store import TestStateStore
@@ -121,7 +121,7 @@ def test_tc57_pan_prepopulated_readonly():
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-58: Part A saves successfully and unlocks Part B when all mandatory fields are filled")
 def test_tc58_step1_saves_and_unlocks_step2(
-    part_a_page: PartAPage, logged_in_part_a_fresh_page, part_a_valid_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_valid_data: PartAData
 ):
     """
     Given I am on Part A with no prior data saved (head office in Maharashtra)
@@ -131,8 +131,8 @@ def test_tc58_step1_saves_and_unlocks_step2(
 
     Notion: KAN-TC-58 | KAN-8 AC-5 | data: valid_mandatory_fields
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_valid_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_valid_data, user)
 
     with allure.step(f"Select Agency Type / Legal Constitution: {data.legal_constitution}"):
         part_a_page.select_legal_constitution(data.legal_constitution)
@@ -174,8 +174,10 @@ def test_tc58_step1_saves_and_unlocks_step2(
     with allure.step("Verify Part A is saved — Part B opens instead of redirecting back"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +228,11 @@ def test_tc60_blank_form_shows_validation_tooltip(part_a_page: PartAPage, logged
     with allure.step("Verify the form is empty apart from the data from registration"):
         expect(part_a_page.legal_constitution_select).to_have_value("")
         expect(part_a_page.date_of_establishment_input).to_have_value("")
-        expect(part_a_page.district_display).not_to_have_value("")
+        if user.district == "Other":
+            # "Other" at registration names no Maharashtra district, so District stays empty (see TC-426).
+            expect(part_a_page.district_display).to_have_value("")
+        else:
+            expect(part_a_page.district_display).not_to_have_value("")
 
     with allure.step("Click 'Save Part A & Continue' without entering any data"):
         part_a_page.click_save_next()
@@ -250,7 +256,7 @@ def test_tc60_blank_form_shows_validation_tooltip(part_a_page: PartAPage, logged
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-62: A future Date of Establishment cannot be selected and is rejected on save")
 def test_tc62_future_date_of_incorporation(
-    part_a_page: PartAPage, logged_in_part_a_page, part_a_future_date_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_mh_page, part_a_future_date_data: PartAData
 ):
     """
     Given I am on Part A with all other mandatory fields filled
@@ -261,8 +267,8 @@ def test_tc62_future_date_of_incorporation(
 
     Notion: KAN-TC-62 | KAN-8 EC-10 | data: future_date
     """
-    page, user = logged_in_part_a_page
-    data = part_a_future_date_data
+    page, user = logged_in_part_a_mh_page
+    data = PartAFactory.for_user(part_a_future_date_data, user)
 
     with allure.step("Verify the date box cannot be typed into"):
         expect(part_a_page.date_of_establishment_input).not_to_be_editable()
@@ -288,7 +294,7 @@ def test_tc62_future_date_of_incorporation(
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-63: Date of Establishment accepts only calendar dates; any other format is rejected on save")
 def test_tc63_invalid_date_format(
-    part_a_page: PartAPage, logged_in_part_a_page, part_a_invalid_date_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_mh_page, part_a_invalid_date_data: PartAData
 ):
     """
     Given I am on Part A with all other mandatory fields filled
@@ -299,8 +305,8 @@ def test_tc63_invalid_date_format(
 
     Notion: KAN-TC-63 | KAN-8 field validation | data: invalid_date_format
     """
-    page, user = logged_in_part_a_page
-    data = part_a_invalid_date_data
+    page, user = logged_in_part_a_mh_page
+    data = PartAFactory.for_user(part_a_invalid_date_data, user)
 
     with allure.step(f"Verify '{data.invalid_value}' cannot be typed — the date box is read-only"):
         expect(part_a_page.date_of_establishment_input).not_to_be_editable()
@@ -325,7 +331,7 @@ def test_tc63_invalid_date_format(
 @allure.title("TC-64: TAN Number is mandatory and must match the TAN format")
 def test_tc64_invalid_tan_format(
     part_a_page: PartAPage,
-    logged_in_part_a_fresh_page,
+    logged_in_part_a_fresh_mh_page,
     part_a_invalid_tan_data: PartAData,
     part_a_tan_typed_lowercase: TypedInput,
 ):
@@ -340,8 +346,8 @@ def test_tc64_invalid_tan_format(
 
     Notion: KAN-TC-64 | KAN-8 field validation | data: invalid_tan_format
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_invalid_tan_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_invalid_tan_data, user)
     typed = part_a_tan_typed_lowercase
 
     with allure.step(f"Type '{typed.typed}' into TAN Number"):
@@ -371,8 +377,10 @@ def test_tc64_invalid_tan_format(
     with allure.step("Verify Part A is saved"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -382,7 +390,7 @@ def test_tc64_invalid_tan_format(
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-65: GSTIN shows a live format hint and an invalid GSTIN is rejected on save")
 def test_tc65_invalid_gstin_format(
-    part_a_page: PartAPage, logged_in_part_a_fresh_page, part_a_invalid_gstin_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_invalid_gstin_data: PartAData
 ):
     """
     Given I am on Part A with all other mandatory fields filled
@@ -395,8 +403,8 @@ def test_tc65_invalid_gstin_format(
 
     Notion: KAN-TC-65 | KAN-8 EC-8 | data: invalid_gstin_format
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_invalid_gstin_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_invalid_gstin_data, user)
 
     with allure.step(f"Type a partial GSTIN '{data.partial_value}'"):
         part_a_page.fill_gst(data.partial_value)
@@ -422,8 +430,10 @@ def test_tc65_invalid_gstin_format(
     with allure.step("Verify Part A is saved"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +525,7 @@ def test_tc70_oversized_office_photo():
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-71: Part A saves successfully when no branch office is added")
 def test_tc71_save_without_branch_offices(
-    part_a_page: PartAPage, logged_in_part_a_fresh_page, part_a_without_branch_offices_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_without_branch_offices_data: PartAData
 ):
     """
     Given I am on Part A
@@ -524,8 +534,8 @@ def test_tc71_save_without_branch_offices(
 
     Notion: KAN-TC-71 | KAN-8 AC-7 | data: without_branch_offices
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_without_branch_offices_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_without_branch_offices_data, user)
 
     with allure.step("Fill all mandatory fields; add no branch office"):
         _fill_part_a(part_a_page, data)
@@ -537,8 +547,10 @@ def test_tc71_save_without_branch_offices(
     with allure.step("Verify Part A is saved"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +560,7 @@ def test_tc71_save_without_branch_offices(
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-72: Multiple branch offices added as cards are each preserved after save")
 def test_tc72_multiple_branch_offices_preserved(
-    part_a_page: PartAPage, logged_in_part_a_fresh_page, part_a_with_branch_offices_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_with_branch_offices_data: PartAData
 ):
     """
     Given I am on Part A with all mandatory fields filled
@@ -558,8 +570,8 @@ def test_tc72_multiple_branch_offices_preserved(
 
     Notion: KAN-TC-72 | KAN-8 AC-7 | data: with_branch_offices
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_with_branch_offices_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_with_branch_offices_data, user)
 
     with allure.step("Fill all mandatory fields and add two branch offices"):
         _fill_part_a(part_a_page, data)
@@ -589,8 +601,10 @@ def test_tc72_multiple_branch_offices_preserved(
             expect(part_a_page.branch_field(i, "pincode")).to_have_value(b.pincode)
             expect(part_a_page.branch_field(i, "office_premise_type")).to_have_value(b.premise_type)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -916,8 +930,10 @@ def test_tc428_maharashtra_office_mandatory(
     with allure.step("Verify Part A is saved"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -983,7 +999,7 @@ def test_tc429_partial_data_persists(
 @allure.title("TC-430: Incorporation details are not mandatory for a Proprietorship")
 def test_tc430_proprietorship_incorporation_optional(
     part_a_page: PartAPage,
-    logged_in_part_a_fresh_page,
+    logged_in_part_a_fresh_mh_page,
     part_a_proprietorship_data: PartAData,
     part_a_valid_data: PartAData,
 ):
@@ -998,8 +1014,8 @@ def test_tc430_proprietorship_incorporation_optional(
 
     Notion: KAN-TC-430 | KAN-8 AC-8 | data: proprietorship_without_incorporation
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_proprietorship_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_proprietorship_data, user)
 
     with allure.step(f"Select '{data.legal_constitution}'"):
         part_a_page.select_legal_constitution(data.legal_constitution)
@@ -1023,8 +1039,10 @@ def test_tc430_proprietorship_incorporation_optional(
     with allure.step("Verify Part A is saved"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1034,7 +1052,7 @@ def test_tc430_proprietorship_incorporation_optional(
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-431: Selecting \"Other\" as a branch office premise type requires \"Please Specify\"")
 def test_tc431_branch_premise_other_requires_specify(
-    part_a_page: PartAPage, logged_in_part_a_fresh_page, part_a_branch_premise_other_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_branch_premise_other_data: PartAData
 ):
     """
     Given I am on Part A with all mandatory fields filled and one branch office added
@@ -1047,8 +1065,8 @@ def test_tc431_branch_premise_other_requires_specify(
 
     Notion: KAN-TC-431 | KAN-8 EC-4 | data: branch_premise_other
     """
-    page, user = logged_in_part_a_fresh_page
-    data = part_a_branch_premise_other_data
+    page, user = logged_in_part_a_fresh_mh_page
+    data = PartAFactory.for_user(part_a_branch_premise_other_data, user)
     branch = data.branches[0]
 
     with allure.step("Fill all mandatory fields and add a branch office with premise type Other"):
@@ -1078,8 +1096,10 @@ def test_tc431_branch_premise_other_requires_specify(
     with allure.step("Verify Part A is saved"):
         _expect_part_a_saved(page)
 
-    with allure.step("Record Step 1 as completed in state store"):
-        TestStateStore().mark_form_step_status(username=user.username, step="1", status="completed")
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1089,7 +1109,7 @@ def test_tc431_branch_premise_other_requires_specify(
 @allure.story("Step 1 - Agency Identity")
 @allure.title("TC-432: Certificate uploads accept only PDF, JPG and PNG files")
 def test_tc432_certificate_file_types(
-    part_a_page: PartAPage, logged_in_part_a_fresh_page, part_a_valid_data: PartAData
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_valid_data: PartAData
 ):
     """
     Given I am on Part A with all other mandatory fields filled
@@ -1100,7 +1120,7 @@ def test_tc432_certificate_file_types(
 
     Notion: KAN-TC-432 | KAN-8 EC-5 | data: certificate.docx
     """
-    page, user = logged_in_part_a_fresh_page
+    page, user = logged_in_part_a_fresh_mh_page
     certificates = {
         "incorporation_file": part_a_page.incorporation_certificate_input,
         "tan_file": part_a_page.tan_certificate_input,
@@ -1112,7 +1132,7 @@ def test_tc432_certificate_file_types(
             expect(file_input).to_have_attribute("accept", PartAPage.CERTIFICATE_ACCEPT)
 
     with allure.step("Fill all mandatory fields"):
-        _fill_part_a(part_a_page, part_a_valid_data)
+        _fill_part_a(part_a_page, PartAFactory.for_user(part_a_valid_data, user))
 
     with allure.step(f"Choose {os.path.basename(UNSUPPORTED_CERTIFICATE)} for each certificate"):
         for file_input in certificates.values():

@@ -4,21 +4,24 @@ import pytest
 from config import FORMS_BASE
 from pages.login_page import LoginPage
 from pages.partA_page import PartAPage
-from test_data.step1_factory import PartAData, PartAFactory, TypedInput
+from test_data.partA_factory import PartAData, PartAFactory, TypedInput
 from utils.state_store import TestStateStore
 
 
 def _login_and_navigate_to_step1(page, user):
-    """Logs in, waits for the Form-I wizard, then opens Step 1 — Part A.
+    """Logs in, waits for the Form-I wizard, then opens Step 1 — Part A in edit mode.
 
     Login lands on the step the user stopped at, so Part A is opened
-    explicitly for users who have already completed it."""
+    explicitly for users who have already completed it. A saved Part A opens
+    read-only, so "Edit this section" is clicked when it's shown."""
     login = LoginPage(page)
     login.open()
     login.login(user.username, user.password)
     page.wait_for_url(f"{FORMS_BASE}/**", timeout=15000)
-    PartAPage(page).open()
+    part_a = PartAPage(page)
+    part_a.open()
     page.wait_for_load_state("networkidle")
+    part_a.make_editable()
 
 
 # ── Page object fixture ───────────────────────────────────────────────────────
@@ -44,13 +47,43 @@ def logged_in_part_a_page(page):
 def logged_in_part_a_fresh_page(page):
     """Yields (page, user) for an agency user who has NOT started the wizard, logged in and on Step 1.
 
-    Use for tests that require all Step 1 fields to be empty, or that will
-    save Step 1 and update the state store (TC-58, TC-71, TC-72)."""
+    Use for tests that require all Step 1 fields to be empty but don't fill the
+    head office address. The user may be registered with any district, including "Other"."""
     user = TestStateStore().get_agency_user_with_no_form()
     if user is None:
         pytest.skip(
             "No agency user without form applications found in state store — "
             "run pre-registration tests first."
+        )
+    _login_and_navigate_to_step1(page, user)
+    yield page, user
+
+
+@pytest.fixture
+def logged_in_part_a_mh_page(page):
+    """Like ``logged_in_part_a_page`` but the user is registered in one of the listed
+    Maharashtra districts (not "Other"), so Part A has a head office Taluka list.
+    Pass the data through ``PartAFactory.for_user(data, user)`` so its taluka belongs
+    to that district. Part A may already be saved."""
+    user = TestStateStore().get_any_agency_user(listed_district_only=True)
+    if user is None:
+        pytest.skip("No agency user registered in a listed Maharashtra district in state store — "
+                    "run pre-registration tests first.")
+    _login_and_navigate_to_step1(page, user)
+    yield page, user
+
+
+@pytest.fixture
+def logged_in_part_a_fresh_mh_page(page):
+    """Like ``logged_in_part_a_fresh_page`` but the user is registered in one of the listed
+    Maharashtra districts. Use for tests that fill a Maharashtra head office and/or save
+    Part A (they mark Step 1 completed, using the user up) — with
+    ``PartAFactory.for_user(data, user)``."""
+    user = TestStateStore().get_agency_user_with_no_form(listed_district_only=True)
+    if user is None:
+        pytest.skip(
+            "No agency user registered in a listed Maharashtra district without form applications "
+            "in state store — run pre-registration tests first."
         )
     _login_and_navigate_to_step1(page, user)
     yield page, user
@@ -120,7 +153,7 @@ def part_a_session_timeout_data() -> PartAData:
 
 @pytest.fixture
 def part_a_outside_maharashtra_data() -> PartAData:
-    """TC-427 / TC-428: head office in Gujarat plus the Primary Maharashtra Office."""
+    """TC-427 / TC-428: head office in another state (random) plus the Primary Maharashtra Office."""
     return PartAFactory.head_office_outside_maharashtra()
 
 

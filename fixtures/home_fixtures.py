@@ -33,7 +33,7 @@ def logged_in_home_page(page):
 def agency_with_part_a_home_page(page):
     """Yields (page, user) for an agency user who has completed Part A (step 1),
     navigated to the Home page."""
-    user = TestStateStore().get_agency_user_with_steps(["1"])
+    user = TestStateStore().get_agency_user_with_steps(["part_a"])
     if user is None:
         pytest.skip("No agency user with Part A (step 1) completed in state store.")
     _login_and_navigate_to_home(page, user)

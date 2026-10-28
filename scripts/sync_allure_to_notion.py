@@ -77,7 +77,7 @@ MODULE_PAGE_IDS: dict[str, str] = {
 SUITE_TO_MODULE: dict[str, str] = {
     "test_pre_registration":         "Pre-Registration",
     "test_login":                    "Agency Login",
-    "test_step1":                    "Application Step 1",
+    "test_partA":                    "Application Step 1",
     "test_admin_login":              "Admin Login",
     "test_admin_users":              "User Management",
     "test_agencies":                 "Agencies Management",

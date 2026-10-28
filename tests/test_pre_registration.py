@@ -1124,7 +1124,7 @@ def test_tc24_static_ui_elements_display_correctly(registration_page):
 @pytest.mark.parametrize(
     "data_fixture",
     ["valid_registration_data", "district_other_data"],
-    ids=["district_pune", "district_other_with_city"],
+    ids=["listed_district", "district_other_with_city"],
 )
 def test_tc25_full_valid_submission_shows_success_overlay(registration_page, data_fixture, request):
     """
@@ -1141,7 +1141,8 @@ def test_tc25_full_valid_submission_shows_success_overlay(registration_page, dat
     This is the producer of agency users for the login / home / dashboard /
     step-1 fixtures (get_agency_user_with_no_form), so it must register for real.
 
-    Notion ref: TC-23 (AC-5 & AC-6) | Data: district Pune; district Other + City / Town
+    Notion ref: TC-23 (AC-5 & AC-6) | Data: random listed district (supplies the Step-1
+    Maharashtra-head-office users); district Other + random City / Town
     """
     from utils.state_store import TestStateStore
 
