@@ -10,11 +10,10 @@ from utils.state_store import TestStateStore
 
 
 def _login_and_open_part_b(page, user) -> PartBPage:
-    """Logs in, opens Part B in edit mode and leaves a single person card.
+    """Logs in and opens Part B, leaving a single person card.
 
-    A saved Part B opens read-only, so "Edit this section" is clicked when it's
-    shown. Cards beyond the first are removed client-side (nothing is saved),
-    so every test starts from "only <label> 1 is shown"."""
+    Cards beyond the first are removed client-side (nothing is saved), so every
+    test starts from "only <label> 1 is shown"."""
     page.context.clear_cookies()
     login = LoginPage(page)
     login.open()
@@ -23,9 +22,17 @@ def _login_and_open_part_b(page, user) -> PartBPage:
     part_b = PartBPage(page)
     part_b.open()
     page.wait_for_load_state("networkidle")
-    part_b.make_editable()
     part_b.remove_added_persons()
     return part_b
+
+
+def _part_b_already_saved(part_b: PartBPage, store: TestStateStore, user) -> bool:
+    """A saved Part B reopens read-only with "Edit this section". When the state store
+    missed that save, record it so the user is skipped from now on."""
+    if not part_b.edit_section_link.is_visible():
+        return False
+    store.mark_form_step_status(username=user.username, step="part_b", status="completed")
+    return True
 
 
 # ── Page object fixture ───────────────────────────────────────────────────────
@@ -40,18 +47,21 @@ def part_b_page(page) -> PartBPage:
 @pytest.fixture
 def part_b_login_as(page):
     """Returns ``login_as(agency_type)``: logs in as a stored user whose Part A was
-    saved with that legal constitution, opens Part B in edit mode with one card,
-    and returns the user. Skips when no such user exists."""
+    saved with that legal constitution and whose Part B has never been saved, opens
+    Part B with one card, and returns the user. Users with Part B saved are never
+    used. Skips when no such user exists."""
 
     def login_as(agency_type: str):
         store = TestStateStore()
-        user = store.get_agency_user_with_steps(["part_a"], legal_constitution=agency_type)
-        if user is not None:
-            _login_and_open_part_b(page, user)
-            return user
+        for user in store.get_agency_users_with_steps(["part_a"], legal_constitution=agency_type):
+            if user.steps.get("part_b") == "completed":
+                continue
+            part_b = _login_and_open_part_b(page, user)
+            if not _part_b_already_saved(part_b, store, user):
+                return user
         # Part A saved before its agency type was recorded — read it off Part B once and record it.
         for user in store.get_agency_users_with_steps(["part_a"]):
-            if "legal_constitution" in user.step_data.get("part_a", {}):
+            if "legal_constitution" in user.step_data.get("part_a", {}) or user.steps.get("part_b") == "completed":
                 continue
             part_b = _login_and_open_part_b(page, user)
             # Greedy up to the last ')' — "Limited Liability Partnership (LLP)" has its own.
@@ -60,9 +70,9 @@ def part_b_login_as(page):
                 continue
             store.mark_form_step_status(username=user.username, step="part_a", status="completed",
                                         data={"legal_constitution": shown.group(1).strip()})
-            if shown.group(1).strip() == agency_type:
+            if shown.group(1).strip() == agency_type and not _part_b_already_saved(part_b, store, user):
                 return user
-        pytest.skip(f"No agency user with Part A saved as '{agency_type}' in state store "
+        pytest.skip(f"No agency user with Part A saved as '{agency_type}' and Part B not saved in state store "
                     "— run the Part A tests first.")
 
     return login_as
@@ -70,8 +80,8 @@ def part_b_login_as(page):
 
 @pytest.fixture
 def logged_in_part_b_page(page, part_b_login_as):
-    """Yields (page, user) for a Private Limited Company user with Part A saved, on
-    Part B in edit mode with only Director 1. Part B may already be saved."""
+    """Yields (page, user) for a Private Limited Company user with Part A saved and
+    Part B never saved, on Part B with only Director 1."""
     user = part_b_login_as(PartBFactory.AGENCY_TYPE)
     yield page, user
 
