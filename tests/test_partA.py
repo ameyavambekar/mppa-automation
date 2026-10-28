@@ -1217,6 +1217,9 @@ def test_tc434_pincode_outside_maharashtra(
     page, user = logged_in_part_a_fresh_page
     data = part_a_pincode_out_of_range_data
 
+    with allure.step(f"Select head office State: {data.state}"):
+        part_a_page.select_head_office_state(data.state)
+
     with allure.step(f"Enter head office pincode {data.invalid_value}"):
         part_a_page.fill_pincode(data.invalid_value)
 
