@@ -7,9 +7,9 @@ from test_data.partC_factory import PartCData, PartCFactory, TypedInput
 from utils.state_store import TestStateStore
 
 
-def _login_and_open_part_c(page, user) -> PartCPage:
+def _login_and_open_part_c(page, user, editable: bool = True) -> PartCPage:
     """Logs in and opens Part C, clicking "Edit this section" when a saved Part C
-    opens read-only."""
+    opens read-only (unless ``editable`` is False)."""
     page.context.clear_cookies()
     login = LoginPage(page)
     login.open()
@@ -18,7 +18,8 @@ def _login_and_open_part_c(page, user) -> PartCPage:
     part_c = PartCPage(page)
     part_c.open()
     page.wait_for_load_state("networkidle")
-    part_c.make_editable()
+    if editable:
+        part_c.make_editable()
     return part_c
 
 
@@ -48,6 +49,17 @@ def logged_in_part_c_page(page):
     user = next((u for u in users if u.steps.get("part_c") == "completed"), users[-1])
     part_c = _login_and_open_part_c(page, user)
     part_c.clear_form()
+    yield page, user
+
+
+@pytest.fixture
+def logged_in_part_c_saved_page(page):
+    """Yields (page, user) on Part C as it opens for a user who has saved it — read-only,
+    "Edit this section" not clicked. Skips when the state store has no such user."""
+    user = next((u for u in _part_b_users() if u.steps.get("part_c") == "completed"), None)
+    if user is None:
+        pytest.skip("No agency user with Part C saved in state store — run the Part C save tests first.")
+    _login_and_open_part_c(page, user, editable=False)
     yield page, user
 
 
