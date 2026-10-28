@@ -8,12 +8,11 @@ from test_data.partA_factory import PartAData, PartAFactory, TypedInput
 from utils.state_store import TestStateStore
 
 
-def _login_and_navigate_to_step1(page, user):
-    """Logs in, waits for the Form-I wizard, then opens Step 1 — Part A in edit mode.
+def _login_and_open_step1(page, user) -> PartAPage:
+    """Logs in, waits for the Form-I wizard, then opens Step 1 — Part A.
 
     Login lands on the step the user stopped at, so Part A is opened
-    explicitly for users who have already completed it. A saved Part A opens
-    read-only, so "Edit this section" is clicked when it's shown."""
+    explicitly for users who have already completed it."""
     login = LoginPage(page)
     login.open()
     login.login(user.username, user.password)
@@ -21,7 +20,30 @@ def _login_and_navigate_to_step1(page, user):
     part_a = PartAPage(page)
     part_a.open()
     page.wait_for_load_state("networkidle")
-    part_a.make_editable()
+    return part_a
+
+
+def _login_and_navigate_to_step1(page, user):
+    """Like ``_login_and_open_step1`` but leaves Part A in edit mode — a saved
+    Part A opens read-only, so "Edit this section" is clicked when it's shown."""
+    _login_and_open_step1(page, user).make_editable()
+
+
+def _login_fresh_user(page, listed_district_only: bool = False):
+    """Logs in as an agency user who has not started the wizard and opens Part A.
+
+    A user whose Part A was saved in the portal but never recorded (the test
+    failed between saving and its state-store write) opens read-only; that user
+    is recorded as Part A completed and the next one is tried. Returns None when
+    the store runs out of users."""
+    store = TestStateStore()
+    while (user := store.get_agency_user_with_no_form(listed_district_only=listed_district_only)) is not None:
+        part_a = _login_and_open_step1(page, user)
+        if not (part_a.edit_section_button.count() and part_a.edit_section_button.first.is_visible()):
+            return user
+        store.mark_form_step_status(username=user.username, step="part_a", status="completed")
+        page.context.clear_cookies()
+    return None
 
 
 # ── Page object fixture ───────────────────────────────────────────────────────
@@ -49,13 +71,12 @@ def logged_in_part_a_fresh_page(page):
 
     Use for tests that require all Step 1 fields to be empty but don't fill the
     head office address. The user may be registered with any district, including "Other"."""
-    user = TestStateStore().get_agency_user_with_no_form()
+    user = _login_fresh_user(page)
     if user is None:
         pytest.skip(
             "No agency user without form applications found in state store — "
             "run pre-registration tests first."
         )
-    _login_and_navigate_to_step1(page, user)
     yield page, user
 
 
@@ -79,13 +100,12 @@ def logged_in_part_a_fresh_mh_page(page):
     Maharashtra districts. Use for tests that fill a Maharashtra head office and/or save
     Part A (they mark Step 1 completed, using the user up) — with
     ``PartAFactory.for_user(data, user)``."""
-    user = TestStateStore().get_agency_user_with_no_form(listed_district_only=True)
+    user = _login_fresh_user(page, listed_district_only=True)
     if user is None:
         pytest.skip(
             "No agency user registered in a listed Maharashtra district without form applications "
             "in state store — run pre-registration tests first."
         )
-    _login_and_navigate_to_step1(page, user)
     yield page, user
 
 
