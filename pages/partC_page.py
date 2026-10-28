@@ -157,6 +157,11 @@ class PartCPage(BasePage):
         )
 
     @property
+    def form_fields(self):
+        """Every input, select and textarea in the form — all disabled while Part C is read-only."""
+        return self.form.locator("input, select, textarea")
+
+    @property
     def field_errors(self):
         """Every inline error currently shown."""
         return self.page.locator("p.fld-err")

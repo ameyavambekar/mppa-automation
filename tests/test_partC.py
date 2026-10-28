@@ -1095,3 +1095,47 @@ def test_tc460_service_charges_restored(
             box = part_c_page.service_model_checkbox(model)
             expect(box).to_be_checked() if model in data.service_models else expect(box).not_to_be_checked()
         expect(part_c_page.charges_displayed_radio("no")).to_be_checked()
+
+
+# ---------------------------------------------------------------------------
+# TC-461  A saved Part C reopens read-only
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-461")
+@allure.story(STORY)
+@allure.title("TC-461: A saved Part C reopens read-only until \"Edit this section\" is clicked")
+def test_tc461_saved_part_c_read_only(part_c_page: PartCPage, logged_in_part_c_saved_page):
+    """
+    Given I have saved Part C
+    When  I open Part C, then click "Edit this section"
+    Then  every field is disabled with no save button, "Edit this section" and "Next: Part F →" shown
+    And   after Edit every field is enabled with the same saved values and the save button is back
+
+    Notion: KAN-TC-461 | KAN-20 AC-11 | data: user with a saved Part C
+    """
+    page, user = logged_in_part_c_saved_page
+    fields = part_c_page.form_fields
+
+    with allure.step("Verify Part C is read-only"):
+        expect(part_c_page.edit_section_link).to_be_visible()
+        expect(part_c_page.next_part_f_link).to_be_visible()
+        expect(part_c_page.submit_button).to_be_hidden()
+        assert fields.count() > 0, "No form fields found"
+        for index in range(fields.count()):
+            expect(fields.nth(index)).to_be_disabled()
+
+    with allure.step("Verify Type of Placement keeps its saved value and can't be changed"):
+        saved_values = fields.evaluate_all("els => els.map(e => e.type === 'checkbox' || e.type === 'radio' ? e.checked : e.value)")
+        expect(part_c_page.placement_type_select).not_to_have_value("")
+        expect(part_c_page.placement_type_select).to_be_disabled()
+
+    with allure.step("Click 'Edit this section'"):
+        part_c_page.make_editable()
+        expect(page).to_have_url(re.compile(rf"{re.escape(PART_C_URL)}\?edit=1"))
+
+    with allure.step("Verify every field is enabled with the same saved values"):
+        expect(part_c_page.edit_section_link).to_have_count(0)
+        expect(part_c_page.submit_button).to_be_visible()
+        for index in range(fields.count()):
+            expect(fields.nth(index)).to_be_enabled()
+        values = fields.evaluate_all("els => els.map(e => e.type === 'checkbox' || e.type === 'radio' ? e.checked : e.value)")
+        assert values == saved_values, "Values changed after 'Edit this section'"
