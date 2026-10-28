@@ -29,7 +29,7 @@ def logged_in_agency_page(page):
 @pytest.fixture
 def agency_user_with_part_a_page(page):
     """Yields (page, user) where the user has completed step 1 (Part A) of Form-I."""
-    user = TestStateStore().get_agency_user_with_steps(["1"])
+    user = TestStateStore().get_agency_user_with_steps(["part_a"])
     if user is None:
         pytest.skip("No agency user with Part A (step 1) completed in state store.")
     _login_and_wait(page, user)

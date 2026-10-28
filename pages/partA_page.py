@@ -69,6 +69,19 @@ class PartAPage(BasePage):
         """'Save & Log out' link inside the deadline banner (../auth/logout.php)."""
         return self.page.get_by_role("link", name="Save & Log out")
 
+    @property
+    def edit_section_button(self):
+        """'Edit this section' — shown when a saved Part A is reopened; the form is
+        read-only (fields disabled) until it is clicked."""
+        return self.page.get_by_role("link", name="Edit this section").or_(
+            self.page.get_by_role("button", name="Edit this section")
+        )
+
+    @property
+    def next_part_button(self):
+        """'Part B →' — shown next to the heading once Part A is saved."""
+        return self.page.get_by_role("link", name="Part B").or_(self.page.get_by_role("button", name="Part B"))
+
     def progress_step(self, label: str):
         """Progress-bar item for ``label`` ('Register', 'Part A', 'Part B', …, 'Payment').
         Items are not clickable; later steps are locked by redirect (PART_A_LOCKED_STEP_URL)."""
@@ -331,6 +344,15 @@ class PartAPage(BasePage):
     def save_and_logout(self):
         self.save_and_logout_link.click()
 
+    @allure.step("Make Part A editable ('Edit this section' if shown)")
+    def make_editable(self):
+        """A saved Part A reopens read-only with 'Edit this section'; clicks it so the
+        fields can be changed. Does nothing when the form is already editable."""
+        if self.edit_section_button.count() and self.edit_section_button.first.is_visible():
+            self.edit_section_button.first.click()
+            self.page.wait_for_load_state("networkidle")
+            self.legal_constitution_select.wait_for(state="visible")
+
     @allure.step("Select Legal Constitution: {legal_constitution}")
     def select_legal_constitution(self, legal_constitution: str):
         self.legal_constitution_select.select_option(value=legal_constitution)
@@ -479,10 +501,13 @@ class PartAPage(BasePage):
 
     @allure.step("Type into {field}: {text}")
     def type_into(self, field: str, text: str):
-        """Types ``text`` into the text field exposed as property ``field`` (e.g. 'tan_number_input')
-        and blurs it, so the page's as-you-type rules run."""
+        """Types ``text`` one character at a time into the text field exposed as property
+        ``field`` (e.g. 'tan_number_input'), as a user would, then blurs it. Each keystroke
+        runs the page's as-you-type rules before the field's maxlength applies — fill()
+        would insert the whole string at once and maxlength would cut it first."""
         locator = getattr(self, field)
-        locator.fill(text)
+        locator.fill("")
+        locator.press_sequentially(text)
         locator.blur()
 
     @allure.step("Add Branch Office: {city}")

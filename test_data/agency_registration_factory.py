@@ -25,6 +25,8 @@ from typing import Optional
 
 from faker import Faker
 
+from test_data.maharashtra_locations import DISTRICT_IDS, OTHER_DISTRICT, random_district
+
 # ── Faker with Indian locale for realistic, locale-correct data ──────────────
 fake = Faker("en_IN")
 #Faker.seed(0)   # Deterministic seeds make CI reproducible; remove for true random
@@ -44,6 +46,28 @@ def _testmail_email(username: str) -> str:
     correct inbox, and is the same value passed to get_otp_from_testmail().
     """
     return f"{TESTMAIL_NAMESPACE}.{username}@inbox.testmail.app"
+
+
+_AGENCY_SUFFIXES = (
+    "Placement Services", "Manpower Consultants", "Staffing Solutions",
+    "HR Services", "Recruitment Agency", "Employment Bureau",
+)
+
+
+def _random_agency_name() -> str:
+    """e.g. 'Sharma, Gill and Bajwa Manpower Consultants' — well within the 150-char limit."""
+    return f"{fake.company()} {random.choice(_AGENCY_SUFFIXES)}"[:150]
+
+
+def _random_city() -> str:
+    """A town name for City / Town (district 'Other'): letters, spaces, hyphens and
+    dots only — the characters the field keeps — and never one of the listed districts."""
+    while True:
+        city = re.sub(r"[^A-Za-z\s.\-]", "", fake.city()).strip()[:80]
+        if city and city not in DISTRICT_IDS:
+            return city
+
+
 # ── Data model ───────────────────────────────────────────────────────────────
 
 @dataclass
@@ -53,17 +77,17 @@ class AgencyRegistrationData:
     Fields map directly to the four form sections in the spec.
     """
     # Section 1 — Agency & Login Credentials
-    agency_name: str = "Maharashtra Placement Agency"
+    agency_name: str = field(default_factory=_random_agency_name)
     username: str = ""
     password: str = ""
     confirm_password: str = ""          # defaults to same as password
 
     # Section 2 — Contact & Identity Verification
     email: str = ""
-    mobile: str = "9876543210"
-    alt_phone: str = "02224567890"
+    mobile: str = "9359283811"
+    alt_phone: str = "02025468565"
     pan_number: str = ""
-    district: str = "Pune"
+    district: str = field(default_factory=random_district)   # one of the 36 listed districts
     city_name: str = ""                 # only used when district == "Other"
 
     # Meta — used by tests to assert expected outcomes
@@ -196,18 +220,31 @@ class AgencyRegistrationFactory:
         """
         AC-5 — Full valid registration.
         All fields satisfy every constraint; form should submit successfully.
+        Agency name and district are random (district is one of the 36 listed
+        districts — use ``in_district()`` / ``district_other_with_city()`` to pin it).
         """
         pwd = _PasswordGenerator.valid()
         username = _UsernameGenerator().valid()
         return AgencyRegistrationData(
+            agency_name=_random_agency_name(),
             username=username,
             password=pwd,
             confirm_password=pwd,
             email= _testmail_email(username),
             pan_number=_PanGenerator.valid(),
-            district="Pune",
+            district=random_district(),
             scenario_label="AC-5: valid full registration",
         )
+
+    @classmethod
+    def in_district(cls, district: str) -> AgencyRegistrationData:
+        """AC-5 happy path registered in a specific listed district."""
+        if district not in DISTRICT_IDS:
+            raise ValueError(f"{district!r} is not one of the listed Maharashtra districts")
+        data = cls.valid()
+        data.district = district
+        data.scenario_label = f"AC-5: valid registration in {district}"
+        return data
 
     # ── Section 1: Login Credential Validations ───────────────────────────────
 
@@ -436,10 +473,10 @@ class AgencyRegistrationFactory:
 
     @classmethod
     def district_other_with_city(cls) -> AgencyRegistrationData:
-        """KAN-TC-424 — district 'Other' reveals the mandatory City / Town field."""
+        """KAN-TC-424 — district 'Other' reveals the mandatory City / Town field (random town)."""
         data = cls.valid()
-        data.district = "Other"
-        data.city_name = "Navi Mumbai"
+        data.district = OTHER_DISTRICT
+        data.city_name = _random_city()
         data.scenario_label = "KAN-TC-424: district Other with city"
         return data
 
@@ -447,8 +484,9 @@ class AgencyRegistrationFactory:
     def city_with_invalid_chars(cls) -> AgencyRegistrationData:
         """KAN-TC-424 — only letters, spaces, hyphens and dots are kept in City / Town."""
         data = cls.district_other_with_city()
-        data.city_name = "Navi Mumbai-2. Sector#5"
-        data.expected_value = "Navi Mumbai-. Sector"
+        town = data.city_name
+        data.city_name = f"{town}-2. Sector#5"
+        data.expected_value = f"{town}-. Sector"
         data.scenario_label = "KAN-TC-424: city with digits and symbols"
         return data
 
@@ -532,23 +570,7 @@ class AgencyRegistrationFactory:
     @classmethod
     def all_district_options(cls) -> list[AgencyRegistrationData]:
         """
-        Parametrize helper: one valid data object per major Maharashtra district.
-        Verifies that district selection is reflected in the Registration ID prefix.
+        Parametrize helper: one valid data object (own username / PAN) per
+        listed Maharashtra district, using the portal's district names.
         """
-        districts = [
-            "Pune", "Mumbai", "Nagpur", "Nashik",
-            "Aurangabad", "Solapur", "Kolhapur",
-        ]
-        username = _UsernameGenerator.valid()
-
-        return [
-            AgencyRegistrationData(
-                username = username,
-                password=_PasswordGenerator.valid(),
-                email=_testmail_email(username),
-                pan_number=_PanGenerator.valid(),
-                district=d,
-                scenario_label=f"district: {d}",
-            )
-            for d in districts
-        ]
+        return [cls.in_district(d) for d in sorted(DISTRICT_IDS)]
