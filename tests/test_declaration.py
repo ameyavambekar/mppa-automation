@@ -12,9 +12,15 @@ from pages.login_page import LoginPage
 from pages.premises_page import PREMISES_URL, PremisesPage
 from test_data.declaration_factory import DeclarationData
 from utils.aio import aio_case
+from utils.state_store import TestStateStore
 
 STORY = "Declaration & Authorisation"
 ON_DECLARATION = re.compile(rf"{re.escape(DECLARATION_URL)}")
+
+
+def _record(user, status: str) -> None:
+    """An uploaded signed form uses the user up for the Declaration tests: record it in the state store."""
+    TestStateStore().mark_form_step_status(username=user.username, step="declaration", status=status)
 
 
 def _read_pdf(download) -> tuple[int, str]:
@@ -303,6 +309,64 @@ def test_tc495_choose_signed_forms(
 
 
 # ---------------------------------------------------------------------------
+# TC-496  Upload & Continue with both forms — uploads
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-496")
+@allure.story(STORY)
+@allure.title("TC-496: \"Upload & Continue\" with both signed forms uploads them and opens the Preview step")
+def test_tc496_upload_both_forms(
+    declaration_page: DeclarationPage, logged_in_declaration_page, declaration_signed_forms_data: DeclarationData
+):
+    """
+    Given both signed forms are chosen
+    When  I click "Upload & Continue"
+    Then  the button reads "Uploading…" while disabled, the Preview step opens, and back on Declaration both
+          forms are shown as uploaded (2 / 2, "✓ UPLOADED", View ↗, Replace zones, "Go to Preview →")
+
+    Notion: KAN-TC-496 | KAN-10 AC-6 | data: signed_forms
+    """
+    page, user = logged_in_declaration_page
+    files = declaration_signed_forms_data.files
+
+    with allure.step("Choose the signed FORM-I(A) and FORM-I(B)"):
+        for key, path in files.items():
+            declaration_page.choose_file(key, path)
+            _expect_ready(declaration_page, key, path)
+
+    with allure.step("Click 'Upload & Continue' — the button is disabled and reads 'Uploading…'"):
+        disabled, label = declaration_page.upload_and_continue()
+        _record(user, "completed")
+        assert disabled and label == DeclarationPage.UPLOADING_LABEL, f"button was disabled={disabled}, text={label!r}"
+
+    with allure.step("Verify the Preview step opens with Declaration marked complete"):
+        expect(page).to_have_url(re.compile(rf"{re.escape(PREVIEW_URL)}"))
+        expect(page.locator("h2", has_text=DeclarationPage.PREVIEW_TITLE)).to_be_visible()
+        expect(declaration_page.completed_step_link("Declaration")).to_contain_text("✓")
+
+    with allure.step("Go back to the Declaration step"):
+        declaration_page.open()
+
+    with allure.step("Verify the completion message, 2 / 2 and the 'Go to Preview' link"):
+        expect(declaration_page.message_box).to_have_text(DeclarationPage.COMPLETE_MESSAGE)
+        expect(declaration_page.counter).to_have_text(DeclarationPage.counter_text(2))
+        expect(declaration_page.next_link).to_have_text(DeclarationPage.NEXT_LABEL)
+        expect(declaration_page.next_link).to_have_attribute("href", "preview.php")
+
+    for key, path in files.items():
+        with allure.step(f"Verify FORM-I({key[1:].upper()}) is shown as uploaded"):
+            expect(declaration_page.badge(key)).to_have_text(DeclarationPage.BADGE_UPLOADED)
+            expect(declaration_page.uploaded_file(key)).to_have_text(DeclarationPage.uploaded_text(path))
+            expect(declaration_page.view_link(key)).to_have_attribute("target", "_blank")
+            expect(declaration_page.zone_line1(key)).to_have_text(DeclarationPage.replace_label(key))
+
+    with allure.step("Verify 'View ↗' on FORM-I(A) serves the uploaded PDF"):
+        response = page.request.get(declaration_page.view_link("ia").evaluate("a => a.href"))
+        assert response.ok and response.headers.get("content-type", "").startswith("application/pdf")
+        with open(files["ia"], "rb") as f:
+            assert response.body() == f.read(), "the served PDF is not the uploaded FORM-I(A)"
+
+
+# ---------------------------------------------------------------------------
 # TC-497  Upload & Continue with nothing chosen
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-497")
@@ -470,3 +534,52 @@ def test_tc502_too_large(declaration_page: DeclarationPage, logged_in_declaratio
     with allure.step("Choose a PDF under 2 MB"):
         declaration_page.choose_file("ia", data.files["ia"])
         _expect_ready(declaration_page, "ia", data.files["ia"])
+
+
+# ---------------------------------------------------------------------------
+# TC-503  Upload & Continue with one form — uploads
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-503")
+@allure.story(STORY)
+@allure.title("TC-503: \"Upload & Continue\" with only one signed form chosen")
+def test_tc503_upload_one_form(
+    declaration_page: DeclarationPage, logged_in_declaration_page, declaration_single_form_data: DeclarationData
+):
+    """
+    Given only the signed FORM-I(A) is chosen
+    When  I click "Upload & Continue"
+    Then  I stay on Declaration with "1 file(s) uploaded. Please upload the remaining required PDF to continue.",
+          1 / 2, FORM-I(A) uploaded and FORM-I(B) still PENDING, and Preview stays locked
+
+    Notion: KAN-TC-503 | KAN-10 EC-3 | data: single_form
+    """
+    page, user = logged_in_declaration_page
+    path = declaration_single_form_data.files["ia"]
+
+    with allure.step("Choose only the signed FORM-I(A)"):
+        declaration_page.choose_file("ia", path)
+        _expect_ready(declaration_page, "ia", path)
+
+    with allure.step("Click 'Upload & Continue' — the form is submitted"):
+        declaration_page.upload_and_continue()
+        _record(user, "in_progress")
+
+    with allure.step("Verify the Declaration step reloads asking for the remaining form"):
+        expect(page).to_have_url(ON_DECLARATION)
+        expect(declaration_page.message_box).to_have_text(DeclarationPage.partial_message(1))
+        expect(declaration_page.counter).to_have_text(DeclarationPage.counter_text(1))
+        expect(declaration_page.next_link).to_have_count(0)
+
+    with allure.step("Verify FORM-I(A) is uploaded"):
+        expect(declaration_page.badge("ia")).to_have_text(DeclarationPage.BADGE_UPLOADED)
+        expect(declaration_page.uploaded_file("ia")).to_have_text(DeclarationPage.uploaded_text(path))
+        expect(declaration_page.view_link("ia")).to_be_visible()
+
+    with allure.step("Verify FORM-I(B) is still PENDING with an empty zone"):
+        expect(declaration_page.badge("ib")).to_have_text(DeclarationPage.BADGE_PENDING)
+        expect(declaration_page.uploaded_file("ib")).to_have_count(0)
+        expect(declaration_page.zone_line1("ib")).to_have_text(DeclarationPage.zone_label("ib"))
+
+    with allure.step("Open preview.php directly — still locked"):
+        page.goto(PREVIEW_URL)
+        expect(page).to_have_url(PREVIEW_LOCKED_URL)
