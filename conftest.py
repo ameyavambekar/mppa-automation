@@ -108,8 +108,14 @@ def playwright_instance():
 
 @pytest.fixture(scope="session")
 def browser_context(playwright_instance):
-    """Single browser context shared across the session."""
-    browser = playwright_instance.chromium.launch(headless=HEADLESS, slow_mo=SLOW_MO)
+    """Single browser context shared across the session.
+
+    --deny-permission-prompts makes a headed browser deny a permission the test
+    has not granted (as headless does) instead of showing a prompt that blocks
+    the request — e.g. TC-479's blocked location access."""
+    browser = playwright_instance.chromium.launch(
+        headless=HEADLESS, slow_mo=SLOW_MO, args=["--deny-permission-prompts"]
+    )
     context = browser.new_context(
         viewport={"width": 1280, "height": 800},
         accept_downloads=True,
