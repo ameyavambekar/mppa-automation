@@ -4,11 +4,12 @@ from config import FORMS_BASE
 from pages.login_page import LoginPage
 from pages.partF_page import PartFPage
 from test_data.partF_factory import PartFData, PartFFactory, TypedInput
+from utils.agency_builder import AgencyBuilder
 from utils.state_store import TestStateStore
 
 
 def _login_and_open_part_f(page, user) -> PartFPage:
-    """Logs in and opens Part F (a saved Part F reopens editable)."""
+    """Logs in and opens Part F."""
     page.context.clear_cookies()
     login = LoginPage(page)
     login.open()
@@ -20,24 +21,13 @@ def _login_and_open_part_f(page, user) -> PartFPage:
     return part_f
 
 
-def _remove_saved_documents(page, part_f: PartFPage) -> None:
-    """A saved certificate document is no longer "missing", which would hide the
-    'Please upload the document.' errors. Saving every certificate as No removes them."""
-    if not any(part_f.has_saved_document(cert) for cert in PartFPage.CERTIFICATES):
-        return
-    part_f.clear_form()
-    part_f.select_place(PartFFactory.PLACE)
-    part_f.click_submit()
-    part_f.success_message.wait_for()
-    part_f.open()
-    page.wait_for_load_state("networkidle")
-
-
-def _part_c_users():
-    users = TestStateStore().get_agency_users_with_steps(["part_a", "part_b", "part_c"])
-    if not users:
-        pytest.skip("No agency user with Part C saved in state store — run the Part C tests first.")
-    return users
+def _part_f_already_saved(part_f: PartFPage, store: TestStateStore, user) -> bool:
+    """A saved Part F reopens editable but with "Next: Documents →". When the state
+    store missed that save, record it so the user is skipped from now on."""
+    if not part_f.next_documents_link.is_visible():
+        return False
+    store.mark_form_step_status(username=user.username, step="part_f", status="completed")
+    return True
 
 
 # ── Page object fixture ───────────────────────────────────────────────────────
@@ -51,34 +41,21 @@ def part_f_page(page) -> PartFPage:
 
 @pytest.fixture
 def logged_in_part_f_page(page):
-    """Yields (page, user) on Part F, cleared client-side to its first-visit state.
-    Saved certificate documents are removed first (see ``_remove_saved_documents``).
-    Prefers a user whose Part F is already saved, so users with a never-saved
-    Part F are kept for ``logged_in_part_f_unsaved_page``."""
-    users = _part_c_users()
-    user = next((u for u in users if u.steps.get("part_f") == "completed"), users[-1])
-    part_f = _login_and_open_part_f(page, user)
-    _remove_saved_documents(page, part_f)
-    part_f.clear_form()
-    yield page, user
-
-
-@pytest.fixture
-def logged_in_part_f_unsaved_page(page):
-    """Yields (page, user) on Part F for a user who has never saved it. A user found
-    to have a saved Part F that the state store missed is recorded and skipped over.
-    Skips when none is left."""
+    """Yields (page, user) on Part F for a user whose Part C is saved and whose Part F
+    has never been saved, so the form is in its first-visit state. Users with Part F
+    saved are never used; when none is left, a new agency is built (see
+    ``utils.agency_builder``)."""
     store = TestStateStore()
-    for user in _part_c_users():
+    for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c"]):
         if user.steps.get("part_f") == "completed":
             continue
         part_f = _login_and_open_part_f(page, user)
-        if part_f.place_select.input_value() == "":
+        if not _part_f_already_saved(part_f, store, user):
             yield page, user
             return
-        store.mark_form_step_status(username=user.username, step="part_f", status="completed")
-    pytest.skip("No agency user with Part C saved and Part F never saved in state store "
-                "— run the Part C tests on a new user first.")
+    user = AgencyBuilder(page, store).build("part_c")
+    _login_and_open_part_f(page, user)
+    yield page, user
 
 
 # ── Data fixtures ─────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ from config import FORMS_BASE
 from pages.login_page import LoginPage
 from pages.partB_page import PartBPage
 from test_data.partB_factory import KeyPersonData, PartBFactory, TypedInput
+from utils.agency_builder import AgencyBuilder
 from utils.state_store import TestStateStore
 
 
@@ -49,7 +50,7 @@ def part_b_login_as(page):
     """Returns ``login_as(agency_type)``: logs in as a stored user whose Part A was
     saved with that legal constitution and whose Part B has never been saved, opens
     Part B with one card, and returns the user. Users with Part B saved are never
-    used. Skips when no such user exists."""
+    used; when none is left, a new agency is built (see ``utils.agency_builder``)."""
 
     def login_as(agency_type: str):
         store = TestStateStore()
@@ -72,8 +73,10 @@ def part_b_login_as(page):
                                         data={"legal_constitution": shown.group(1).strip()})
             if shown.group(1).strip() == agency_type and not _part_b_already_saved(part_b, store, user):
                 return user
-        pytest.skip(f"No agency user with Part A saved as '{agency_type}' and Part B not saved in state store "
-                    "— run the Part A tests first.")
+        # None left — build a new agency with Part A saved as ``agency_type``.
+        user = AgencyBuilder(page, store).build("part_a", legal_constitution=agency_type)
+        _login_and_open_part_b(page, user)
+        return user
 
     return login_as
 
