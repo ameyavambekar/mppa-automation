@@ -208,8 +208,8 @@ def test_tc522_mark_all_read(agency_home: AgencyHomePage, home_with_unread_notif
     """
     Given I have unread notifications
     When  I click "Mark all read"
-    Then  the page reloads with no "<n> new" count and nothing highlighted; the notifications are still
-          listed and stay read after a reload
+    Then  the page reloads with "You are up to date" instead of the "<n> new" count, nothing highlighted and
+          no "Mark all read"; the notifications are still listed and stay read after a reload
 
     Uses up the agency's unread notification (see ``home_with_unread_notifications``).
 
@@ -223,7 +223,8 @@ def test_tc522_mark_all_read(agency_home: AgencyHomePage, home_with_unread_notif
 
     with allure.step("Verify nothing is unread and the notifications are still listed"):
         expect(agency_home.unread_notifications).to_have_count(0)
-        expect(agency_home.notifications_subtitle).not_to_contain_text("new")
+        expect(agency_home.notifications_subtitle).to_have_text(AgencyHomePage.UP_TO_DATE)
+        expect(agency_home.mark_all_read_button).to_have_count(0)
         expect(agency_home.notifications).to_have_count(listed)
 
     with allure.step("Reload — the notifications stay read"):
@@ -408,7 +409,8 @@ def test_tc529_no_unread_notifications(agency_home: AgencyHomePage, home_without
     """
     Given all my notifications are read
     When  I open the Home page
-    Then  no "<n> new" count is shown and no notification is highlighted
+    Then  the card says "You are up to date" with no "<n> new" count and no "Mark all read", and no
+          notification is highlighted
 
     Notion: KAN-TC-529 | KAN-40 EC-1
     """
@@ -417,7 +419,8 @@ def test_tc529_no_unread_notifications(agency_home: AgencyHomePage, home_without
     with allure.step("Verify the Notifications card"):
         expect(agency_home.notifications_card).to_be_visible()
         expect(agency_home.unread_notifications).to_have_count(0)
-        expect(agency_home.notifications_subtitle).not_to_contain_text("new")
+        expect(agency_home.notifications_subtitle).to_have_text(AgencyHomePage.UP_TO_DATE)
+        expect(agency_home.mark_all_read_button).to_have_count(0)
 
 
 # ---------------------------------------------------------------------------
