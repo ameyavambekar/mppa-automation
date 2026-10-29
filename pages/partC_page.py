@@ -361,34 +361,6 @@ class PartCPage(BasePage):
             self.edit_section_link.click()
             self.page.wait_for_load_state("networkidle")
 
-    @allure.step("Clear the Part C form (nothing is saved)")
-    def clear_form(self):
-        """Returns every field to its first-visit state client-side: dropdowns at
-        '-- Select --', nothing ticked, the Yes/No questions at No and text fields
-        empty. The charges-displayed radios can't be unselected from the UI, so they
-        keep whatever was saved."""
-        # Open every conditional block first so its fields can be cleared like a user would.
-        for radio in (self.digital_platform_radio("1"), self.training_radio("1"), self.mobilization_radio("1")):
-            radio.check()
-        self.sector_checkbox("Other").check()
-        for checkbox in (self.training_address_same_checkbox, self.mobilization_address_same_checkbox):
-            checkbox.uncheck()
-        for field in (self.sector_other_input, self.digital_platform_details_textarea, self.training_capacity_input,
-                      self.training_sectors_input, self.training_address_textarea,
-                      self.mobilization_address_textarea, self.other_services_textarea, self.website_input):
-            field.fill("")
-        for select in (self.placement_type_select, self.service_mode_select, self.training_mode_select):
-            select.select_option(value="")
-        self.select_all_sectors_checkbox.uncheck()
-        for checkboxes in (self.sector_checkboxes, self.service_model_checkboxes):
-            for index in range(checkboxes.count()):
-                checkboxes.nth(index).uncheck()
-        for radio in (self.digital_platform_radio("0"), self.training_radio("0"), self.mobilization_radio("0")):
-            radio.check()
-        # Clearing marks every field as touched, which would show live errors; forget that
-        # (the page's own `touched` set and render()) so the form looks freshly opened.
-        self.page.evaluate("() => { touched.clear(); render([], false); }")
-
     @allure.step("Focus a field and leave it without changing it")
     def touch(self, field):
         field.focus()

@@ -263,19 +263,6 @@ class PartFPage(BasePage):
         """Navigates to Part F (requires a logged-in agency session with Part C saved)."""
         self.navigate(PART_F_URL)
 
-    @allure.step("Clear the Part F form (nothing is saved)")
-    def clear_form(self):
-        """Returns every field to its first-visit state client-side: every certificate
-        answered No with empty fields, no files chosen and Place unselected."""
-        for cert in self.CERTIFICATES:
-            self.certificate_radio(cert, True).check()
-            self.certificate_number_input(cert).fill("")
-            self.certificate_date_input(cert).fill("")
-            self.certificate_file_input(cert).set_input_files([])
-            self.certificate_radio(cert, False).check()
-        self.signature_input.set_input_files([])
-        self.place_select.select_option(value="")
-
     @allure.step("Certificate '{cert}' applies: {applies}")
     def select_certificate(self, cert: str, applies: bool):
         self.certificate_radio(cert, applies).check()

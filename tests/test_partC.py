@@ -538,7 +538,7 @@ def test_tc444_page_layout(part_c_page: PartCPage, logged_in_part_c_page):
 @aio_case("KAN-TC-445")
 @allure.story(STORY)
 @allure.title("TC-445: Part C opens with no selections and every Yes/No question set to No")
-def test_tc445_default_state(part_c_page: PartCPage, logged_in_part_c_unsaved_page):
+def test_tc445_default_state(part_c_page: PartCPage, logged_in_part_c_page):
     """
     Given Part C has never been saved
     When  I open Part C
@@ -546,7 +546,7 @@ def test_tc445_default_state(part_c_page: PartCPage, logged_in_part_c_unsaved_pa
 
     Notion: KAN-TC-445 | KAN-20 AC-2 | data: user with a never-saved Part C
     """
-    page, user = logged_in_part_c_unsaved_page
+    page, user = logged_in_part_c_page
 
     with allure.step("Verify the dropdowns show '-- Select --'"):
         expect(part_c_page.placement_type_select).to_have_value("")
@@ -1103,17 +1103,26 @@ def test_tc460_service_charges_restored(
 @aio_case("KAN-TC-461")
 @allure.story(STORY)
 @allure.title("TC-461: A saved Part C reopens read-only until \"Edit this section\" is clicked")
-def test_tc461_saved_part_c_read_only(part_c_page: PartCPage, logged_in_part_c_saved_page):
+def test_tc461_saved_part_c_read_only(part_c_page: PartCPage, logged_in_part_c_page, part_c_minimal_data: PartCData):
     """
     Given I have saved Part C
     When  I open Part C, then click "Edit this section"
     Then  every field is disabled with no save button, "Edit this section" and "Next: Part F →" shown
     And   after Edit every field is enabled with the same saved values and the save button is back
 
-    Notion: KAN-TC-461 | KAN-20 AC-11 | data: user with a saved Part C
+    Notion: KAN-TC-461 | KAN-20 AC-11 | data: minimal
     """
-    page, user = logged_in_part_c_saved_page
+    page, user = logged_in_part_c_page
     fields = part_c_page.form_fields
+
+    with allure.step("Precondition: save Part C with the mandatory fields"):
+        _fill(part_c_page, part_c_minimal_data)
+        part_c_page.click_submit()
+        _expect_part_c_saved(page, part_c_page, user)
+
+    with allure.step("Open Part C again"):
+        part_c_page.open()
+        page.wait_for_load_state("networkidle")
 
     with allure.step("Verify Part C is read-only"):
         expect(part_c_page.edit_section_link).to_be_visible()

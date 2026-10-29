@@ -694,7 +694,7 @@ def test_tc462_page_layout(part_f_page: PartFPage, logged_in_part_f_page):
 @aio_case("KAN-TC-463")
 @allure.story(STORY)
 @allure.title("TC-463: Part F opens with every certificate answered \"No\", today's application date and no Place")
-def test_tc463_default_state(part_f_page: PartFPage, logged_in_part_f_unsaved_page):
+def test_tc463_default_state(part_f_page: PartFPage, logged_in_part_f_page):
     """
     Given Part F has never been saved
     When  I open Part F
@@ -703,7 +703,7 @@ def test_tc463_default_state(part_f_page: PartFPage, logged_in_part_f_unsaved_pa
 
     Notion: KAN-TC-463 | KAN-21 AC-2 | data: user with a never-saved Part F
     """
-    page, user = logged_in_part_f_unsaved_page
+    page, user = logged_in_part_f_page
 
     with allure.step("Verify the six certificates are No with their fields hidden"):
         for cert in PartFPage.CERTIFICATES:
