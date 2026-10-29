@@ -10,9 +10,10 @@ data, recording every step in the state store as it goes.
 
     user = AgencyBuilder(page).build("part_c")       # Part A, B and C saved
 
-Stages, in order: "registered", "part_a", "part_b", "part_c", "part_f".
-A built agency's Part C has "Does the agency provide training?" = No and its
-Part F has every certificate answered No.
+Stages, in order: "registered", "part_a", "part_b", "part_c", "part_f",
+"enclosures". A built agency's Part C has "Does the agency provide training?" = No,
+its Part F has every certificate answered No, and "enclosures" uploads the six
+mandatory documents (6/6).
 
 The builder leaves the browser logged out; callers log in as the returned user.
 """
@@ -23,6 +24,7 @@ import allure
 from playwright.sync_api import expect
 
 from config import FORMS_BASE
+from pages.enclosures_page import EnclosuresPage
 from pages.login_page import LoginPage
 from pages.partA_page import PART_A_LOCKED_STEP_URL, PartAPage
 from pages.partB_page import PartBPage
@@ -30,16 +32,18 @@ from pages.partC_page import PartCPage
 from pages.partF_page import PartFPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
+from test_data.enclosures_factory import EnclosuresFactory
 from test_data.partA_factory import PartAFactory
 from test_data.partB_factory import PartBFactory
 from test_data.partC_factory import PartCFactory
 from test_data.partF_factory import PartFFactory
 from utils.state_store import TestStateStore, UserRecord
 
-STAGES = ("registered", "part_a", "part_b", "part_c", "part_f")
+STAGES = ("registered", "part_a", "part_b", "part_c", "part_f", "enclosures")
 COMPANY = "Private Limited Company"
 # The step whose tests use an agency built up to each stage — it must never have been saved.
-NEXT_STEP = {"part_a": "part_b", "part_b": "part_c", "part_c": "part_f", "part_f": "enclosures"}
+NEXT_STEP = {"part_a": "part_b", "part_b": "part_c", "part_c": "part_f", "part_f": "enclosures",
+             "enclosures": "premises"}
 
 
 def available(stage: str, legal_constitution: str = COMPANY, store: TestStateStore = None) -> list[UserRecord]:
@@ -69,7 +73,8 @@ class AgencyBuilder:
             raise ValueError(f"Only a {COMPANY} can be built past Part A")
         user = self.register()
         steps = {"part_a": lambda u: self.save_part_a(u, legal_constitution),
-                 "part_b": self.save_part_b, "part_c": self.save_part_c, "part_f": self.save_part_f}
+                 "part_b": self.save_part_b, "part_c": self.save_part_c, "part_f": self.save_part_f,
+                 "enclosures": self.upload_documents}
         if stage != "registered":
             self._login(user)
             for step in STAGES[1:STAGES.index(stage) + 1]:
@@ -184,3 +189,12 @@ class AgencyBuilder:
         part_f.click_submit()
         expect(part_f.success_message).to_have_text(PartFPage.SAVED_MESSAGE)
         self.store.mark_form_step_status(username=user.username, step="part_f", status="completed")
+
+    @allure.step("Upload the six mandatory documents")
+    def upload_documents(self, user: UserRecord) -> None:
+        enclosures = EnclosuresPage(self.page)
+        enclosures.open()
+        self.page.wait_for_load_state("networkidle")
+        enclosures.upload_documents(EnclosuresFactory.all_mandatory().documents)
+        expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
+        self.store.mark_form_step_status(username=user.username, step="enclosures", status="completed")

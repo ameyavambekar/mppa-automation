@@ -35,3 +35,6 @@ OVERSIZED_IMAGE = get_document_path("oversized_image.jpg")       # ~30 MB JPG
 # Documents step (enclosures) accepts PDF only, 10 KB – 2 MB.
 REPLACEMENT_PDF = get_document_path("certificate_v2.pdf")        # ~360 KB PDF with a different name
 EMPTY_PDF = get_document_path("empty.pdf")                       # 0-byte PDF
+
+# Premises Photos accepts JPG / PNG only (use CERTIFICATE_JPG / CERTIFICATE_PNG as photos).
+UNSUPPORTED_PHOTO = get_document_path("office_photo.heic")       # ~20 KB HEIC (wrong format)

@@ -46,7 +46,7 @@ Form-I progress
 not numbered — the portal numbers them differently on different screens (the
 public index counts "Create Account" as step 1, the forms count Part A as
 step 1) — and run in ``FORM_STEPS`` order: part_a, part_b, part_c, part_f,
-enclosures, declaration, payment.
+enclosures, premises, declaration, payment.
 
 Each row also keeps a small JSON ``data`` snapshot of what was saved, limited
 to the facts later tests branch on (agency type, office state, …) — never
@@ -78,11 +78,13 @@ from typing import Optional
 DEFAULT_DB_PATH = Path(__file__).parent.parent / "state" / "test_state.db"
 
 # Form-I wizard steps after account creation, in the order the portal unlocks them.
-FORM_STEPS = ("part_a", "part_b", "part_c", "part_f", "enclosures", "declaration", "payment")
+FORM_STEPS = ("part_a", "part_b", "part_c", "part_f", "enclosures", "premises", "declaration", "payment")
 FORM_STEP_STATUSES = ("not_started", "in_progress", "completed")
 
 # Numbered steps written before steps were named ("1" was Part A, as in the forms' headings).
-_LEGACY_STEP_NAMES = {str(i): name for i, name in enumerate(FORM_STEPS, start=1)}
+# Frozen: the numbering predates the "premises" step.
+_LEGACY_STEP_NAMES = {str(i): name for i, name in enumerate(
+    ("part_a", "part_b", "part_c", "part_f", "enclosures", "declaration", "payment"), start=1)}
 
 
 @dataclass(frozen=True)
@@ -141,7 +143,8 @@ class TestStateStore:
 
          A ``form_applications`` table from before steps were named (numbered
          steps, no ``data`` column) is rebuilt with its rows carried over —
-         "1" becomes "part_a" and so on (``_LEGACY_STEP_NAMES``).
+         "1" becomes "part_a" and so on (``_LEGACY_STEP_NAMES``). So is one whose
+         step CHECK constraint predates a step added to ``FORM_STEPS``.
          """
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -168,11 +171,15 @@ class TestStateStore:
             }
 
             migrate_legacy_steps = False
+            migrate_new_steps = False
             if "form_applications" in existing_tables:
                 actual_cols = {
                     row[1] for row in
                     conn.execute("PRAGMA table_info(form_applications)").fetchall()
                 }
+                table_sql = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='form_applications'"
+                ).fetchone()[0]
                 if not EXPECTED_FORM_COLS.issubset(actual_cols):
                     # Stale schema — drop and let CREATE TABLE rebuild it below
                     conn.execute("DROP TABLE form_applications")
@@ -182,6 +189,12 @@ class TestStateStore:
                     conn.execute("DROP INDEX IF EXISTS idx_form_app_status")
                     conn.execute("ALTER TABLE form_applications RENAME TO form_applications_legacy")
                     migrate_legacy_steps = True
+                elif any(f"'{step}'" not in table_sql for step in FORM_STEPS):
+                    # A step was added to FORM_STEPS — the CHECK constraint can only change by
+                    # rebuilding the table; rows are copied back once it is re-created.
+                    conn.execute("DROP INDEX IF EXISTS idx_form_app_status")
+                    conn.execute("ALTER TABLE form_applications RENAME TO form_applications_old")
+                    migrate_new_steps = True
 
             if "users" in existing_tables:
                 actual_cols = {
@@ -249,6 +262,16 @@ class TestStateStore:
                     tuple(_LEGACY_STEP_NAMES),
                 )
                 conn.execute("DROP TABLE form_applications_legacy")
+
+            if migrate_new_steps:
+                conn.execute(
+                    """
+                    INSERT INTO form_applications (user_id, step, status, data, updated_at)
+                    SELECT user_id, step, status, data, updated_at FROM form_applications_old
+                    """
+                )
+                conn.execute("DROP TABLE form_applications_old")
+
     def _row_to_record(self, row: sqlite3.Row, conn: sqlite3.Connection) -> UserRecord:
         steps_rows = conn.execute(
             "SELECT step, status, data FROM form_applications WHERE user_id = ?", (row["id"],)
