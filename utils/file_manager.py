@@ -31,3 +31,7 @@ UNSUPPORTED_SPREADSHEET = get_document_path("certificate.xlsx")  # ~20 KB XLSX (
 SIGNATURE_JPG = get_document_path("signature_valid.jpg")         # ~25 KB JPG
 SIGNATURE_PNG = get_document_path("signature_valid.png")         # ~55 KB PNG
 OVERSIZED_IMAGE = get_document_path("oversized_image.jpg")       # ~30 MB JPG
+
+# Documents step (enclosures) accepts PDF only, 10 KB – 2 MB.
+REPLACEMENT_PDF = get_document_path("certificate_v2.pdf")        # ~360 KB PDF with a different name
+EMPTY_PDF = get_document_path("empty.pdf")                       # 0-byte PDF
