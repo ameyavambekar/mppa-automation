@@ -11,14 +11,17 @@ data, recording every step in the state store as it goes.
     user = AgencyBuilder(page).build("part_c")       # Part A, B and C saved
 
 Stages, in order: "registered", "part_a", "part_b", "part_c", "part_f",
-"enclosures". A built agency's Part C has "Does the agency provide training?" = No,
-its Part F has every certificate answered No, and "enclosures" uploads the six
-mandatory documents (6/6).
+"enclosures", "premises". A built agency's Part C has "Does the agency provide
+training?" = No, its Part F has every certificate answered No, "enclosures" uploads
+the six mandatory documents (6/6), and "premises" saves the three required photos
+(location Pune) with both Yes / No questions answered No.
 
 The builder leaves the browser logged out; callers log in as the returned user.
 """
 
 from __future__ import annotations
+
+from urllib.parse import urlparse
 
 import allure
 from playwright.sync_api import expect
@@ -30,6 +33,7 @@ from pages.partA_page import PART_A_LOCKED_STEP_URL, PartAPage
 from pages.partB_page import PartBPage
 from pages.partC_page import PartCPage
 from pages.partF_page import PartFPage
+from pages.premises_page import PremisesPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
 from test_data.enclosures_factory import EnclosuresFactory
@@ -37,13 +41,14 @@ from test_data.partA_factory import PartAFactory
 from test_data.partB_factory import PartBFactory
 from test_data.partC_factory import PartCFactory
 from test_data.partF_factory import PartFFactory
+from test_data.premises_factory import PremisesFactory
 from utils.state_store import TestStateStore, UserRecord
 
-STAGES = ("registered", "part_a", "part_b", "part_c", "part_f", "enclosures")
+STAGES = ("registered", "part_a", "part_b", "part_c", "part_f", "enclosures", "premises")
 COMPANY = "Private Limited Company"
 # The step whose tests use an agency built up to each stage — it must never have been saved.
 NEXT_STEP = {"part_a": "part_b", "part_b": "part_c", "part_c": "part_f", "part_f": "enclosures",
-             "enclosures": "premises"}
+             "enclosures": "premises", "premises": "declaration"}
 
 
 def available(stage: str, legal_constitution: str = COMPANY, store: TestStateStore = None) -> list[UserRecord]:
@@ -74,7 +79,7 @@ class AgencyBuilder:
         user = self.register()
         steps = {"part_a": lambda u: self.save_part_a(u, legal_constitution),
                  "part_b": self.save_part_b, "part_c": self.save_part_c, "part_f": self.save_part_f,
-                 "enclosures": self.upload_documents}
+                 "enclosures": self.upload_documents, "premises": self.save_premises}
         if stage != "registered":
             self._login(user)
             for step in STAGES[1:STAGES.index(stage) + 1]:
@@ -198,3 +203,28 @@ class AgencyBuilder:
         enclosures.upload_documents(EnclosuresFactory.all_mandatory().documents)
         expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
         self.store.mark_form_step_status(username=user.username, step="enclosures", status="completed")
+
+    @allure.step("Save Premises Photos with the three required photos")
+    def save_premises(self, user: UserRecord) -> None:
+        """Saves the required photos at Pune, answers No to both questions and continues to Declaration."""
+        context = self.page.context
+        origin = "{0.scheme}://{0.netloc}".format(urlparse(FORMS_BASE))
+        lat, lng = PremisesFactory.LOCATION
+        context.grant_permissions(["geolocation"], origin=origin)
+        context.set_geolocation({"latitude": lat, "longitude": lng, "accuracy": 20})
+        try:
+            data = PremisesFactory.required_only()
+            premises = PremisesPage(self.page)
+            premises.open()
+            self.page.wait_for_load_state("networkidle")
+            for key, path in data.photos.items():
+                premises.choose_photo(key, path)
+                expect(premises.photo(key)).to_be_visible(timeout=30000)
+            for key, yes in data.answers.items():
+                premises.answer(key, yes)
+            premises.click_finish()
+            self.page.wait_for_url(f"{FORMS_BASE}/declaration.php**", timeout=15000)
+        finally:
+            context.clear_permissions()
+            context.set_geolocation(None)
+        self.store.mark_form_step_status(username=user.username, step="premises", status="completed")
