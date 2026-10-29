@@ -32,6 +32,7 @@ class AgencyHomePage(BasePage):
     SUBMITTED_EVENT_NOTE = "Application submitted — 45-day SLA started."
     NOTIFICATIONS_TITLE = "Notifications"
     MARK_ALL_READ_LABEL = "Mark all read"
+    UP_TO_DATE = "You are up to date"  # card subtitle (and no "Mark all read") once nothing is unread
     SUBMITTED_NOTIFICATION = "Your application has been received and submitted to the Registering Authority"
     OPEN_LABEL = "Open"
     NOTICE_BOARD_TITLE = "Notice board"
