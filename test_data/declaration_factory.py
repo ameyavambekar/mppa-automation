@@ -40,6 +40,11 @@ class DeclarationFactory:
         return DeclarationData(files={"ia": VALID_CERTIFICATE, "ib": REPLACEMENT_PDF}, scenario_label="signed_forms")
 
     @staticmethod
+    def single_form() -> DeclarationData:
+        """TC-503: a signed scan for FORM-I(A) only."""
+        return DeclarationData(files={"ia": VALID_CERTIFICATE}, scenario_label="single_form")
+
+    @staticmethod
     def not_pdf() -> DeclarationData:
         """TC-501: a JPG for FORM-I(A) (chosen) and a PNG for FORM-I(B) (dropped)."""
         return DeclarationData(invalid_files={"ia": CERTIFICATE_JPG, "ib": CERTIFICATE_PNG},

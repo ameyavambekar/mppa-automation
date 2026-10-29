@@ -25,6 +25,11 @@ class DeclarationPage(BasePage):
     the zone's two lines then show the result. Nothing is uploaded until
     "Upload & Continue", which submits both zones in one form and alerts when
     neither has a file.
+
+    An uploaded form's card turns green ("✓ UPLOADED", class ``done``) with
+    "Signed copy uploaded — <file>" and a "View ↗" link, and its zone becomes
+    "Replace signed FORM-I(…) (optional)". With both uploaded, the submit opens
+    Preview; with one, the page reloads with a message in ``message_box``.
     """
 
     # key → (card title, rule, read-text summary, download label, upload input id)
@@ -52,12 +57,17 @@ class DeclarationPage(BasePage):
            "big, use any free \"compress PDF\" tool before uploading.")
     PROGRESS_LABEL = "Signed forms uploaded"
     BADGE_PENDING = "PENDING"
+    BADGE_UPLOADED = "✓ UPLOADED"
+    NEXT_LABEL = "Both forms uploaded — Go to Preview →"
+    PREVIEW_TITLE = "Step 7 — Application Preview"
     ZONE_HINT = "Scanned PDF only · Max 2 MB"
     SUBMIT_LABEL = "Upload & Continue"
     UPLOADING_LABEL = "Uploading…"
     # Client-side texts
     NOT_PDF_ERROR = "Only scanned PDF files are allowed."
     NOTHING_CHOSEN_ALERT = "Please choose the signed PDF file(s) to upload."
+    # Server messages after "Upload & Continue"
+    COMPLETE_MESSAGE = "Both signed PDFs uploaded. Step 6 complete — proceeding to Preview."
 
     # Opening words of each form's text on the page
     IA_TEXT_START = ("I, [Name], in my capacity as the [Designation] of [Private Placement Agency Name], do hereby "
@@ -73,6 +83,20 @@ class DeclarationPage(BasePage):
     def zone_label(key: str) -> str:
         """The upload zone's first line before a file is chosen (the trailing '*' marks it required)."""
         return f"Upload signed FORM-I({key[1:].upper()}) — click or drag & drop *"
+
+    @staticmethod
+    def partial_message(uploaded: int) -> str:
+        """Server message when the step is still missing a form after 'Upload & Continue'."""
+        return f"{uploaded} file(s) uploaded. Please upload the remaining required PDF to continue."
+
+    @staticmethod
+    def replace_label(key: str) -> str:
+        """The upload zone's first line once the form is uploaded."""
+        return f"Replace signed FORM-I({key[1:].upper()}) (optional)"
+
+    @staticmethod
+    def uploaded_text(path: str) -> str:
+        return f"Signed copy uploaded — {os.path.basename(path)}"
 
     @staticmethod
     def chosen_text(path: str) -> str:
@@ -119,6 +143,11 @@ class DeclarationPage(BasePage):
     def completed_step_link(self, label: str):
         """Progress-bar item for a saved step — a '✓ <label>' link back to that step."""
         return self.page.locator(f"//span[normalize-space()='{label}']/parent::a")
+
+    @property
+    def message_box(self):
+        """Green message above the heading after 'Upload & Continue' (absent before any upload)."""
+        return self.page.locator(".dc-wrap .alert-s")
 
     @property
     def step_tiles(self):
@@ -170,6 +199,14 @@ class DeclarationPage(BasePage):
     def download_link(self, key: str):
         return self.card(key).locator("a.dc-dl")
 
+    def uploaded_file(self, key: str):
+        """'Signed copy uploaded — <file>' once the form is uploaded."""
+        return self.card(key).locator(".dc-uploaded span")
+
+    def view_link(self, key: str):
+        """'View ↗' — opens the uploaded signed form in a new tab."""
+        return self.card(key).locator(".dc-uploaded a")
+
     def upload_zone(self, key: str):
         """The drop zone; has the class ``has`` once a valid file is chosen, ``bad`` after a rejected one."""
         return self.card(key).locator("label.dc-drop")
@@ -189,6 +226,11 @@ class DeclarationPage(BasePage):
     def submit_button(self):
         """'Upload & Continue' — disabled and reads 'Uploading…' while the form is sent."""
         return self.page.locator("button.dc-submit")
+
+    @property
+    def next_link(self):
+        """'Both forms uploaded — Go to Preview →' — shown once both forms are uploaded."""
+        return self.page.locator("a.dc-next")
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
@@ -230,6 +272,21 @@ class DeclarationPage(BasePage):
         with self.page.expect_download() as download_info:
             self.download_link(key).click()
         return download_info.value
+
+    @allure.step("Click 'Upload & Continue'")
+    def upload_and_continue(self) -> tuple[bool, str]:
+        """Submits the chosen files and waits for the next page. Returns the button's
+        (disabled, text) right after the click — the page's submit handler sets them
+        just before the browser navigates away."""
+        self.page.evaluate("""() => document.getElementById('declForm').addEventListener('submit', () => {
+            const btn = document.querySelector('#declForm .dc-submit');
+            sessionStorage.setItem('mppaSubmitButton', JSON.stringify([btn.disabled, btn.textContent]));
+        })""")
+        with self.page.expect_navigation(timeout=60000):
+            self.submit_button.click()
+        disabled, text = self.page.evaluate(
+            "() => JSON.parse(sessionStorage.getItem('mppaSubmitButton') || '[false, \"\"]')")
+        return disabled, text
 
     @allure.step("Click 'Upload & Continue' and handle the alert")
     def submit_and_handle_alert(self) -> str:

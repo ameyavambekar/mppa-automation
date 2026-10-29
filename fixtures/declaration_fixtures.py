@@ -44,8 +44,8 @@ def declaration_page(page) -> DeclarationPage:
 def logged_in_declaration_page(page):
     """Yields (page, user) on the Declaration step for an agency whose Premises Photos step is
     complete and who has never uploaded a signed form (counter 0 / 2, both forms PENDING).
-    Users with an upload are never used; when none is left, a new agency is built (see
-    ``utils.agency_builder``)."""
+    Users with an upload are never used — a test that uploads records it in the state store —
+    and when none is left, a new agency is built (see ``utils.agency_builder``)."""
     store = TestStateStore()
     for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c", "part_f", "enclosures", "premises"]):
         if user.steps.get("declaration") in ("in_progress", "completed"):
@@ -64,6 +64,12 @@ def logged_in_declaration_page(page):
 def declaration_signed_forms_data() -> DeclarationData:
     """TC-495: a signed PDF for each form."""
     return DeclarationFactory.signed_forms()
+
+
+@pytest.fixture
+def declaration_single_form_data() -> DeclarationData:
+    """TC-503: a signed PDF for FORM-I(A) only."""
+    return DeclarationFactory.single_form()
 
 
 @pytest.fixture
