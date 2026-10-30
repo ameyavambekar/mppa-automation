@@ -334,6 +334,15 @@ class TestStateStore:
             )
             return cursor.lastrowid
 
+    def update_password(self, *, username: str, password: str) -> None:
+        """Records a password changed on the portal (e.g. through Forgot password)."""
+        with self._connect() as conn:
+            updated = conn.execute(
+                "UPDATE users SET password = ? WHERE username = ?", (password, username)
+            ).rowcount
+            if not updated:
+                raise ValueError(f"No user found with username '{username}'")
+
     def mark_form_step_status(
         self, *, username: str, step: str, status: str, data: Optional[dict] = None
     ) -> None:
@@ -451,6 +460,15 @@ class TestStateStore:
                 (step, status),
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
+
+    def get_agency_users_with_email_and_pan(self) -> list[UserRecord]:
+        """Every agency user recorded with its registered e-mail and PAN, oldest first."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM users WHERE role = 'agency' AND email IS NOT NULL AND email != ''
+                   AND pan IS NOT NULL AND pan != '' ORDER BY id"""
+            ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
 
     def get_user_by_username(self, username: str) -> Optional[UserRecord]:
         with self._connect() as conn:
