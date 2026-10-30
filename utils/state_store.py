@@ -62,6 +62,18 @@ and query by progress plus those facts::
     store.get_agency_users_with_steps(["part_a"], legal_constitution="Proprietorship")
     # user.steps == {"part_a": "completed"}; user.step_data["part_a"]["legal_constitution"]
 
+Submission and certificate
+--------------------------
+Paying (the "payment" step) submits the application and the portal issues a
+13-digit Application ID; the certificate number follows once the officer has
+cleared Desktop Scrutiny and Physical Verification. Both live on the user's row::
+
+    store.record_application_id(username=user.username, application_id="2627498014398")
+    store.record_certificate_no(username=user.username, certificate_no="MPPA/MH/2026/000046")
+
+    store.get_agency_users_with_application(certified=False)   # submitted, no certificate yet
+    store.get_agency_user_by_application_id("2627498014398")
+
 The DB persists between test runs by design — it mirrors users actually
 registered in the dev environment.  Delete ``state/test_state.db`` only if you
 also reset the dev environment.
@@ -105,6 +117,8 @@ class UserRecord:
     mobile: Optional[str] = None
     alt_phone: Optional[str] = None
     city_name: Optional[str] = None     # set only when district == "Other"
+    application_id: Optional[str] = None    # issued when the application is submitted (paid)
+    certificate_no: Optional[str] = None    # issued after Desktop Scrutiny and Physical Verification
     # {"part_a": "completed", "part_b": "in_progress", …} — empty dict until Form-I starts
     steps: dict[str, str] = field(default_factory=dict)
     # {"part_a": {"legal_constitution": …}, …} — only steps saved with data
@@ -158,6 +172,9 @@ class TestStateStore:
             "mobile": "TEXT",
             "alt_phone": "TEXT",
             "city_name": "TEXT",
+            # Submitted application and the certificate issued for it (Oct 2026).
+            "application_id": "TEXT",
+            "certificate_no": "TEXT",
         }
         EXPECTED_FORM_COLS = {"user_id", "step", "status", "updated_at"}
 
@@ -227,7 +244,9 @@ class TestStateStore:
                      agency_name     TEXT,
                      mobile          TEXT,
                      alt_phone       TEXT,
-                     city_name       TEXT
+                     city_name       TEXT,
+                     application_id  TEXT,
+                     certificate_no  TEXT
                  );
 
                  CREATE TABLE IF NOT EXISTS form_applications (
@@ -291,6 +310,8 @@ class TestStateStore:
             mobile=row["mobile"],
             alt_phone=row["alt_phone"],
             city_name=row["city_name"],
+            application_id=row["application_id"],
+            certificate_no=row["certificate_no"],
             steps=steps,
             step_data=step_data,
         )
@@ -342,6 +363,31 @@ class TestStateStore:
             ).rowcount
             if not updated:
                 raise ValueError(f"No user found with username '{username}'")
+
+    def record_application_id(self, *, username: str, application_id: str) -> None:
+        """Records the Application ID issued when the application was submitted (paid)."""
+        with self._connect() as conn:
+            updated = conn.execute(
+                "UPDATE users SET application_id = ? WHERE username = ?", (application_id, username)
+            ).rowcount
+            if not updated:
+                raise ValueError(f"No user found with username '{username}'")
+
+    def record_certificate_no(self, *, username: str, certificate_no: str) -> None:
+        """Records the certificate number issued once the application has cleared Desktop
+        Scrutiny and Physical Verification. Only a submitted application (one with a recorded
+        Application ID) can be certified."""
+        with self._connect() as conn:
+            user = conn.execute(
+                "SELECT application_id FROM users WHERE username = ?", (username,)
+            ).fetchone()
+            if user is None:
+                raise ValueError(f"No user found with username '{username}'")
+            if not user["application_id"]:
+                raise ValueError(f"'{username}' has no recorded Application ID — record it before the certificate")
+            conn.execute(
+                "UPDATE users SET certificate_no = ? WHERE username = ?", (certificate_no, username)
+            )
 
     def mark_form_step_status(
         self, *, username: str, step: str, status: str, data: Optional[dict] = None
@@ -469,6 +515,25 @@ class TestStateStore:
                    AND pan IS NOT NULL AND pan != '' ORDER BY id"""
             ).fetchall()
             return [self._row_to_record(row, conn) for row in rows]
+
+    def get_agency_users_with_application(self, certified: Optional[bool] = None) -> list[UserRecord]:
+        """Every agency user with a recorded Application ID, oldest first. ``certified=True``
+        keeps only those issued a certificate, ``certified=False`` only those still awaiting one."""
+        certificate_sql = {None: "", True: "AND certificate_no IS NOT NULL",
+                           False: "AND certificate_no IS NULL"}[certified]
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""SELECT * FROM users WHERE role = 'agency' AND application_id IS NOT NULL
+                    {certificate_sql} ORDER BY id"""
+            ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
+
+    def get_agency_user_by_application_id(self, application_id: str) -> Optional[UserRecord]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE role = 'agency' AND application_id = ?", (application_id,)
+            ).fetchone()
+            return self._row_to_record(row, conn) if row else None
 
     def get_user_by_username(self, username: str) -> Optional[UserRecord]:
         with self._connect() as conn:
