@@ -445,6 +445,7 @@ def test_tc513_confirm_and_pay(preview_page: PreviewPage, logged_in_preview_page
         expect(success.dashboard_link).to_have_attribute("href", "dashboard.php")
 
     application_id = success.application_id.inner_text().strip()
+    TestStateStore().record_application_id(username=user.username, application_id=application_id)
 
     with allure.step("Log in again — the application is submitted"):
         page.context.clear_cookies()

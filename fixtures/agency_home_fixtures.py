@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from pages.agency_home_page import AGENCY_HOME_URL, AgencyHomePage
@@ -22,12 +24,23 @@ def _submitted_agencies():
 
 
 def _login_to_home(page, user) -> bool:
-    """Logs in as ``user``; True when login lands on Home (with the dev testing notice dismissed)."""
+    """Logs in as ``user``; True when login lands on Home (with the dev testing notice dismissed).
+    Records the agency's Application ID from the top bar if the state store has none yet."""
     _login(page, user)
     if not page.url.startswith(AGENCY_HOME_URL):
         return False
-    AgencyHomePage(page).dismiss_testing_notice()
+    home = AgencyHomePage(page)
+    home.dismiss_testing_notice()
+    if not user.application_id:
+        _record_application_id(home, user)
     return True
+
+
+def _record_application_id(home: AgencyHomePage, user) -> None:
+    """Agencies paid before Application IDs were stored: take it from '<username> (<Application ID>)'."""
+    match = re.search(r"\((\d{13})\)", home.user_text.inner_text())
+    if match:
+        TestStateStore().record_application_id(username=user.username, application_id=match.group(1))
 
 
 # ── Page object fixture ───────────────────────────────────────────────────────

@@ -93,7 +93,7 @@ def test_tc171_wrong_captcha(
     """
     Given I am on the Admin Login page with valid credentials ready
     When  I enter an incorrect CAPTCHA and click ADMIN LOGIN
-    Then  an error "Incorrect CAPTCHA. Please try again." is shown
+    Then  an error "Captcha is incorrect. Please try again." is shown
     And   a new CAPTCHA is generated and the CAPTCHA input is cleared
 
     Notion: KAN-TC-171 | data: valid_creds_wrong_captcha
@@ -104,17 +104,20 @@ def test_tc171_wrong_captcha(
     with allure.step("Capture the original CAPTCHA value"):
         original_captcha = admin_login_page.read_captcha_value()
 
-    with allure.step("Submit valid credentials with an incorrect CAPTCHA and capture the alert"):
-        message = admin_login_page.login_with_captcha_and_handle_alert(
+    with allure.step("Submit valid credentials with an incorrect CAPTCHA"):
+        admin_login_page.login_with_captcha(
             wrong_captcha_admin_data.username,
             wrong_captcha_admin_data.password,
             wrong_captcha_admin_data.captcha,
         )
 
-    with allure.step("Verify the incorrect-CAPTCHA alert message"):
-        assert "Captcha Incorrect" in message, (
-            f"Expected a 'Captcha Incorrect' alert, got: {message!r}"
+    with allure.step("Verify the incorrect-CAPTCHA error message"):
+        expect(admin_login_page.error_message).to_contain_text(
+            wrong_captcha_admin_data.expected_error
         )
+
+    with allure.step("Verify no admin session was created (still on the login page)"):
+        assert "login.php" in admin_login_page.get_url()
 
     with allure.step("Verify a new CAPTCHA was generated and input cleared"):
         expect(admin_login_page.captcha_input).to_have_value("")
@@ -292,7 +295,7 @@ def test_tc176_refresh_invalidates_old_captcha(
     Given I am on the Admin Login page
     When  I note the current CAPTCHA, click Refresh, then submit the OLD CAPTCHA value
     Then  a new CAPTCHA image is displayed, the input is cleared, and the old value is rejected
-    And   login fails with "Incorrect CAPTCHA."
+    And   login fails with "Captcha is incorrect. Please try again."
 
     Notion: KAN-TC-176 | data: stale_captcha
     """
@@ -305,15 +308,14 @@ def test_tc176_refresh_invalidates_old_captcha(
         expect(admin_login_page.captcha_input).to_have_value("")
         assert new_captcha != old_captcha, "Refresh should generate a different CAPTCHA"
 
-    with allure.step("Submit valid credentials with the OLD (stale) CAPTCHA and capture the alert"):
-        message = admin_login_page.login_with_captcha_and_handle_alert(
+    with allure.step("Submit valid credentials with the OLD (stale) CAPTCHA"):
+        admin_login_page.login_with_captcha(
             stale_captcha_data.username, stale_captcha_data.password, old_captcha
         )
 
     with allure.step("Verify the stale CAPTCHA is rejected"):
-        assert "Captcha Incorrect" in message, (
-            f"Expected a 'Captcha Incorrect' alert for the stale CAPTCHA, got: {message!r}"
-        )
+        expect(admin_login_page.error_message).to_contain_text(stale_captcha_data.expected_error)
+        assert "login.php" in admin_login_page.get_url()
 
 
 # ---------------------------------------------------------------------------

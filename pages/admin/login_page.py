@@ -45,22 +45,12 @@ class AdminLoginPage(BasePage):
         return self.page.locator("#captchaImg")
 
     @property
-    def captcha_value(self):
-        """Alias of ``captcha_image`` — the value only lives in the PHP session, never in the DOM."""
-        return self.captcha_image
-
-    @property
     def captcha_input(self):
         return self.page.locator("#captchaInput")
 
     @property
     def captcha_refresh_button(self):
         return self.page.locator("//button[contains(text(),'Refresh')]")
-
-    @property
-    def captcha_hidden_input(self):
-        """Hidden field holding the expected CAPTCHA code (#captcha_code_hidden)."""
-        return self.page.locator("#captcha_code_hidden")
 
     # ── Buttons & links ───────────────────────────────────────────────────────
 
@@ -150,31 +140,16 @@ class AdminLoginPage(BasePage):
 
     @allure.step("Admin login as {username} with an explicit CAPTCHA value")
     def login_with_captcha(self, username: str, password: str, captcha_text: str):
-        """Fills credentials with a caller-supplied CAPTCHA (used for wrong-CAPTCHA tests)."""
+        """Fills credentials with a caller-supplied CAPTCHA and submits.
+
+        The CAPTCHA is validated server-side: a wrong/stale value reloads the
+        page with an inline ``alert-error`` ("Captcha is incorrect. Please try
+        again."), a fresh CAPTCHA image, the username retained and the password
+        and CAPTCHA inputs cleared. Used for TC-171 and TC-176."""
         self.fill_username(username)
         self.fill_password(password)
         self.fill_captcha(captcha_text)
         self.admin_login_button.click()
-
-    @allure.step("Click ADMIN LOGIN and handle any alert dialog")
-    def click_login_and_handle_alert(self) -> str:
-        """Clicks ADMIN LOGIN, handles an alert/confirm/prompt dialog, returns its message."""
-        return self.click_and_handle_alert(self.admin_login_button, action="dismiss")
-
-    @allure.step("Admin login as {username} with CAPTCHA '{captcha_text}', handling the alert")
-    def login_with_captcha_and_handle_alert(
-        self, username: str, password: str, captcha_text: str
-    ) -> str:
-        """Fills credentials + an explicit CAPTCHA, submits, and returns the alert message.
-
-        The portal validates the CAPTCHA client-side: a wrong value fires
-        ``alert("Captcha Incorrect. Please try again.")`` and regenerates the
-        CAPTCHA instead of showing an inline error. Use this for wrong/stale
-        CAPTCHA scenarios (TC-171, TC-176)."""
-        self.fill_username(username)
-        self.fill_password(password)
-        self.fill_captcha(captcha_text)
-        return self.click_and_handle_alert(self.admin_login_button, action="dismiss")
 
     @allure.step("Reload Admin Login page")
     def reload(self):
