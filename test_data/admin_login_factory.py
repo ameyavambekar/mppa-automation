@@ -59,7 +59,7 @@ class AdminLoginFactory:
             password=user.password,
             captcha="XXXXXX",
             scenario_label="valid_creds_wrong_captcha",
-            expected_error="Captcha Incorrect. Please try again.",
+            expected_error="Captcha is incorrect. Please try again.",
         )
 
     # ── Cross-portal rejection (TC-173, TC-174) ───────────────────────────────
@@ -118,7 +118,7 @@ class AdminLoginFactory:
             username=user.username,
             password=user.password,
             scenario_label="stale_captcha",
-            expected_error="Captcha Incorrect. Please try again.",
+            expected_error="Captcha is incorrect. Please try again.",
         )
 
     # ── Sub-admin lockout (TC-179) ────────────────────────────────────────────
