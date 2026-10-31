@@ -12,7 +12,8 @@ class AgencyHomePage(BasePage):
     is gone since the portal redesign.
 
     A welcome block (``.hd-welcome``: agency name, Application ID, status badge, registration
-    date), a next-step banner (``.hd-next``), the "Application progress" card (stage tracker
+    date), a next-step banner (``.hd-next``; "View my application" while under review, "View
+    certificate" once registered), the "Application progress" card (stage tracker
     ``.ui-steps .st`` + timeline ``.ui-timeline li``) and the Notifications card (``#agNotes``,
     "Mark all read" ``#agNotesRead``). The side column holds three ``.hd-tile`` links, the
     Notice board (``.notice-item``), Quick links (``.hd-links``) and "Need help?".
@@ -23,10 +24,9 @@ class AgencyHomePage(BasePage):
     VIEW_SUBMITTED_LABEL = "View Submitted Application"
     VIEW_MY_APPLICATION_LABEL = "View my application"
     STAGE_1_HEADING = "Your application is under review — Stage 1 — Desktop Scrutiny"
-    STAGE_1_TEXT = "No action is needed from you now. A decision is due within 45 day(s)."
+    SLA_DAYS = 45  # the decision countdown starts here on submission and goes down by one a day
     PROGRESS_TITLE = "Application progress"
     STAGE_1_PROGRESS = "Stage 1 — Desktop Scrutiny · Under review"
-    DECISION_BADGE = "Decision expected within 45 days"
     STAGES = ("Submitted", "Desktop scrutiny", "Physical verification", "Certificate")
     SUBMITTED_EVENT = "Application submitted"
     SUBMITTED_EVENT_NOTE = "Application submitted — 45-day SLA started."
@@ -60,9 +60,42 @@ class AgencyHomePage(BasePage):
     # Unread notifications are drawn on this background (inline style; there is no class)
     UNREAD_BACKGROUND = "#f5f8ff"
 
+    # Once the certificate is issued (Desktop Scrutiny and Physical Verification cleared)
+    REGISTERED = "Registered"
+    REGISTERED_HEADING = "Your agency is registered"
+    VIEW_CERTIFICATE_LABEL = "View certificate"
+    CERTIFICATE_PATH = "agency/certificate.php"
+    CERTIFICATE_YEARS = 5  # "Certificate valid until" is this many years after the certificate was issued
+    REGISTERED_PROGRESS = "Approved — Certificate Issued · Closed"
+    STAGE_CLEARED_EVENT = "Stage cleared"
+    OFFICE_VERIFIED_EVENT = "Office verified"
+    # Timeline, newest first: (title, note); {application_id} / {district} are filled in per agency
+    REGISTERED_TIMELINE = (
+        (STAGE_CLEARED_EVENT, "Physical verification cleared — Form-II registration certificate issued "
+                              "(Registration No. {application_id})."),
+        (OFFICE_VERIFIED_EVENT, "Head office ({district}) physically verified."),
+        (STAGE_CLEARED_EVENT, "Desktop scrutiny cleared — application moved to Physical Verification."),
+        (SUBMITTED_EVENT, SUBMITTED_EVENT_NOTE),
+    )
+    REGISTERED_TILES = {"My application": VIEW_APPLICATION_PATH,
+                        "Corrections": "agency/forms/corrections.php",
+                        "Certificate": CERTIFICATE_PATH,
+                        "Job seekers": "agency/job_seekers.php",
+                        "Helpdesk": "contact.php"}
+
     @staticmethod
     def url_of(path: str) -> str:
         return f"{MODULE_ROOT}/{path}"
+
+    @staticmethod
+    def stage_1_text(days_left: int) -> str:
+        """Banner text in Desktop Scrutiny, ``days_left`` days before the decision is due."""
+        return f"No action is needed from you now. A decision is due within {days_left} day(s)."
+
+    @staticmethod
+    def decision_badge(days_left: int) -> str:
+        """Application progress badge while a decision is pending."""
+        return f"Decision expected within {days_left} days"
 
     # ── Top bar ───────────────────────────────────────────────────────────────
 
@@ -129,6 +162,11 @@ class AgencyHomePage(BasePage):
     def next_step_button(self):
         return self.page.locator(".hd-next").get_by_role("link", name=self.VIEW_MY_APPLICATION_LABEL)
 
+    @property
+    def view_certificate_button(self):
+        """'View certificate' — in the banner instead of 'View my application' once the certificate is issued."""
+        return self.page.locator(".hd-next").get_by_role("link", name=self.VIEW_CERTIFICATE_LABEL)
+
     # ── Application progress ──────────────────────────────────────────────────
 
     @property
@@ -154,7 +192,20 @@ class AgencyHomePage(BasePage):
 
     @property
     def timeline_items(self):
+        """Newest first."""
         return self.progress_card.locator(".ui-timeline li")
+
+    @property
+    def timeline_titles(self):
+        return self.timeline_items.locator(".t-title")
+
+    @property
+    def timeline_times(self):
+        return self.timeline_items.locator(".t-meta")
+
+    @property
+    def timeline_notes(self):
+        return self.timeline_items.locator(".t-body")
 
     def timeline_item(self, title: str):
         return self.timeline_items.filter(has=self.page.locator(".t-title", has_text=title))

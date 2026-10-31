@@ -36,6 +36,11 @@ def _login_to_home(page, user) -> bool:
     return True
 
 
+def _status(page) -> str:
+    """The welcome block's status badge — "Under review" until the certificate is issued, then "Registered"."""
+    return AgencyHomePage(page).status_badge.inner_text().strip()
+
+
 def _record_application_id(home: AgencyHomePage, user) -> None:
     """Agencies paid before Application IDs were stored: take it from '<username> (<Application ID>)'."""
     match = re.search(r"\((\d{13})\)", home.user_text.inner_text())
@@ -64,13 +69,26 @@ def submitted_agency(page):
 
 @pytest.fixture
 def logged_in_agency_home_page(page):
-    """Yields (page, user) on Home for an agency whose application is submitted. Home is
-    read-only apart from "Mark all read", so any paid agency will do."""
+    """Yields (page, user) on Home for an agency whose application is submitted and still under
+    review (no certificate yet). Home is read-only apart from "Mark all read", so any such agency
+    will do."""
     for user in _submitted_agencies():
-        if _login_to_home(page, user):
+        if _login_to_home(page, user) and _status(page) == AgencyHomePage.UNDER_REVIEW:
             yield page, user
             return
     pytest.skip(NO_SUBMITTED_AGENCY)
+
+
+@pytest.fixture
+def registered_agency_home_page(page):
+    """Yields (page, user) on Home for an agency whose registration certificate has been issued
+    (status "Registered")."""
+    for user in _submitted_agencies():
+        if _login_to_home(page, user) and _status(page) == AgencyHomePage.REGISTERED:
+            yield page, user
+            return
+    pytest.skip("No submitted agency has been issued a certificate yet — clear Desktop Scrutiny and "
+                "Physical Verification for one in the admin portal.")
 
 
 @pytest.fixture
