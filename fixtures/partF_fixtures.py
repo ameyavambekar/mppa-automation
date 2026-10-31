@@ -30,6 +30,21 @@ def _part_f_already_saved(part_f: PartFPage, store: TestStateStore, user) -> boo
     return True
 
 
+def _offline(user) -> bool:
+    """Part C was recorded with a Service Mode that includes offline work."""
+    return bool(user.step_data.get("part_c", {}).get("offline"))
+
+
+def _part_f_asks_for_premises(part_f: PartFPage, store: TestStateStore, user) -> bool:
+    """Part F shows the office premises document only for an offline Service Mode. When
+    the store did not know that, record it so the user goes to the offline fixture."""
+    if not part_f.premises_file_input.count():
+        return False
+    store.mark_form_step_status(username=user.username, step="part_c", status="completed",
+                                data={"offline": True})
+    return True
+
+
 # ── Page object fixture ───────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -44,16 +59,36 @@ def logged_in_part_f_page(page):
     """Yields (page, user) on Part F for a user whose Part C is saved and whose Part F
     has never been saved, so the form is in its first-visit state. Users with Part F
     saved are never used; when none is left, a new agency is built (see
-    ``utils.agency_builder``)."""
+    ``utils.agency_builder``). Part C's Service Mode is Online Only, so there is no
+    office premises document."""
     store = TestStateStore()
     for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c"]):
-        if user.steps.get("part_f") == "completed":
+        if user.steps.get("part_f") == "completed" or _offline(user):
+            continue
+        part_f = _login_and_open_part_f(page, user)
+        if not _part_f_already_saved(part_f, store, user) and not _part_f_asks_for_premises(part_f, store, user):
+            yield page, user
+            return
+    user = AgencyBuilder(page, store).build("part_c")
+    _login_and_open_part_f(page, user)
+    yield page, user
+
+
+@pytest.fixture
+def logged_in_offline_part_f_page(page):
+    """Yields (page, user) on a never-saved Part F for a user whose Part C Service Mode
+    includes offline work, so Part F asks for the office premises document. Only users
+    recorded as offline are tried; when none is left, one is built with Service Mode
+    "Offline Only"."""
+    store = TestStateStore()
+    for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c"]):
+        if user.steps.get("part_f") == "completed" or not _offline(user):
             continue
         part_f = _login_and_open_part_f(page, user)
         if not _part_f_already_saved(part_f, store, user):
             yield page, user
             return
-    user = AgencyBuilder(page, store).build("part_c")
+    user = AgencyBuilder(page, store).build("part_c", offline=True)
     _login_and_open_part_f(page, user)
     yield page, user
 
@@ -100,6 +135,24 @@ def part_f_invalid_dates_data() -> PartFData:
 def part_f_psara_number_data() -> PartFData:
     """TC-466: PSARA Licence No. rules."""
     return PartFFactory.psara_number_rules()
+
+
+@pytest.fixture
+def part_f_premises_data() -> PartFData:
+    """TC-579: every certificate No, with an office premises document."""
+    return PartFFactory.with_premises_document()
+
+
+@pytest.fixture
+def part_f_undersized_certificate_data() -> PartFData:
+    """TC-574: Contractor Licence with a document under 10 KB."""
+    return PartFFactory.undersized_certificate()
+
+
+@pytest.fixture
+def part_f_undersized_signature_data() -> PartFData:
+    """TC-575: a signature under 10 KB."""
+    return PartFFactory.undersized_signature()
 
 
 @pytest.fixture

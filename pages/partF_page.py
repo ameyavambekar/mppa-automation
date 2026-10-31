@@ -22,6 +22,13 @@ class PartFPage(BasePage):
     invalid field gets a ``p.fld-err`` message (see ``field_error``) and the
     ``client_errors`` summary box lists them all. A chosen file is checked as
     soon as it is picked: a wrong type or a file over 2 MB is rejected and cleared.
+    The 10 KB minimum is not checked by the page — the server rejects a smaller file
+    on save and reloads Part F unsaved with its messages in ``server_errors``.
+
+    When Part C's Service Mode includes offline work ("Offline Only" / "Both Online &
+    Offline"), an extra "Office Premises Document" section (``premises_*``) sits between
+    the certificates and the signature; its upload is required. For "Online Only" it is
+    not on the page at all.
 
     A successful save stays on Part F with ``SAVED_MESSAGE`` and "Next: Documents →"
     links. A saved Part F reopens editable (no "Edit this section"). A saved
@@ -54,6 +61,9 @@ class PartFPage(BasePage):
               "lin": "lin_applicable", "epf": "epf_applicable", "esic": "esic_applicable"}
 
     SECTIONS = ("Certificate & Licence Details", "Authorised Signatory — Specimen Signature", "Application Details")
+    PREMISES_SECTION = "Office Premises Document"
+    # SECTIONS when Part C's Service Mode includes offline work
+    OFFLINE_SECTIONS = (SECTIONS[0], PREMISES_SECTION, *SECTIONS[1:])
     PLACE_PLACEHOLDER = "-- Select place (district) --"
 
     # Client-side texts
@@ -69,6 +79,19 @@ class PartFPage(BasePage):
     SIGNATURE_TYPE_ERROR = "Only JPG or PNG allowed for the signature."
     FILE_TOO_LARGE_ERROR = "File is too large — max 2 MB."
     PLACE_REQUIRED_ERROR = "Place is required."
+    PREMISES_TITLE = "Office Premises Owner Registration Document / Lease / Leave & Licence Agreement"
+    PREMISES_NOTE = ("Shown because your service mode includes offline operations. Upload the ownership "
+                     "registration document, or the lease / leave & licence agreement for your office premises.")
+    PREMISES_REQUIRED_ERROR = "Please upload the office premises document."
+
+    # Server-side texts (shown in ``server_errors`` after a rejected save)
+    FILE_TOO_SMALL_ERROR = "File is smaller than 10 KB — upload a clear, complete scan."
+    SIGNATURE_TOO_SMALL_ERROR = f"Signature: {FILE_TOO_SMALL_ERROR}"
+
+    @staticmethod
+    def certificate_too_small_errors(name: str) -> tuple[str, str]:
+        """Server messages for a certificate document under 10 KB; ``name`` is e.g. 'Contractor Licence'."""
+        return (f"{name} document: {PartFPage.FILE_TOO_SMALL_ERROR}", f"{name}: Document upload is required.")
 
     @staticmethod
     def required_error(label: str) -> str:
@@ -136,6 +159,12 @@ class PartFPage(BasePage):
     def client_errors(self):
         """Summary box after a blocked submit: ERRORS_HEADING, then '• <message>' per error."""
         return self.page.locator("#clientErr")
+
+    @property
+    def server_errors(self):
+        """Red box at the top after the server rejects a save (e.g. a file under 10 KB).
+        Same ``alert-e`` class as ``client_errors``, which is excluded."""
+        return self.page.locator(".alert-e:not(#clientErr)")
 
     @property
     def form(self):
@@ -256,6 +285,38 @@ class PartFPage(BasePage):
         """'Save Part F & Continue' — becomes 'Saving…' and disabled once submitted."""
         return self.page.locator("#partFForm button[type='submit']")
 
+    # ── Office premises document (offline service modes only) ─────────────────
+
+    @property
+    def premises_file_input(self):
+        """Office premises document upload (#premFile, PDF/JPG/PNG, 10 KB – 2 MB, required).
+        ``data-has-file`` is "1" once a document is on file."""
+        return self.page.locator("#premFile")
+
+    @property
+    def premises_block(self):
+        return self.premises_file_input.locator("xpath=ancestor::div[contains(@class,'cert-block')][1]")
+
+    @property
+    def premises_title(self):
+        """PREMISES_TITLE."""
+        return self.premises_block.locator(".cert-title")
+
+    @property
+    def premises_note(self):
+        """PREMISES_NOTE, above the upload."""
+        return self.premises_block.locator("xpath=./p")
+
+    @property
+    def premises_label(self):
+        """'Upload Document *'."""
+        return self.premises_block.locator(".fld label")
+
+    @property
+    def premises_hint(self):
+        """CERT_FILE_HINT under the upload."""
+        return self.premises_block.locator("p.hlp")
+
     # ── Actions ───────────────────────────────────────────────────────────────
 
     @allure.step("Open Part F — Certificates, Licences & Signature")
@@ -287,6 +348,10 @@ class PartFPage(BasePage):
     @allure.step("Certificate '{cert}': choose document {path}")
     def set_certificate_document(self, cert: str, path: str):
         self.certificate_file_input(cert).set_input_files(path)
+
+    @allure.step("Choose office premises document {path}")
+    def set_premises_document(self, path: str):
+        self.premises_file_input.set_input_files(path)
 
     @allure.step("Choose signature {path}")
     def set_signature(self, path: str):

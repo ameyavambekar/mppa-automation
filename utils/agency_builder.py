@@ -12,7 +12,9 @@ data, recording every step in the state store as it goes.
 
 Stages, in order: "registered", "part_a", "part_b", "part_c", "part_f",
 "enclosures", "premises", "declaration". A built agency's Part C has "Does the agency provide
-training?" = No, its Part F has every certificate answered No, "enclosures" uploads
+training?" = No and Service Mode "Online Only" unless ``offline=True`` ("Offline Only", which
+makes Part F ask for the office premises document); the Part C state-store snapshot records
+``{"service_mode": …, "offline": …}``. Its Part F has every certificate answered No, "enclosures" uploads
 the six mandatory documents (6/6), and "premises" saves the three required photos
 (location Pune) with both Yes / No questions answered No, and "declaration" uploads
 both signed forms, which opens Preview.
@@ -71,18 +73,23 @@ class AgencyBuilder:
         self.store = store or TestStateStore()
 
     @allure.step("Build a new agency up to '{stage}'")
-    def build(self, stage: str, legal_constitution: str = COMPANY) -> UserRecord:
+    def build(self, stage: str, legal_constitution: str = COMPANY, offline: bool = False) -> UserRecord:
         """Registers a new agency and saves every step up to and including ``stage``.
 
         ``legal_constitution`` is the Part A agency type. Only a Private Limited
-        Company can be built past Part A (the Part B data is for Directors)."""
+        Company can be built past Part A (the Part B data is for Directors).
+        ``offline`` saves Part C with Service Mode "Offline Only" (only up to "part_c":
+        the Part F the builder saves has no office premises document)."""
         if stage not in STAGES:
             raise ValueError(f"Unknown stage '{stage}' — expected one of {STAGES}")
         if STAGES.index(stage) > STAGES.index("part_a") and legal_constitution != COMPANY:
             raise ValueError(f"Only a {COMPANY} can be built past Part A")
+        if offline and STAGES.index(stage) > STAGES.index("part_c"):
+            raise ValueError("An offline agency can only be built up to 'part_c'")
         user = self.register()
         steps = {"part_a": lambda u: self.save_part_a(u, legal_constitution),
-                 "part_b": self.save_part_b, "part_c": self.save_part_c, "part_f": self.save_part_f,
+                 "part_b": self.save_part_b, "part_c": lambda u: self.save_part_c(u, offline),
+                 "part_f": self.save_part_f,
                  "enclosures": self.upload_documents, "premises": self.save_premises,
                  "declaration": self.upload_declaration}
         if stage != "registered":
@@ -178,9 +185,9 @@ class AgencyBuilder:
         self.page.wait_for_url(f"{FORMS_BASE}/partC.php**", timeout=15000)
         self.store.mark_form_step_status(username=user.username, step="part_b", status="completed")
 
-    @allure.step("Save Part C with the mandatory fields")
-    def save_part_c(self, user: UserRecord) -> None:
-        data = PartCFactory.minimal()
+    @allure.step("Save Part C with the mandatory fields (offline: {offline})")
+    def save_part_c(self, user: UserRecord, offline: bool = False) -> None:
+        data = PartCFactory.offline() if offline else PartCFactory.minimal()
         part_c = PartCPage(self.page)
         part_c.open()
         self.page.wait_for_load_state("networkidle")
@@ -188,7 +195,8 @@ class AgencyBuilder:
                                 data.charges_displayed)
         part_c.click_submit()
         expect(part_c.success_message).to_have_text(PartCPage.SAVED_MESSAGE)
-        self.store.mark_form_step_status(username=user.username, step="part_c", status="completed")
+        self.store.mark_form_step_status(username=user.username, step="part_c", status="completed",
+                                         data={"service_mode": data.service_mode, "offline": offline})
 
     @allure.step("Save Part F with every certificate answered No")
     def save_part_f(self, user: UserRecord) -> None:
