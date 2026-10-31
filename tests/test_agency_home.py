@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timedelta, timezone
 
 import allure
 from playwright.sync_api import expect
@@ -17,6 +18,7 @@ APPLICATION_ID = re.compile(r"^\d{13}$")
 DATE = r"\d{1,2} [A-Z][a-z]{2} \d{4}"
 DATE_TIME = r"\d{2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2} [AP]M"
 NOT_REACHED = re.compile(r"\bis-(done|current)\b")
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def _user_text(username: str) -> re.Pattern:
@@ -26,6 +28,25 @@ def _user_text(username: str) -> re.Pattern:
 
 def _application_id(home: AgencyHomePage, username: str) -> str:
     return _user_text(username).match(home.user_text.inner_text()).group(1)
+
+
+def _timeline_moment(text: str) -> datetime:
+    """'29 Oct 2026, 01:54 PM' (Indian time) as a datetime."""
+    return datetime.strptime(text.strip(), "%d %b %Y, %I:%M %p").replace(tzinfo=IST)
+
+
+def _days_left(home: AgencyHomePage) -> list[int]:
+    """The decision countdown expected today: 45 minus the days since the application was submitted.
+    Counted in calendar days or in whole 24-hour periods — they differ before the submission's time
+    of day, and which one the portal uses is not known yet (KAN-40 Open Questions), so both are allowed."""
+    submitted = _timeline_moment(home.timeline_time(AgencyHomePage.SUBMITTED_EVENT).inner_text())
+    now = datetime.now(IST)
+    elapsed = {(now.date() - submitted.date()).days, (now - submitted).days}
+    return sorted(AgencyHomePage.SLA_DAYS - days for days in elapsed)
+
+
+def _one_of(texts) -> re.Pattern:
+    return re.compile("^(" + "|".join(re.escape(text) for text in texts) + r")\s*$")
 
 
 def _expect_opens(page, link, path: str = None) -> None:
@@ -110,16 +131,20 @@ def test_tc519_next_step_banner(agency_home: AgencyHomePage, logged_in_agency_ho
     """
     Given my application is in Desktop Scrutiny
     When  I open the Home page
-    Then  the banner says it is under review in Stage 1 — Desktop Scrutiny and no action is needed, and
-          "View my application" opens my submitted application
+    Then  the banner says it is under review in Stage 1 — Desktop Scrutiny, no action is needed and the
+          decision is due within 45 days minus the days since submission, and "View my application" opens
+          my submitted application
 
     Notion: KAN-TC-519 | KAN-40 AC-3
     """
     page, user = logged_in_agency_home_page
 
-    with allure.step("Verify the banner"):
+    with allure.step("Read the submission date from the timeline"):
+        days_left = _days_left(agency_home)
+
+    with allure.step(f"Verify the banner (decision due within {' or '.join(map(str, days_left))} days)"):
         expect(agency_home.next_step_heading).to_have_text(AgencyHomePage.STAGE_1_HEADING)
-        expect(agency_home.next_step_text).to_have_text(AgencyHomePage.STAGE_1_TEXT)
+        expect(agency_home.next_step_text).to_have_text(_one_of(map(AgencyHomePage.stage_1_text, days_left)))
 
     with allure.step("Click 'View my application'"):
         _expect_opens(page, agency_home.next_step_button, AgencyHomePage.VIEW_APPLICATION_PATH)
@@ -135,18 +160,25 @@ def test_tc520_application_progress(agency_home: AgencyHomePage, logged_in_agenc
     """
     Given my application has just been submitted
     When  I look at Application progress
-    Then  it shows Stage 1 — Desktop Scrutiny and the 45-day decision badge; Submitted is done, Desktop
-          scrutiny current, Physical verification and Certificate not reached; the timeline lists the
-          submission with its date and time
+    Then  it shows Stage 1 — Desktop Scrutiny and the decision badge counting down from 45 days (the same
+          number as the banner); Submitted is done, Desktop scrutiny current, Physical verification and
+          Certificate not reached; the timeline lists the submission with its date and time
 
     Notion: KAN-TC-520 | KAN-40 AC-4
     """
     page, user = logged_in_agency_home_page
     done, current, *later = AgencyHomePage.STAGES
 
+    with allure.step("Read the submission date from the timeline"):
+        days_left = _days_left(agency_home)
+
     with allure.step("Verify the card header"):
         expect(agency_home.progress_subtitle).to_have_text(AgencyHomePage.STAGE_1_PROGRESS)
-        expect(agency_home.progress_badge).to_have_text(AgencyHomePage.DECISION_BADGE)
+        expect(agency_home.progress_badge).to_have_text(_one_of(map(AgencyHomePage.decision_badge, days_left)))
+
+    with allure.step("Verify the badge and the banner give the same number of days"):
+        banner_days = int(re.search(r"within (\d+) day", agency_home.next_step_text.inner_text()).group(1))
+        expect(agency_home.progress_badge).to_have_text(AgencyHomePage.decision_badge(banner_days))
 
     with allure.step("Verify the stage tracker"):
         expect(agency_home.stages).to_have_text(list(AgencyHomePage.STAGES))
@@ -445,3 +477,91 @@ def test_tc530_unpaid_lands_on_next_step(unpaid_agency):
 
     with allure.step("Verify the Preview step opens"):
         expect(page).to_have_url(re.compile(rf"^{re.escape(PREVIEW_URL)}"))
+
+
+# ---------------------------------------------------------------------------
+# TC-580  Registered agency — welcome block, banner and progress
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-580")
+@allure.story(STORY)
+@allure.title("TC-580: Home after the certificate is issued shows the agency as registered with every stage done")
+def test_tc580_registered_status(agency_home: AgencyHomePage, registered_agency_home_page):
+    """
+    Given my registration certificate has been issued
+    When  I open the Home page
+    Then  the welcome block shows "Registered", the banner says my agency is registered with the certificate's
+          validity (five years after issue) and "View certificate", Application progress reads "Approved —
+          Certificate Issued · Closed" with no deadline and every stage done, and the timeline lists the
+          certificate, the office verification, Desktop Scrutiny and the submission, newest first
+
+    Notion: KAN-TC-580 | KAN-40 AC-10
+    """
+    page, user = registered_agency_home_page
+    application_id = _application_id(agency_home, user.username)
+
+    with allure.step("Verify the welcome block"):
+        expect(agency_home.eyebrow).to_have_text(AgencyHomePage.EYEBROW)
+        expect(agency_home.agency_name).to_have_text(user.agency_name)
+        expect(agency_home.application_id).to_have_text(application_id)
+        expect(agency_home.status_badge).to_have_text(AgencyHomePage.REGISTERED)
+        expect(agency_home.status_badge).to_have_class(re.compile(r"\bui-badge-green\b"))
+        expect(agency_home.registered).to_have_text(re.compile(rf"^Registered\s*{DATE}$"))
+
+    with allure.step("Verify the timeline, newest first"):
+        titles = [title for title, _ in AgencyHomePage.REGISTERED_TIMELINE]
+        notes = [note.format(application_id=application_id, district=user.district)
+                 for _, note in AgencyHomePage.REGISTERED_TIMELINE]
+        expect(agency_home.timeline_titles).to_have_text(titles)
+        expect(agency_home.timeline_notes).to_have_text(notes)
+        expect(agency_home.timeline_times).to_have_text([re.compile(rf"^{DATE_TIME}$")] * len(titles))
+        moments = [_timeline_moment(text) for text in agency_home.timeline_times.all_inner_texts()]
+        assert moments == sorted(moments, reverse=True), f"Timeline is not newest first: {moments}"
+
+    with allure.step("Verify the banner"):
+        issued = moments[0]
+        valid_until = issued.replace(year=issued.year + AgencyHomePage.CERTIFICATE_YEARS)
+        expect(agency_home.next_step_heading).to_have_text(AgencyHomePage.REGISTERED_HEADING)
+        expect(agency_home.next_step_text).to_have_text(
+            re.compile(rf"^Certificate valid until 0?{valid_until.day} {valid_until:%b %Y}\.$"))
+        expect(agency_home.view_certificate_button).to_be_visible()
+        expect(agency_home.next_step_button).to_have_count(0)
+
+    with allure.step("Verify Application progress"):
+        expect(agency_home.progress_subtitle).to_have_text(AgencyHomePage.REGISTERED_PROGRESS)
+        expect(agency_home.progress_badge).to_have_count(0)
+        expect(agency_home.stages).to_have_text(list(AgencyHomePage.STAGES))
+        for label in AgencyHomePage.STAGES:
+            expect(agency_home.stage(label)).to_have_class(re.compile(r"\bis-done\b"))
+
+
+# ---------------------------------------------------------------------------
+# TC-581  Registered agency — Certificate and Job seekers tiles
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-581")
+@allure.story(STORY)
+@allure.title("TC-581: Home after the certificate is issued adds the Certificate and Job seekers tiles")
+def test_tc581_registered_tiles(agency_home: AgencyHomePage, registered_agency_home_page):
+    """
+    Given my registration certificate has been issued
+    When  I click each tile, then "View certificate" in the banner
+    Then  there are five tiles — My application, Corrections, Certificate, Job seekers, Helpdesk — each opening
+          its page, and "View certificate" opens the certificate
+
+    Notion: KAN-TC-581 | KAN-40 AC-10
+    """
+    page, user = registered_agency_home_page
+
+    with allure.step("Verify the five tiles, in order"):
+        expect(agency_home.tiles).to_have_count(len(AgencyHomePage.REGISTERED_TILES))
+        for index, label in enumerate(AgencyHomePage.REGISTERED_TILES):
+            expect(agency_home.tiles.nth(index)).to_contain_text(label)
+
+    for label, path in AgencyHomePage.REGISTERED_TILES.items():
+        with allure.step(f"Click the '{label}' tile"):
+            agency_home.open()
+            _expect_opens(page, agency_home.tile(label), path)
+
+    with allure.step("Click 'View certificate' in the banner"):
+        agency_home.open()
+        _expect_opens(page, agency_home.view_certificate_button, AgencyHomePage.CERTIFICATE_PATH)
+        expect(page).to_have_title(re.compile(rf"^MPPA Certificate — {re.escape(user.agency_name)}$"))
