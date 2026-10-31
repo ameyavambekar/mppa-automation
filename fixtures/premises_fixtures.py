@@ -15,14 +15,16 @@ _LOCATION = {"latitude": PremisesFactory.LOCATION[0], "longitude": PremisesFacto
 
 
 class LocationAccess:
-    """Allows or blocks the site's access to the browser location (set to Pune)."""
+    """Allows or blocks the site's access to the browser location (set to Pune, or
+    ``location`` = (lat, lng) when given)."""
 
     def __init__(self, context):
         self.context = context
 
-    def allow(self):
+    def allow(self, location: tuple[float, float] = None):
         self.context.grant_permissions(["geolocation"], origin=_ORIGIN)
-        self.context.set_geolocation(_LOCATION)
+        self.context.set_geolocation(
+            {**_LOCATION, "latitude": location[0], "longitude": location[1]} if location else _LOCATION)
 
     def block(self):
         self.context.clear_permissions()
