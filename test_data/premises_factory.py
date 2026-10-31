@@ -3,10 +3,11 @@ Data Factory — Premises Photos
 ==============================
 All test-data construction for the Premises Photos step (KAN-38).
 Each factory method maps to one Acceptance Criterion, Edge Case, or scenario
-referenced in the AIO test cases KAN-TC-475 … KAN-TC-489.
+referenced in the AIO test cases KAN-TC-475 … KAN-TC-489 (488: OUTSIDE_LOCATION).
 
 Photos are keyed by the card's ``data-key`` (see ``PremisesPage.PHOTOS``).
-The browser's location is set to ``PremisesFactory.LOCATION`` (Pune).
+The browser's location is set to ``PremisesFactory.LOCATION`` (Pune), or to
+``OUTSIDE_LOCATION`` for the outside-Maharashtra check.
 
 Usage
 -----
@@ -34,6 +35,7 @@ class PremisesData:
 class PremisesFactory:
 
     LOCATION = (18.5204, 73.8567)     # Pune, Maharashtra
+    OUTSIDE_LOCATION = (-31.9502, 115.8609)   # Perth, Australia — TC-488
     PHOTO_JPG = CERTIFICATE_JPG
     PHOTO_PNG = CERTIFICATE_PNG
 

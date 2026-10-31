@@ -460,3 +460,37 @@ def test_tc487_yes_to_no_after_photo(
     with allure.step("Verify the classroom card did not block the step"):
         page.wait_for_url(re.compile(r"/forms/declaration"), timeout=15000)
         _record(user, "completed")
+
+
+# ---------------------------------------------------------------------------
+# TC-488  Photo taken outside Maharashtra rejected
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-488")
+@allure.story(STORY)
+@allure.title("TC-488: A photo taken outside Maharashtra is rejected")
+def test_tc488_outside_maharashtra(premises_page: PremisesPage, logged_in_premises_page, location_access):
+    """
+    Given location access is allowed and my location is outside Maharashtra
+    When  I choose a photo for the inside view
+    Then  the photo is not saved, the card shows "No photo yet" again, and the message box reads
+          "The photo location (<lat>, <lng>) is outside Maharashtra. Photos must be taken at the agency premises."
+
+    Notion: KAN-TC-488 | KAN-38 EC-4 | data: location Perth, Australia (-31.9502, 115.8609)
+    """
+    page, user = logged_in_premises_page
+    lat, lng = PremisesFactory.OUTSIDE_LOCATION
+
+    with allure.step(f"Set the browser location to ({lat}, {lng}) and choose a photo for the inside view"):
+        location_access.allow(PremisesFactory.OUTSIDE_LOCATION)
+        premises_page.choose_photo("interior", PremisesFactory.PHOTO_JPG)
+
+    with allure.step("Verify the outside-Maharashtra message and that the photo is not saved"):
+        expect(premises_page.message_box).to_have_text(
+            PremisesPage.outside_maharashtra_error(lat, lng), timeout=UPLOAD_TIMEOUT)
+        _expect_empty(premises_page, "interior")
+        expect(premises_page.badge("interior")).to_have_text(PremisesPage.BADGE_REQUIRED)
+
+    with allure.step("Reload and verify nothing was saved"):
+        premises_page.open()
+        _expect_empty(premises_page, "interior")
+        expect(premises_page.badge("interior")).to_have_text(PremisesPage.BADGE_REQUIRED)

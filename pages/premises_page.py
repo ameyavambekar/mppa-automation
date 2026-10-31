@@ -56,6 +56,12 @@ class PremisesPage(BasePage):
     MISSING_PHOTOS_ERROR = "Head office: answer both questions and add every required photo before continuing."
 
     @staticmethod
+    def outside_maharashtra_error(lat: float, lng: float) -> str:
+        """Message when a photo's location is outside Maharashtra (photo not saved)."""
+        return (f"The photo location ({lat:.4f}, {lng:.4f}) is outside Maharashtra. "
+                "Photos must be taken at the agency premises.")
+
+    @staticmethod
     def location_text(lat: float, lng: float) -> re.Pattern:
         """'Location: <lat>, <lng> (±<N> m) · Map' as shown on a saved card (5 decimals)."""
         return re.compile(rf"Location: {lat:.5f}, {lng:.5f} \(±\d+ m\) · Map")
