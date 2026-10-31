@@ -71,6 +71,15 @@ class PartCFactory:
         )
 
     @staticmethod
+    def offline() -> PartCData:
+        """Agency builder: mandatory fields with Service Mode "Offline Only", so Part F asks
+        for the office premises document."""
+        data = PartCFactory.minimal()
+        data.service_mode = "Offline Only"
+        data.scenario_label = "offline"
+        return data
+
+    @staticmethod
     def with_training() -> PartCData:
         """TC-127: training = Yes with its own centre address."""
         data = PartCFactory.minimal()

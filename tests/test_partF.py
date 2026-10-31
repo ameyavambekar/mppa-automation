@@ -35,6 +35,8 @@ def _fill_certificate(part_f: PartFPage, cert: str, data: CertificateData) -> No
 def _fill(part_f: PartFPage, data: PartFData) -> None:
     for cert, cert_data in data.certificates.items():
         _fill_certificate(part_f, cert, cert_data)
+    if data.premises is not None:
+        part_f.set_premises_document(data.premises)
     if data.signature is not None:
         part_f.set_signature(data.signature)
     if data.place:
@@ -969,3 +971,193 @@ def test_tc470_answers_after_save(
     with allure.step("Verify the reloaded page shows No with the fields hidden"):
         expect(part_f_page.certificate_radio("cl", False)).to_be_checked()
         expect(part_f_page.certificate_body("cl")).to_be_hidden()
+
+
+def _expect_rejected_by_server(page, part_f: PartFPage, *messages: str) -> None:
+    """The server refused the save: Part F reloads unsaved with each message in the red box at the top."""
+    expect(page).to_have_url(ON_PART_F)
+    for message in messages:
+        expect(part_f.server_errors).to_contain_text(message)
+    expect(part_f.success_message).to_have_count(0)
+    expect(part_f.next_documents_link).to_be_hidden()
+
+
+# ---------------------------------------------------------------------------
+# TC-574  Certificate under 10 KB rejected by the server
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-574")
+@allure.story(STORY)
+@allure.title("TC-574: A certificate document under 10 KB is rejected by the server on save")
+def test_tc574_certificate_too_small(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_undersized_certificate_data: PartFData
+):
+    """
+    Given the Contractor Licence is answered Yes with a valid number and date, and a Place is chosen
+    When  I choose a PDF under 10 KB and click "Save Part F & Continue"
+    Then  the page keeps the file, but the server rejects the save with
+          "Contractor Licence document: File is smaller than 10 KB — upload a clear, complete scan."
+          and "Contractor Licence: Document upload is required." and Part F is not saved
+
+    Notion: KAN-TC-574 | KAN-21 EC-11 | data: undersized_certificate (valid_doc.pdf, 298 bytes)
+    """
+    page, user = logged_in_part_f_page
+    data = part_f_undersized_certificate_data
+    field = part_f_page.certificate_file_input("cl")
+    name = PartFPage.CERTIFICATES["cl"][0].split(" (")[0]
+
+    with allure.step("Answer Yes for the Contractor Licence, fill it with a PDF under 10 KB and choose a Place"):
+        _fill(part_f_page, data)
+
+    with allure.step("Verify the page keeps the file with no error under it"):
+        assert _chosen_files(field) == 1, "The page removed the file under 10 KB"
+        expect(part_f_page.field_error(field)).to_be_hidden()
+
+    with allure.step("Click 'Save Part F & Continue'"):
+        part_f_page.click_submit()
+
+    with allure.step("Verify the server rejects the file and Part F is not saved"):
+        _expect_rejected_by_server(page, part_f_page, *PartFPage.certificate_too_small_errors(name))
+
+
+# ---------------------------------------------------------------------------
+# TC-575  Signature under 10 KB rejected by the server
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-575")
+@allure.story(STORY)
+@allure.title("TC-575: A specimen signature under 10 KB is rejected by the server and blocks saving")
+def test_tc575_signature_too_small(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_undersized_signature_data: PartFData
+):
+    """
+    Given every certificate is answered No and a Place is chosen
+    When  I choose a PNG under 10 KB as the signature and click "Save Part F & Continue"
+    Then  the page keeps the file, but the server rejects the save with
+          "Signature: File is smaller than 10 KB — upload a clear, complete scan." and Part F is not saved
+
+    Notion: KAN-TC-575 | KAN-21 EC-12 | data: undersized_signature (signature_undersized.png, 72 bytes)
+    """
+    page, user = logged_in_part_f_page
+
+    with allure.step("Choose a signature under 10 KB and a Place"):
+        _fill(part_f_page, part_f_undersized_signature_data)
+
+    with allure.step("Verify the page keeps the file with no error under it"):
+        assert _chosen_files(part_f_page.signature_input) == 1, "The page removed the signature under 10 KB"
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
+
+    with allure.step("Click 'Save Part F & Continue'"):
+        part_f_page.click_submit()
+
+    with allure.step("Verify the server rejects the signature and Part F is not saved"):
+        _expect_rejected_by_server(page, part_f_page, PartFPage.SIGNATURE_TOO_SMALL_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# TC-576  Office premises document shown for an offline service mode
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-576")
+@allure.story(STORY)
+@allure.title("TC-576: The Office Premises Document is shown on Part F when the service mode includes offline work")
+def test_tc576_premises_shown_offline(part_f_page: PartFPage, logged_in_offline_part_f_page):
+    """
+    Given Part C is saved with a Service Mode that includes offline work
+    When  I open Part F
+    Then  an "Office Premises Document" section sits between the certificates and the signature,
+          with its title, note, a mandatory "Upload Document *" field and the 10 KB – 2 MB help text
+
+    Notion: KAN-TC-576 | KAN-21 AC-11 | data: offline Part C (agency builder)
+    """
+    page, user = logged_in_offline_part_f_page
+
+    with allure.step("Verify the sections, with the Office Premises Document second"):
+        expect(part_f_page.section_headings).to_have_text(list(PartFPage.OFFLINE_SECTIONS))
+
+    with allure.step("Verify the Office Premises Document section"):
+        expect(part_f_page.premises_title).to_have_text(PartFPage.PREMISES_TITLE)
+        expect(part_f_page.premises_note).to_have_text(PartFPage.PREMISES_NOTE)
+        expect(part_f_page.premises_label).to_have_text("Upload Document *")
+        expect(part_f_page.premises_file_input).to_be_visible()
+        expect(part_f_page.premises_hint).to_have_text(PartFPage.CERT_FILE_HINT)
+
+
+# ---------------------------------------------------------------------------
+# TC-577  Office premises document not shown for Online Only
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-577")
+@allure.story(STORY)
+@allure.title("TC-577: The Office Premises Document is not shown on Part F when the service mode is Online Only")
+def test_tc577_premises_hidden_online_only(part_f_page: PartFPage, logged_in_part_f_page):
+    """
+    Given Part C is saved with Service Mode "Online Only"
+    When  I open Part F
+    Then  there is no Office Premises Document section or upload
+
+    Notion: KAN-TC-577 | KAN-21 AC-11 | data: Online Only Part C
+    """
+    page, user = logged_in_part_f_page
+
+    with allure.step("Verify only the three usual sections are shown"):
+        expect(part_f_page.section_headings).to_have_text(list(PartFPage.SECTIONS))
+
+    with allure.step("Verify there is no office premises upload"):
+        expect(part_f_page.premises_file_input).to_have_count(0)
+
+
+# ---------------------------------------------------------------------------
+# TC-578  Office premises document required
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-578")
+@allure.story(STORY)
+@allure.title("TC-578: Saving Part F without the office premises document is blocked for an offline service mode")
+def test_tc578_premises_required(part_f_page: PartFPage, logged_in_offline_part_f_page,
+                                 part_f_all_no_data: PartFData):
+    """
+    Given Part C is saved with a Service Mode that includes offline work
+    When  I leave every certificate at No, choose a Place but no office premises document, and save
+    Then  saving is blocked with "Please upload the office premises document." under the upload
+          and in the summary, and the upload is focused
+
+    Notion: KAN-TC-578 | KAN-21 AC-11 | data: all_no
+    """
+    page, user = logged_in_offline_part_f_page
+
+    with allure.step("Choose a Place and save without an office premises document"):
+        _fill(part_f_page, part_f_all_no_data)
+        part_f_page.click_submit()
+
+    with allure.step("Verify the save is blocked with the premises error"):
+        _expect_blocked(page, part_f_page, PartFPage.PREMISES_REQUIRED_ERROR)
+        expect(part_f_page.field_error(part_f_page.premises_file_input)).to_have_text(
+            PartFPage.PREMISES_REQUIRED_ERROR)
+        expect(part_f_page.premises_file_input).to_be_focused()
+        expect(part_f_page.next_documents_link).to_be_hidden()
+
+
+# ---------------------------------------------------------------------------
+# TC-579  Saves with the office premises document — saves Part F
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-579")
+@allure.story(STORY)
+@allure.title("TC-579: Part F saves with an office premises document, which is then on file and not required again")
+def test_tc579_premises_saved(part_f_page: PartFPage, logged_in_offline_part_f_page, part_f_premises_data: PartFData):
+    """
+    Given Part C is saved with a Service Mode that includes offline work
+    When  I leave every certificate at No, choose a Place and a valid office premises document, and save
+    Then  Part F saves; reopened, the document is on file and a save without choosing a file succeeds
+
+    Notion: KAN-TC-579 | KAN-21 AC-11 | data: with_premises_document (certificate.pdf)
+    """
+    page, user = logged_in_offline_part_f_page
+
+    with allure.step("Choose a Place and an office premises document, and save"):
+        _fill(part_f_page, part_f_premises_data)
+        part_f_page.click_submit()
+        _expect_part_f_saved(page, part_f_page, user)
+
+    with allure.step("Reopen Part F and verify the document is on file"):
+        part_f_page.open()
+        expect(part_f_page.premises_file_input).to_have_attribute("data-has-file", "1")
+
+    with allure.step("Save again without choosing a file — the document is not required again"):
+        part_f_page.click_submit()
+        _expect_part_f_saved(page, part_f_page, user)

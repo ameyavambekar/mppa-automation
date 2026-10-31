@@ -3,8 +3,8 @@ Data Factory — Step 4 (Part F: Certificates, Licences & Signature)
 ==================================================================
 All test-data construction for Part F of the Form-I wizard (KAN-21).
 Each factory method maps to one Acceptance Criterion, Edge Case, or
-scenario referenced in the AIO test cases KAN-TC-143 … KAN-TC-168 and
-KAN-TC-462 … KAN-TC-468.
+scenario referenced in the AIO test cases KAN-TC-143 … KAN-TC-168,
+KAN-TC-462 … KAN-TC-470 and KAN-TC-574 … KAN-TC-579.
 
 Dates are given as the digits a user types (the field adds the slashes);
 ``shown`` is what the field then displays.
@@ -22,7 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, SIGNATURE_PNG, VALID_CERTIFICATE)
+from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, SIGNATURE_PNG, UNDERSIZED_FILE,
+                                UNDERSIZED_SIGNATURE, VALID_CERTIFICATE)
 
 
 @dataclass
@@ -44,6 +45,7 @@ class PartFData:
     place: str = ""
     certificates: dict[str, CertificateData] = field(default_factory=dict)   # PartFPage.CERTIFICATES ids answered Yes
     signature: Optional[str] = None             # file path
+    premises: Optional[str] = None              # file path — offline service modes only
     # Scenario-specific values
     invalid_values: list[str] = field(default_factory=list)   # bad values a negative scenario enters, in order
     valid_values: list[str] = field(default_factory=list)     # values that clear the error, in order
@@ -130,6 +132,34 @@ class PartFFactory:
             invalid_values=["AB", "-ABC123", "PSARA#123"],
             valid_values=["PSARA-MH/12345 (2021)"],
             scenario_label="psara_number_rules",
+        )
+
+    @staticmethod
+    def with_premises_document() -> PartFData:
+        """TC-579 (offline service mode): every certificate No, a valid office premises document."""
+        data = PartFFactory.all_no()
+        data.premises = VALID_CERTIFICATE
+        data.scenario_label = "with_premises_document"
+        return data
+
+    # ── Files under 10 KB (checked by the server on save) ─────────────────────
+
+    @staticmethod
+    def undersized_certificate() -> PartFData:
+        """TC-574: a complete Contractor Licence whose document is a 298-byte PDF."""
+        return PartFData(
+            place=PartFFactory.PLACE,
+            certificates={"cl": CertificateData("CL/MH/2024/001", PartFFactory.VALID_DATE, UNDERSIZED_FILE)},
+            scenario_label="undersized_certificate",
+        )
+
+    @staticmethod
+    def undersized_signature() -> PartFData:
+        """TC-575: every certificate No, a 72-byte PNG signature."""
+        return PartFData(
+            place=PartFFactory.PLACE,
+            signature=UNDERSIZED_SIGNATURE,
+            scenario_label="undersized_signature",
         )
 
     # ── As-you-type input rules (TC-467) ──────────────────────────────────────
