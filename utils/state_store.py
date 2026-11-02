@@ -364,6 +364,15 @@ class TestStateStore:
             if not updated:
                 raise ValueError(f"No user found with username '{username}'")
 
+    def delete_user(self, *, username: str) -> None:
+        """Forgets a user whose account no longer exists on the portal (e.g. a draft an admin deleted)."""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM form_applications WHERE user_id IN (SELECT id FROM users WHERE username = ?)", (username,)
+            )
+            if not conn.execute("DELETE FROM users WHERE username = ?", (username,)).rowcount:
+                raise ValueError(f"No user found with username '{username}'")
+
     def record_application_id(self, *, username: str, application_id: str) -> None:
         """Records the Application ID issued when the application was submitted (paid)."""
         with self._connect() as conn:
