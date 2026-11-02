@@ -1,37 +1,61 @@
+import re
+from urllib.parse import urlencode
+
 import allure
 
 from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
 from config import ADMIN_BASE
 
+ADMIN_AUDIT_LOG_URL = f"{ADMIN_BASE}/audit/index.php"
+
 
 class AdminAuditLogPage(BasePage):
-    """Admin — Audit Log (/module/admin/audit/index.php).
+    """Admin — Audit Log (/module/admin/audit/index.php, "Audit Log — Admin").
 
-    The log is a custom card feed, not a ``.stbl`` table: each event is a
-    ``.log-item`` (id ``row-<n>``) with time / action-pill / who-what /
-    details-preview cells, followed by a hidden ``.log-expand`` row
-    (id ``exp-<n>``) holding the full record header and raw JSON. Clicking a
-    log item opens its expand row and closes any other (Escape closes all).
+    Header ``.adm-page-title``: "Audit Log · {N} Events" and a clock (``.pg-date``, "DD Mon YYYY · HH:MM"),
+    then four stat cards (``.sc-row .sc``, count ``.n``, label ``.l``): Total Events (follows the filters),
+    Today and This Week (links to ``?date_f=today`` / ``?date_f=week``) and Action Types.
 
-    Filtering is done server-side via query params: ``q`` (search),
-    ``date_f`` (today/week/month), ``action_f`` (action type, chosen in a dropdown that
-    submits as soon as it changes) and ``page``.
+    The log is a card feed, not a ``.stbl`` table: each event is a ``.log-item`` with time / action-pill /
+    who-what / details-preview cells, followed by a hidden ``.log-expand`` (id ``exp-<audit id>``) holding
+    the full record header, Table / Record ID / By chips and raw JSON. Clicking a log item opens its expand
+    row and closes any other (Escape closes all).
+
+    Filtering is done server-side via the GET form ``#filterForm``: ``q`` (search), ``date_f``
+    (today/week/month, empty = All Time), ``action_f`` (chosen in ``#actionSelect``, which submits as soon
+    as it changes) and ``page`` (30 events per page). "✕ Clear all" (``?``) shows while any filter is set;
+    no matches show ``EMPTY``.
     Entry locators are offered both by position (``log_entry(0)`` = newest)
     and by audit record id (``log_entry_by_id(894)``).
     """
 
-    # action_f filter values seen on the page. The action dropdown (#actionSelect) only lists the
-    # codes the log already holds (11 on 02-Nov-2026), so a code appears once its first event is logged.
-    ACTION_TYPES = (
-        "ADMIN_CREATE", "ADMIN_DELETE", "ADMIN_LOGIN", "ADMIN_PERM_UPDATE",
-        "ADMIN_STATUS_CHANGE", "ADMIN_TOGGLE", "AGENCY_APPROVE",
-        "AGENCY_REINSTATE", "AGENCY_REJECT", "AGENCY_REVOKE", "AGENCY_SUSPEND",
-        "FINAL_SUBMIT", "LOGIN", "REGISTER", "SAVE_AUTHORISATION",
-        "SAVE_DECLARATION", "SAVE_ENCLOSURES", "SAVE_PART_A", "SAVE_PART_B",
-        "SAVE_PART_C", "SAVE_PART_D", "SAVE_PART_E", "SAVE_PART_F",
-        "SECOND_APPEAL", "SESSION_KILL", "STATUS_CHANGE", "SUBMIT_FIRST_APPEAL",
-    )
+    PAGE_TITLE = "Audit Log — Admin"
+    SEARCH_PLACEHOLDER = "Search action, table, user, data…"
+    ALL_ACTIONS = "— All Action Types —"
+    ACTION_GROUPS = ("── Agency ──", "── Sessions ──", "── Admin ──", "── Other ──")
+    DATE_TABS = {"": "All Time", "today": "Today", "week": "7 Days", "month": "30 Days"}
+    STAT_CARDS = ("Total Events", "Today", "This Week", "Action Types")
+    CLEAR_ALL = "✕ Clear all"
+    EMPTY = "No audit records found for the selected filters."
+    PAGE_SIZE = 30
+    TIMESTAMP_FORMAT = "%d %b %Y, %H:%M:%S"
+    CLOCK_FORMAT = "%d %b %Y · %H:%M"
+    TIME_AGO = re.compile(r"^(just now|\d+[mhd] ago)$")
+    SHOWING = re.compile(r"^Showing ([\d,]+)–([\d,]+) of ([\d,]+) events?$")
+    PAGINATION_INFO = re.compile(r"^([\d,]+)–([\d,]+) of ([\d,]+) · Page (\d+) / (\d+)$")
+
+    # action_f value → pill label. The action dropdown (#actionSelect) only lists the codes the log
+    # already holds (13 on 02-Nov-2026), so a code appears once its first event is logged; codes
+    # without a friendly label show the raw code.
+    ACTION_LABELS = {
+        "AGENCY_APPROVE": "Agency Approved", "LOGIN": "Agency Login", "ADMIN_LOGIN": "Admin Login",
+        "ADMIN_LOGIN_FAILED": "ADMIN_LOGIN_FAILED", "CERTIFICATE_EXPIRE": "CERTIFICATE_EXPIRE",
+        "DRAFT_DELETE": "DRAFT_DELETE", "DRAFT_EXTEND": "DRAFT_EXTEND", "DRAFT_LOGIN": "DRAFT_LOGIN",
+        "JOB_SEEKER_APPROVED": "JOB_SEEKER_APPROVED", "PASSWORD_RESET_DONE": "PASSWORD_RESET_DONE",
+        "PASSWORD_RESET_VERIFIED": "PASSWORD_RESET_VERIFIED", "PAYMENT_COMMIT": "PAYMENT_COMMIT",
+        "SECTION_REVIEW_SAVE": "SECTION_REVIEW_SAVE",
+    }
 
     # ── Reusable components ───────────────────────────────────────────────────
 
@@ -48,10 +72,19 @@ class AdminAuditLogPage(BasePage):
 
     @property
     def page_title(self):
-        # "📋 Audit Log · 869 Events"
+        # "Audit Log · 1,712 Events"
         return self.page.locator(".adm-page-title span").first
 
+    @property
+    def clock(self):
+        # "02 Nov 2026 · 11:58"
+        return self.page.locator(".adm-page-title .pg-date")
+
     # ── Stat cards ────────────────────────────────────────────────────────────
+
+    @property
+    def stat_cards(self):
+        return self.page.locator(".sc-row .sc")
 
     def stat_card(self, label: str):
         """label: 'Total Events', 'Today', 'This Week' or 'Action Types'.
@@ -82,7 +115,12 @@ class AdminAuditLogPage(BasePage):
     @property
     def showing_events_text(self):
         # "Showing 1–30 of 869 events"
-        return self.page.locator("//div[contains(text(),'Showing') and contains(text(),'events')]")
+        return self.page.locator("//div[contains(text(),'Showing') and contains(text(),'event')]")
+
+    @property
+    def clear_all_link(self):
+        """'✕ Clear all' (href '?'), shown only while a filter is set."""
+        return self.page.locator("a", has_text=self.CLEAR_ALL)
 
     # ── Action-type dropdown ──────────────────────────────────────────────────
 
@@ -92,8 +130,17 @@ class AdminAuditLogPage(BasePage):
         grouped (Agency, Sessions, Admin, Other). Changing it submits the filter form."""
         return self.page.locator("#actionSelect")
 
+    @property
+    def action_groups(self):
+        return self.action_select.locator("optgroup")
+
+    @property
+    def action_options(self):
+        """The action options, without '— All Action Types —'."""
+        return self.action_select.locator("option:not([value=''])")
+
     def action_option(self, action: str):
-        """action: one of ACTION_TYPES — listed only once the log holds an event of that type."""
+        """action: an action code — listed only once the log holds an event of that type."""
         return self.action_select.locator(f"option[value='{action}']")
 
     @property
@@ -108,6 +155,10 @@ class AdminAuditLogPage(BasePage):
         return self.page.locator(".tb-wrap")
 
     @property
+    def empty_state(self):
+        return self.log_feed.get_by_text(self.EMPTY)
+
+    @property
     def log_entries(self):
         """All main log rows on the current page (newest first)."""
         return self.page.locator(".log-item")
@@ -117,8 +168,8 @@ class AdminAuditLogPage(BasePage):
         return self.log_entries.nth(index)
 
     def log_entry_by_id(self, audit_id: int):
-        """Main log row by audit record id (the trailing number in #row-<n>)."""
-        return self.page.locator(f"#row-{audit_id}")
+        """Main log row by audit record id (the number in its expand row's id, exp-<n>)."""
+        return self.page.locator(f".log-item[onclick*=\"'exp-{audit_id}'\"]")
 
     # -- Cells within a log entry (pass the entry locator) --
 
@@ -131,16 +182,19 @@ class AdminAuditLogPage(BasePage):
         return entry.locator(".ago")
 
     def entry_action_pill(self, entry):
-        # e.g. "🔐 Admin Login"
+        # e.g. "Admin Login"
         return entry.locator(".act-pill")
 
     def entry_table_name(self, entry):
-        # e.g. "📁 admin_users"
+        # e.g. "admin_users"
         return entry.locator(".tname")
 
     def entry_record_id(self, entry):
         # e.g. "ID #1"
         return entry.locator(".rid")
+
+    def entry_detail_keys(self, entry):
+        return entry.locator(".detail-kv .dk")
 
     def entry_detail_value(self, entry, key: str):
         """A details-preview value by its key, e.g. 'username', 'ip', 'role',
@@ -169,12 +223,22 @@ class AdminAuditLogPage(BasePage):
 
     @property
     def expanded_record_header(self):
-        # "🔐 Full audit record — ADMIN_LOGIN · 01 Jun 2026, 07:13:34"
+        # "Full audit record — ADMIN_LOGIN · 01 Jun 2026, 07:13:34"
         return self.open_expand_row.locator("//span[contains(text(),'Full audit record')]")
+
+    def expanded_chip(self, label: str):
+        """The value of an open record's chip: label 'Table', 'Record ID' or 'By'."""
+        return self.open_expand_row.locator(f"//span[starts-with(normalize-space(.),'{label}:')]/strong")
 
     @property
     def expanded_raw_json(self):
         return self.open_expand_row.locator(".raw-json")
+
+    @property
+    def edit_controls(self):
+        """Any button, link or menu on the feed or an open record that could change an entry."""
+        return self.page.locator("main .tb-wrap").locator("button, a, input, select, [contenteditable='true']").filter(
+            has_text=re.compile(r"edit|delete|remove|modify", re.I))
 
     # ── Pagination ────────────────────────────────────────────────────────────
 
@@ -187,7 +251,11 @@ class AdminAuditLogPage(BasePage):
         return self.page.locator(".pag .cur")
 
     def page_link(self, number: int):
-        return self.page.locator(f".pag a[href='?page={number}']").first
+        return self.pagination.locator("a").filter(has_text=re.compile(rf"^{number}$")).first
+
+    @property
+    def page_links(self):
+        return self.pagination.locator("a")
 
     @property
     def next_page_link(self):
@@ -202,22 +270,33 @@ class AdminAuditLogPage(BasePage):
     # ── Actions ───────────────────────────────────────────────────────────────
 
     @allure.step("Open the Audit Log page directly")
-    def open(self):
-        self.navigate(f"{ADMIN_BASE}/audit/index.php")
+    def open(self, date_f: str = None, action_f: str = None, q: str = None, page: int = None):
+        """Opens the log, optionally with filters already set (each one is a GET parameter)."""
+        params = {"date_f": date_f, "action_f": action_f, "q": q, "page": page}
+        query = urlencode({k: v for k, v in params.items() if v is not None})
+        self.navigate(f"{ADMIN_AUDIT_LOG_URL}?{query}" if query else ADMIN_AUDIT_LOG_URL)
 
     @allure.step("Search audit log for: {query}")
     def search(self, query: str):
         self.search_input.fill(query)
-        self.search_button.click()
+        with self.page.expect_navigation():
+            self.search_button.click()
 
     @allure.step("Filter audit log by date: {label}")
     def filter_by_date(self, label: str):
         """label: 'All Time', 'Today', '7 Days' or '30 Days'."""
-        self.date_filter_tab(label).click()
+        with self.page.expect_navigation():
+            self.date_filter_tab(label).click()
+
+    @allure.step("Click the '{label}' stat card")
+    def click_stat_card(self, label: str):
+        """label: 'Today' or 'This Week' (the other cards are not links)."""
+        with self.page.expect_navigation():
+            self.stat_card(label).click()
 
     @allure.step("Filter audit log by action: {action}")
     def filter_by_action(self, action: str):
-        """action: one of ACTION_TYPES; the feed reloads filtered to it."""
+        """action: an action code from the dropdown; the feed reloads filtered to it."""
         with self.page.expect_navigation():
             self.action_select.select_option(value=action)
 
@@ -225,6 +304,11 @@ class AdminAuditLogPage(BasePage):
     def clear_action_filter(self):
         with self.page.expect_navigation():
             self.action_select.select_option(value="")
+
+    @allure.step("Click '✕ Clear all'")
+    def clear_all(self):
+        with self.page.expect_navigation():
+            self.clear_all_link.click()
 
     @allure.step("Expand log entry at index {index}")
     def expand_entry(self, index: int):
@@ -242,11 +326,13 @@ class AdminAuditLogPage(BasePage):
 
     @allure.step("Go to audit log page {number}")
     def go_to_page(self, number: int):
-        self.page_link(number).click()
+        with self.page.expect_navigation():
+            self.page_link(number).click()
 
     @allure.step("Go to next audit log page")
     def go_to_next_page(self):
-        self.next_page_link.click()
+        with self.page.expect_navigation():
+            self.next_page_link.click()
 
     # ── Read helpers (queries, not assertions) ────────────────────────────────
 
@@ -257,3 +343,31 @@ class AdminAuditLogPage(BasePage):
     def get_entry_count(self) -> int:
         """Number of log entries on the current page."""
         return self.log_entries.count()
+
+    def total_events(self) -> int:
+        """N from the header 'Audit Log · N Events'."""
+        return int(re.search(r"([\d,]+) Events?", self.page_title.inner_text()).group(1).replace(",", ""))
+
+    def stat_number(self, label: str) -> int:
+        return int(self.stat_card_count(label).inner_text().replace(",", ""))
+
+    def action_values(self) -> list[str]:
+        """The action codes offered in the dropdown, in order."""
+        return self.action_options.evaluate_all("os => os.map(o => o.value)")
+
+    def entries_data(self) -> list[dict]:
+        """Every entry on the page read in one go: timestamp, ago, action (pill text), table, record_id
+        ('' when the event has none), details ({key: value}) and audit_id (from the expand row's id).
+        Text is read as written in the page (the keys are upper-cased only by CSS)."""
+        return self.log_entries.evaluate_all("""items => items.map(i => {
+            const t = (el) => el ? el.textContent.replace(/\\s+/g, ' ').trim() : '';
+            return {
+            timestamp: t(i.querySelector('.dt')),
+            ago: t(i.querySelector('.ago')),
+            action: t(i.querySelector('.act-pill')),
+            table: t(i.querySelector('.tname')),
+            record_id: t(i.querySelector('.rid')),
+            details: Object.fromEntries([...i.querySelectorAll('.detail-kv')].map(kv =>
+                [t(kv.querySelector('.dk')), t(kv.querySelector('.dv'))])),
+            audit_id: Number((i.getAttribute('onclick').match(/exp-(\\d+)/) || [])[1]),
+        }; })""")
