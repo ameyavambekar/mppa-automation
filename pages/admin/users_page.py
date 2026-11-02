@@ -28,8 +28,8 @@ class AdminUsersPage(BasePage):
 
     @property
     def topbar_role_badge(self):
-        # e.g. "👑 Super Admin"
-        return self.page.locator("#adm-topbar .tb-badge")
+        # e.g. "Super Administrator"
+        return self.page.locator("#adm-topbar .tb-role")
 
     @property
     def topbar_title(self):
@@ -47,23 +47,23 @@ class AdminUsersPage(BasePage):
 
     @property
     def sidebar_user_name(self):
-        return self.page.locator("#adm-sb .sb-user .nm")
+        return self.page.locator("#adm-sb .sb-foot .nm")
 
     @property
     def sidebar_user_role(self):
-        return self.page.locator("#adm-sb .sb-user .rl")
+        return self.page.locator("#adm-sb .sb-foot .rl")
 
     def sidebar_nav_item(self, label: str):
-        """label as shown in the sidebar, e.g. 'Admin Users', 'Audit Log',
-        'Agencies', 'Permissions'."""
-        return self.page.locator(f"//div[@id='adm-sb']//a[contains(normalize-space(.),'{label}')]")
+        """label as shown in the sidebar, e.g. 'Legacy admin tools', 'Officers & access',
+        'Audit log', 'Applications'."""
+        return self.page.locator(f"//*[@id='adm-sb']//a[contains(normalize-space(.),'{label}')]")
 
     @property
     def sidebar_active_item(self):
         return self.page.locator("#adm-sb .ni.active")
 
     def sidebar_nav_badge(self, label: str):
-        """The count badge on a sidebar item, e.g. '4' on 'Admin Users'."""
+        """The count badge on a sidebar item, e.g. '9' on 'Notifications'."""
         return self.sidebar_nav_item(label).locator(".bc")
 
     # ── Page header ───────────────────────────────────────────────────────────
@@ -75,8 +75,8 @@ class AdminUsersPage(BasePage):
 
     @property
     def total_accounts_text(self):
-        # "4 total admin accounts"
-        return self.page.locator("//p[contains(text(),'total admin accounts')]")
+        # "51 admin accounts"
+        return self.page.locator("//p[contains(text(),'admin accounts')]")
 
     @property
     def create_admin_button(self):

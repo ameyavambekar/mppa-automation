@@ -56,8 +56,8 @@ class AdminSessionsPage(BasePage):
 
     @property
     def topbar_role_badge(self):
-        # e.g. "👑 Super Admin"
-        return self.page.locator("#adm-topbar .tb-badge")
+        # e.g. "Super Administrator"
+        return self.page.locator("#adm-topbar .tb-role")
 
     @property
     def page_title(self):

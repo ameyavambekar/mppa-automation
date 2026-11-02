@@ -15,12 +15,14 @@ class AdminAuditLogPage(BasePage):
     log item opens its expand row and closes any other (Escape closes all).
 
     Filtering is done server-side via query params: ``q`` (search),
-    ``date_f`` (today/week/month), ``action_f`` (action type) and ``page``.
+    ``date_f`` (today/week/month), ``action_f`` (action type, chosen in a dropdown that
+    submits as soon as it changes) and ``page``.
     Entry locators are offered both by position (``log_entry(0)`` = newest)
     and by audit record id (``log_entry_by_id(894)``).
     """
 
-    # action_f filter values seen on the page (chips row)
+    # action_f filter values seen on the page. The action dropdown (#actionSelect) only lists the
+    # codes the log already holds (11 on 02-Nov-2026), so a code appears once its first event is logged.
     ACTION_TYPES = (
         "ADMIN_CREATE", "ADMIN_DELETE", "ADMIN_LOGIN", "ADMIN_PERM_UPDATE",
         "ADMIN_STATUS_CHANGE", "ADMIN_TOGGLE", "AGENCY_APPROVE",
@@ -42,7 +44,7 @@ class AdminAuditLogPage(BasePage):
 
     @property
     def topbar_role_badge(self):
-        return self.page.locator("#adm-topbar .tb-badge")
+        return self.page.locator("#adm-topbar .tb-role")
 
     @property
     def page_title(self):
@@ -82,23 +84,22 @@ class AdminAuditLogPage(BasePage):
         # "Showing 1–30 of 869 events"
         return self.page.locator("//div[contains(text(),'Showing') and contains(text(),'events')]")
 
-    # ── Action-type chips ─────────────────────────────────────────────────────
+    # ── Action-type dropdown ──────────────────────────────────────────────────
 
     @property
-    def action_chips(self):
-        return self.page.locator(".action-chips .ach")
+    def action_select(self):
+        """'— All Action Types —' plus one option per action code (value = the ?action_f= code),
+        grouped (Agency, Sessions, Admin, Other). Changing it submits the filter form."""
+        return self.page.locator("#actionSelect")
 
-    def action_chip(self, action: str):
-        """action: one of ACTION_TYPES (matches the ?action_f= value)."""
-        return self.page.locator(f".action-chips a.ach[href*='action_f={action}&']")
-
-    @property
-    def all_actions_chip(self):
-        return self.page.locator("//div[@class='action-chips']/a[normalize-space(text())='All']")
+    def action_option(self, action: str):
+        """action: one of ACTION_TYPES — listed only once the log holds an event of that type."""
+        return self.action_select.locator(f"option[value='{action}']")
 
     @property
-    def selected_action_chip(self):
-        return self.page.locator(".action-chips .ach.sel")
+    def selected_action_option(self):
+        """The chosen option ('— All Action Types —' when unfiltered)."""
+        return self.action_select.locator("option:checked")
 
     # ── Log feed entries ──────────────────────────────────────────────────────
 
@@ -190,7 +191,8 @@ class AdminAuditLogPage(BasePage):
 
     @property
     def next_page_link(self):
-        return self.page.locator("//div[@class='pag']/a[contains(normalize-space(.),'Next')]")
+        """The '›' next-page link (absent on the last page)."""
+        return self.pagination.locator("a", has_text="›")
 
     @property
     def pagination_info(self):
@@ -215,12 +217,14 @@ class AdminAuditLogPage(BasePage):
 
     @allure.step("Filter audit log by action: {action}")
     def filter_by_action(self, action: str):
-        """action: one of ACTION_TYPES."""
-        self.action_chip(action).click()
+        """action: one of ACTION_TYPES; the feed reloads filtered to it."""
+        with self.page.expect_navigation():
+            self.action_select.select_option(value=action)
 
     @allure.step("Clear the action filter (All)")
     def clear_action_filter(self):
-        self.all_actions_chip.click()
+        with self.page.expect_navigation():
+            self.action_select.select_option(value="")
 
     @allure.step("Expand log entry at index {index}")
     def expand_entry(self, index: int):
