@@ -85,6 +85,8 @@ class AdminLoginFactory:
         )
 
     # ── Blank-field validations (TC-177, TC-178) ──────────────────────────────
+    # The fields are HTML ``required``: the browser blocks the submit with its own
+    # tooltip ("Please fill in this field."), so there is no server error text.
 
     @staticmethod
     def blank_username() -> AdminLoginData:
@@ -93,7 +95,6 @@ class AdminLoginFactory:
             username="",
             password="password",
             scenario_label="blank_username",
-            expected_error="Username is required.",
         )
 
     @staticmethod
@@ -103,7 +104,6 @@ class AdminLoginFactory:
             username=user.username,
             password="",
             scenario_label="blank_password",
-            expected_error="Password is required.",
         )
 
     # ── Stale CAPTCHA after refresh (TC-176) ──────────────────────────────────
@@ -147,7 +147,7 @@ class AdminLoginFactory:
 
     @staticmethod
     def super_admin_wrong_password(user: UserRecord) -> AdminLoginData:
-        """Wrong-password attempt for the super admin (TC-180) — should never lock."""
+        """Wrong-password attempt for the super admin (TC-180) — the 5th in a row locks the account."""
         return AdminLoginData(
             username=user.username,
             password="WrongPass@1",

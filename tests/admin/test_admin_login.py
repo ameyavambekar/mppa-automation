@@ -1,10 +1,10 @@
 import time
-from unittest import skipIf
 
 import allure
 import pytest
 from playwright.sync_api import expect
 
+from pages.admin.audit_log_page import AdminAuditLogPage
 from pages.admin.dashboard_page import AdminDashboardPage
 from pages.admin.login_page import AdminLoginPage
 from pages.login_page import LoginPage
@@ -26,8 +26,8 @@ def test_tc169_successful_admin_login(
     """
     Given a Super Admin account exists and I am on the Admin Login page
     When  I enter valid username, password, and CAPTCHA and click ADMIN LOGIN
-    Then  I am authenticated and redirected to the Dashboard Overview
-    And   the SUPERADMIN role badge is visible in the sidebar
+    Then  I am authenticated and redirected to the MPPA Officer Console dashboard
+    And   the "Super Administrator" role is shown in the top bar
 
     Notion: KAN-TC-169 | data: valid_super_admin
     """
@@ -41,9 +41,9 @@ def test_tc169_successful_admin_login(
     with allure.step(f"Login as '{valid_admin_login_data.username}' with valid credentials"):
         admin_login_page.login(valid_admin_login_data.username, valid_admin_login_data.password)
 
-    with allure.step("Verify dashboard loaded and SUPERADMIN role badge is visible"):
+    with allure.step("Verify dashboard loaded with the 'Super Administrator' role in the top bar"):
         expect(admin_dashboard_page.role_badge).to_be_visible()
-        expect(admin_dashboard_page.role_badge).to_contain_text("Super Admin")
+        expect(admin_dashboard_page.role_badge).to_have_text(AdminDashboardPage.SUPER_ADMIN_ROLE)
 
     admin_dashboard_page.logout_button.click()
 
@@ -243,43 +243,45 @@ def test_tc174_admin_creds_rejected_on_agency(
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-175")
 @allure.story("Admin Login")
-@allure.title("TC-175: Expired idle admin session redirects to login with expiry message")
-@pytest.mark.skip(reason="not implemented")
+@allure.title("TC-175: Idle admin is logged out automatically after 15 minutes with the idle-timeout message")
 def test_tc175_idle_session_expiry(
+    idle_timeout_allowed,
     admin_login_page: AdminLoginPage,
     admin_dashboard_page: AdminDashboardPage,
     valid_admin_login_data: AdminLoginData,
 ):
     """
-    Given I am logged in to the admin portal and the session timeout is configured
-    When  I remain idle past the configured timeout (e.g. 30 minutes)
-    Then  the session expires and I am redirected to the Admin Login page
-    And   a message reads "Your session has expired. Please log in again."
+    Given I am logged in to the admin portal
+    When  I leave the dashboard open without touching it
+    Then  after 15 minutes (not before) the console goes to the Admin Login page by itself
+          (?reason=idle_timeout)
+    And   the banner reads "You were logged out automatically after 15 minutes of inactivity.
+          Please log in again."
 
-    Notion: KAN-TC-175 | data: valid_super_admin
-    Note:   The idle wait happens INSIDE the test (after login), so the active
-            admin session is what times out.
+    Notion: KAN-TC-175 | KAN-23 AC-7 | data: valid_super_admin
+    Note:   Runs only when RUN_IDLE_TIMEOUT_TESTS=true, because it waits over 15 minutes. The open
+            console checks the session in the background and logs out on its own; no click is needed.
+            Run headless (HEADLESS=true): mouse movement over a visible window counts as activity.
     """
-    # Idle just past the configured session timeout (~30 min).
-    IDLE_SECONDS = 1250
+    idle_seconds = AdminLoginPage.IDLE_TIMEOUT_MINUTES * 60
 
     with allure.step("Login and arrive at the admin dashboard"):
         admin_login_page.open()
         admin_login_page.login(valid_admin_login_data.username, valid_admin_login_data.password)
         expect(admin_dashboard_page.role_badge).to_be_visible()
+        logged_in_at = time.monotonic()
 
-    with allure.step(f"Remain idle for {IDLE_SECONDS}s to let the session expire"):
-        time.sleep(IDLE_SECONDS)
+    with allure.step("Leave the dashboard idle until the console logs out by itself"):
+        admin_dashboard_page.wait_for_idle_logout(timeout_seconds=idle_seconds + 180)
+        idle_for = time.monotonic() - logged_in_at
 
-    with allure.step("After the idle period, attempt an interaction to trigger redirect"):
-        admin_dashboard_page.open_audit_log()
+    with allure.step(f"Verify the logout came after the {AdminLoginPage.IDLE_TIMEOUT_MINUTES}-minute timeout"):
+        # 30 s slack: the clock starts once the dashboard has rendered, a little after the console's own.
+        assert idle_for >= idle_seconds - 30, f"Logged out after only {idle_for:.0f}s idle"
 
-    with allure.step("Verify redirect to Admin Login with session-expired message"):
-        expect(admin_login_page.session_expired_message).to_be_visible()
-        assert (
-            "session has expired"
-            in admin_login_page.session_expired_message.text_content().lower()
-        )
+    with allure.step("Verify the Admin Login page shows the idle-timeout message"):
+        expect(admin_login_page.session_expired_message).to_have_text(AdminLoginPage.IDLE_TIMEOUT_MESSAGE)
+        assert "reason=idle_timeout" in admin_login_page.get_url()
 
 
 # ---------------------------------------------------------------------------
@@ -443,48 +445,60 @@ def test_tc179_subadmin_lockout(
 
 
 # ---------------------------------------------------------------------------
-# TC-180  Super Admin account never locks regardless of failed attempts
+# TC-180  Super Admin account locks after 5 consecutive wrong passwords
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-180")
 @allure.story("Admin Login")
-@allure.title("TC-180: Super Admin account does not lock regardless of failed attempts")
-def test_tc180_super_admin_never_locks(
+@allure.title("TC-180: Super Admin account locks for 15 minutes after 5 consecutive wrong passwords")
+def test_tc180_super_admin_locks_after_wrong_passwords(
+    admin_lockout_allowed,
     admin_login_page: AdminLoginPage,
     admin_dashboard_page: AdminDashboardPage,
     super_admin_wrong_password_data: AdminLoginData,
     valid_admin_login_data: AdminLoginData,
 ):
     """
-    Given a Super Admin account exists
-    When  I attempt login 10 times with the wrong password
-    Then  each attempt shows "Invalid username or password." and the account never locks
-    And   logging in with the correct credentials then succeeds
+    Given a Super Admin account that is not locked
+    When  I submit a wrong password 5 times in a row, each answered "Invalid username or password."
+    Then  a 6th wrong password shows "Too many wrong attempts. For security this account is locked for 15 minutes."
+    And   the correct password is refused with the same message while the account is locked
+    And   after 15 minutes the correct password logs me in again
 
-    Notion: KAN-TC-180 | data: super_admin_wrong_password / valid_super_admin
+    Notion: KAN-TC-180 | KAN-23 EC-1 | data: super_admin_wrong_password / valid_super_admin
+    Note:   Runs only when RUN_ADMIN_LOCKOUT_TESTS=true: it locks the Super Admin (used by every admin
+            test) and then waits out the 15-minute lock. Misread CAPTCHAs are retried and not counted.
     """
+    wrong = super_admin_wrong_password_data
+    lock_wait_seconds = AdminLoginPage.LOCKOUT_MINUTES * 60 + 30
+
     with allure.step("Open the Admin Login page"):
         admin_login_page.open()
 
-    with allure.step("Attempt login 10 times with the wrong password"):
-        for attempt in range(1, 11):
-            with allure.step(f"Failed attempt {attempt}/10"):
-                admin_login_page.login(
-                    super_admin_wrong_password_data.username,
-                    super_admin_wrong_password_data.password,
-                )
-                expect(admin_login_page.error_message).to_be_visible()
-                assert (
-                    super_admin_wrong_password_data.expected_error
-                    in admin_login_page.error_message.text_content()
-                )
+    for attempt in range(1, AdminLoginPage.LOCKOUT_ATTEMPTS + 1):
+        with allure.step(f"Wrong password {attempt}/{AdminLoginPage.LOCKOUT_ATTEMPTS} shows the invalid-credentials error"):
+            message = admin_login_page.login_past_captcha(wrong.username, wrong.password)
+            assert message == wrong.expected_error, f"Attempt {attempt}: {message!r}"
 
-    with allure.step("Verify the account is NOT locked"):
-        expect(admin_login_page.account_locked_message).not_to_be_visible()
+    with allure.step("The next wrong password is refused with the lock message"):
+        message = admin_login_page.login_past_captcha(wrong.username, wrong.password)
+        assert message == AdminLoginPage.ACCOUNT_LOCKED_MESSAGE, message
 
-    with allure.step("Log in with correct Super Admin credentials — succeeds"):
-        admin_login_page.login(valid_admin_login_data.username, valid_admin_login_data.password)
-        expect(admin_dashboard_page.role_badge).to_be_visible()
-    admin_dashboard_page.logout_button.click()
+    with allure.step("The correct password is refused while the account is locked"):
+        message = admin_login_page.login_past_captcha(valid_admin_login_data.username, valid_admin_login_data.password)
+        assert message == AdminLoginPage.ACCOUNT_LOCKED_MESSAGE, message
+        expect(admin_login_page.account_locked_message).to_be_visible()
+
+    with allure.step(f"Wait {lock_wait_seconds}s for the lock to expire"):
+        admin_login_page.page.wait_for_timeout(lock_wait_seconds * 1000)
+
+    with allure.step("Reopen the Admin Login page and log in with the correct credentials - succeeds"):
+        admin_login_page.open()
+        message = admin_login_page.login_past_captcha(valid_admin_login_data.username, valid_admin_login_data.password)
+        assert message == "", message
+        expect(admin_dashboard_page.role_badge).to_have_text(AdminDashboardPage.SUPER_ADMIN_ROLE)
+
+    admin_dashboard_page.logout()
+
 
 # ---------------------------------------------------------------------------
 # TC-181  Admin whose session was killed by Super Admin is redirected
@@ -570,3 +584,144 @@ def test_tc182_back_to_agency_login(admin_login_page: AdminLoginPage):
     with allure.step("Verify redirect to the agency login page"):
         admin_login_page.wait_for_load()
         assert "/agency/auth/login.php" in admin_login_page.get_url()
+
+
+# ---------------------------------------------------------------------------
+# TC-582  Logout returns to Admin Login with a logged-out message
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-582")
+@allure.story("Admin Login")
+@allure.title("TC-582: Logout returns to Admin Login with a logged-out message")
+def test_tc582_logout_shows_logged_out_message(
+    logged_in_admin_dashboard_page: AdminDashboardPage,
+    admin_login_page: AdminLoginPage,
+):
+    """
+    Given I am logged in to the MPPA Officer Console
+    When  I click "Log out" in the sidebar
+    Then  the Admin Login page opens with "You have been logged out successfully."
+    And   opening the dashboard URL again redirects to Admin Login with "Please log in to continue."
+
+    Notion: KAN-TC-582 | KAN-23 AC-9
+    """
+    dashboard = logged_in_admin_dashboard_page
+
+    with allure.step("Click 'Log out' in the sidebar"):
+        dashboard.logout()
+
+    with allure.step("Verify the Admin Login page shows the logged-out message"):
+        expect(admin_login_page.logged_out_message).to_have_text(AdminLoginPage.LOGGED_OUT_MESSAGE)
+        assert "reason=logged_out" in admin_login_page.get_url()
+
+    with allure.step("Open the dashboard URL directly"):
+        dashboard.open()
+
+    with allure.step("Verify the session has ended - redirected to Admin Login"):
+        expect(admin_login_page.not_logged_in_message).to_have_text(AdminLoginPage.NOT_LOGGED_IN_MESSAGE)
+        assert "reason=not_logged_in" in admin_login_page.get_url()
+
+
+# ---------------------------------------------------------------------------
+# TC-583  Admin pages opened without a session redirect to Admin Login
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-583")
+@allure.story("Admin Login")
+@allure.title("TC-583: Admin pages opened without a session redirect to Admin Login")
+def test_tc583_admin_pages_need_a_session(
+    no_admin_session,
+    admin_login_page: AdminLoginPage,
+    admin_dashboard_page: AdminDashboardPage,
+    admin_audit_log_page: AdminAuditLogPage,
+):
+    """
+    Given no admin is logged in in this browser
+    When  I open the Officer Console dashboard URL, and then the Audit Log URL
+    Then  each time I am redirected to the Admin Login page with "Please log in to continue."
+
+    Notion: KAN-TC-583 | KAN-23 AC-10
+    """
+    for name, page_object in (("dashboard", admin_dashboard_page), ("Audit Log", admin_audit_log_page)):
+        with allure.step(f"Open the {name} URL without a session"):
+            page_object.open()
+
+        with allure.step(f"Verify the {name} URL redirects to Admin Login with 'Please log in to continue.'"):
+            expect(admin_login_page.not_logged_in_message).to_have_text(AdminLoginPage.NOT_LOGGED_IN_MESSAGE)
+            assert "reason=not_logged_in" in admin_login_page.get_url()
+            expect(admin_login_page.admin_login_button).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# TC-584  Security Code is case-insensitive
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-584")
+@allure.story("Admin Login")
+@allure.title("TC-584: Security Code is case-insensitive - a lower-case entry is accepted")
+def test_tc584_lowercase_security_code_accepted(
+    admin_login_page: AdminLoginPage,
+    admin_dashboard_page: AdminDashboardPage,
+    valid_admin_login_data: AdminLoginData,
+):
+    """
+    Given I am on the Admin Login page with valid credentials
+    When  I type the Security Code in lower case
+    Then  the field shows it in upper case
+    And   clicking ADMIN LOGIN logs me in to the Officer Console dashboard
+
+    Notion: KAN-TC-584 | KAN-23 AC-11 | data: valid_super_admin
+    """
+    with allure.step("Open the Admin Login page and enter valid credentials"):
+        admin_login_page.open()
+        admin_login_page.fill_username(valid_admin_login_data.username)
+        admin_login_page.fill_password(valid_admin_login_data.password)
+
+    with allure.step("Type the Security Code in lower case"):
+        code = admin_login_page.read_captcha_value()
+        admin_login_page.type_captcha(code.lower())
+
+    with allure.step("Verify the field shows the code in upper case"):
+        expect(admin_login_page.captcha_input).to_have_value(code.upper())
+
+    with allure.step("Click ADMIN LOGIN"):
+        admin_login_page.admin_login_button.click()
+
+    with allure.step("Verify the dashboard loads with the 'Super Administrator' role"):
+        expect(admin_dashboard_page.role_badge).to_have_text(AdminDashboardPage.SUPER_ADMIN_ROLE)
+
+    admin_dashboard_page.logout()
+
+
+# ---------------------------------------------------------------------------
+# TC-585  Blank Security Code is blocked by required-field validation
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-585")
+@allure.story("Admin Login")
+@allure.title("TC-585: Blank Security Code is blocked by required-field validation")
+def test_tc585_blank_security_code(
+    admin_login_page: AdminLoginPage, valid_admin_login_data: AdminLoginData
+):
+    """
+    Given I am on the Admin Login page
+    When  I enter the username and password, leave the Security Code blank and click ADMIN LOGIN
+    Then  the browser blocks submission with a native required-field validation
+          tooltip on the Security Code field, and login does not proceed
+
+    Notion: KAN-TC-585 | KAN-23 Field-Level Validations | data: valid_super_admin
+    """
+    with allure.step("Open the Admin Login page"):
+        admin_login_page.open()
+
+    with allure.step("Fill username and password, leave the Security Code blank, then submit"):
+        admin_login_page.fill_username(valid_admin_login_data.username)
+        admin_login_page.fill_password(valid_admin_login_data.password)
+        admin_login_page.admin_login_button.click()
+
+    with allure.step("Verify the Security Code field fails native validation"):
+        is_valid = admin_login_page.captcha_input.evaluate("el => el.checkValidity()")
+        assert is_valid is False, "Security Code should be invalid when left blank"
+
+    with allure.step("Verify a native validation tooltip message is shown for the Security Code"):
+        validation_message = admin_login_page.captcha_input.evaluate("el => el.validationMessage")
+        assert validation_message, "Browser should surface a non-empty validation tooltip"
+
+    with allure.step("Verify login is blocked - still on the login page"):
+        assert "login.php" in admin_login_page.get_url()

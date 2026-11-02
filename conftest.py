@@ -245,7 +245,7 @@ def pytest_runtest_makereport(item, call):
     # ── On failure: capture screenshot, attach to Allure + HTML + AIO ───────
     if report.failed:
         page = item.funcargs.get("page")
-        if page:
+        if page and not page.is_closed():
             png_bytes = page.screenshot()
 
             # Allure attachment
