@@ -221,7 +221,8 @@ def test_tc590_unread_counts_agree(logged_in_admin_notifications_page: AdminNoti
     Given I have N unread notifications
     Then  the subtitle, the sidebar Notifications badge and the bell all show N, and the bell's label is
           "Notifications (N unread)"
-    And   the dashboard's "Needs your attention" says "N unread notification(s) for your area"
+    And   the dashboard's "Needs your attention" says "N unread notification(s) for your area" (with nothing
+          unread the dashboard has no "Needs your attention" card)
 
     Notion: KAN-TC-590 | KAN-44 AC-4 | data: state_wide
     """
@@ -235,9 +236,14 @@ def test_tc590_unread_counts_agree(logged_in_admin_notifications_page: AdminNoti
     with allure.step("Open the Dashboard"):
         admin_dashboard_page.open()
 
-    with allure.step(f"Verify 'Needs your attention' counts {unread} unread"):
-        expect(admin_dashboard_page.card_subtitle(AdminDashboardPage.ATTENTION_TITLE)).to_contain_text(
-            f"{unread} unread notification")
+    if unread:
+        with allure.step(f"Verify 'Needs your attention' counts {unread} unread"):
+            expect(admin_dashboard_page.card_subtitle(AdminDashboardPage.ATTENTION_TITLE)).to_contain_text(
+                f"{unread} unread notification")
+    else:
+        with allure.step("Verify the dashboard has no 'Needs your attention' card"):
+            expect(admin_dashboard_page.card(AdminDashboardPage.TREND_TITLE)).to_be_visible()
+            expect(admin_dashboard_page.card(AdminDashboardPage.ATTENTION_TITLE)).to_have_count(0)
 
 
 # ---------------------------------------------------------------------------
