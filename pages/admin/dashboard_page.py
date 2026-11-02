@@ -331,6 +331,16 @@ class AdminDashboardPage(BasePage):
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
+    @allure.step("Reload the current page")
+    def reload(self):
+        self.page.reload()
+
+    @allure.step("Leave the console idle until it logs out by itself")
+    def wait_for_idle_logout(self, timeout_seconds: int):
+        """Does nothing on the page while it polls the session; returns once the console has sent
+        the browser to the Admin Login page with ?reason=idle_timeout."""
+        self.page.wait_for_url(lambda url: "reason=idle_timeout" in url, timeout=timeout_seconds * 1000)
+
     @allure.step("Open the Admin Dashboard")
     def open(self):
         """Navigates to the dashboard (requires a logged-in admin session)."""

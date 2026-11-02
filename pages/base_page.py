@@ -34,19 +34,21 @@ class BasePage:
         except Exception:
             pass
 
-    def read_image_captcha(self, image, refresh, max_attempts: int = 5) -> str:
+    def read_image_captcha(self, image, refresh, max_attempts: int = 5, solve=solve_captcha_image) -> str:
         """Reads an image CAPTCHA by OCR-ing a screenshot of ``image``.
 
         The value lives only in the PHP session, so the on-screen image is the
         only source. When OCR doesn't yield exactly 6 characters ``refresh()``
         is called and the image read again, up to ``max_attempts`` times. A
         6-char read can still be wrong — the server rejects it and refreshes.
+        ``solve`` turns the screenshot into text: ``solve_captcha_image`` for
+        the agency pages, ``solve_admin_captcha_image`` for the admin login.
         """
         text = ""
         for attempt in range(1, max_attempts + 1):
             self._wait_for_image_loaded(image)
             shot = image.screenshot()
-            text = solve_captcha_image(shot)
+            text = solve(shot)
             allure.attach(shot, name=f"captcha attempt {attempt}: {text!r}",
                           attachment_type=allure.attachment_type.PNG)
             if len(text) == CAPTCHA_LENGTH:

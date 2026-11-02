@@ -3,6 +3,7 @@ import os
 import pytest
 
 from config import ADMIN_LOGOUT_URL
+from pages.admin.audit_log_page import AdminAuditLogPage
 from pages.admin.dashboard_page import AdminDashboardPage
 from pages.admin.login_page import AdminLoginPage
 from test_data.admin_dashboard_factory import AdminDashboardData, AdminDashboardFactory
@@ -75,6 +76,11 @@ def admin_login_page(page) -> AdminLoginPage:
 
 
 @pytest.fixture
+def admin_audit_log_page(page) -> AdminAuditLogPage:
+    return AdminAuditLogPage(page)
+
+
+@pytest.fixture
 def admin_dashboard_page(page) -> AdminDashboardPage:
     return AdminDashboardPage(page)
 
@@ -101,6 +107,29 @@ def logged_in_admin_dashboard_page(page) -> AdminDashboardPage:
         page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
     except Exception:
         pass
+
+
+@pytest.fixture
+def no_admin_session(page):
+    """Ends any admin session left in the shared browser context, so the test starts logged out."""
+    page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
+
+
+@pytest.fixture
+def idle_timeout_allowed():
+    """Skips the test unless RUN_IDLE_TIMEOUT_TESTS=true. The admin idle-timeout test (TC-175) has to
+    sit idle for over 15 minutes, so it is run only on purpose. Run it with HEADLESS=true: in a visible
+    window, mouse movement over the page counts as activity and the console never goes idle."""
+    if os.getenv("RUN_IDLE_TIMEOUT_TESTS", "false").lower() != "true":
+        pytest.skip("Waits over 15 minutes for the admin idle timeout — set RUN_IDLE_TIMEOUT_TESTS=true to run.")
+
+
+@pytest.fixture
+def admin_lockout_allowed():
+    """Skips the test unless RUN_ADMIN_LOCKOUT_TESTS=true. TC-180 locks the Super Admin account for
+    15 minutes — every admin test logs in as the Super Admin — so it is run only on purpose."""
+    if os.getenv("RUN_ADMIN_LOCKOUT_TESTS", "false").lower() != "true":
+        pytest.skip("Locks the Super Admin for 15 minutes — set RUN_ADMIN_LOCKOUT_TESTS=true to run.")
 
 
 # ── User-record fixtures ───────────────────────────────────────────────────────
@@ -179,7 +208,7 @@ def subadmin_correct_data() -> AdminLoginData:
 
 @pytest.fixture
 def super_admin_wrong_password_data() -> AdminLoginData:
-    """TC-180 — wrong-password attempt for the super admin (never locks)."""
+    """TC-180 — wrong-password attempt for the super admin (the 5th in a row locks it)."""
     return AdminLoginFactory.super_admin_wrong_password(_super_admin_or_skip())
 
 
