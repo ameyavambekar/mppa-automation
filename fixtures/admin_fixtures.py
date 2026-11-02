@@ -2,8 +2,10 @@ import os
 
 import pytest
 
+from config import ADMIN_LOGOUT_URL
 from pages.admin.dashboard_page import AdminDashboardPage
 from pages.admin.login_page import AdminLoginPage
+from test_data.admin_dashboard_factory import AdminDashboardData, AdminDashboardFactory
 from test_data.admin_login_factory import AdminLoginData, AdminLoginFactory
 from utils.state_store import TestStateStore, UserRecord
 
@@ -75,6 +77,30 @@ def admin_login_page(page) -> AdminLoginPage:
 @pytest.fixture
 def admin_dashboard_page(page) -> AdminDashboardPage:
     return AdminDashboardPage(page)
+
+
+# ── Navigation fixtures ────────────────────────────────────────────────────────
+
+@pytest.fixture
+def logged_in_admin_dashboard_page(page) -> AdminDashboardPage:
+    """Logs in as super admin and yields the Admin Dashboard (where admin login lands).
+
+    Logs the admin out on teardown: the browser context is shared across the whole
+    session, so the admin session cookie would otherwise persist and the next test's
+    ``login.open()`` would redirect straight to the dashboard.
+    """
+    admin = _super_admin_or_skip()
+    login = AdminLoginPage(page)
+    login.open()
+    login.login(admin.username, admin.password)
+    dashboard = AdminDashboardPage(page)
+    dashboard.role_badge.wait_for()
+    dashboard.open()
+    yield dashboard
+    try:
+        page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
+    except Exception:
+        pass
 
 
 # ── User-record fixtures ───────────────────────────────────────────────────────
@@ -155,3 +181,15 @@ def subadmin_correct_data() -> AdminLoginData:
 def super_admin_wrong_password_data() -> AdminLoginData:
     """TC-180 — wrong-password attempt for the super admin (never locks)."""
     return AdminLoginFactory.super_admin_wrong_password(_super_admin_or_skip())
+
+
+@pytest.fixture
+def admin_dashboard_state_data() -> AdminDashboardData:
+    """Admin Dashboard — the default state-wide view."""
+    return AdminDashboardFactory.state_wide()
+
+
+@pytest.fixture
+def admin_dashboard_pune_division_data() -> AdminDashboardData:
+    """Admin Dashboard — filtered to Pune Division (with its District filter)."""
+    return AdminDashboardFactory.pune_division()
