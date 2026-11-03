@@ -4,6 +4,7 @@ import re
 import pytest
 
 from config import ADMIN_LOGOUT_URL, FORMS_BASE
+from pages.admin.dashboard_page import ADMIN_DASHBOARD_URL
 from pages.admin.login_page import AdminLoginPage
 from pages.admin.notifications_page import AdminNotificationsPage
 from pages.declaration_page import PREVIEW_URL
@@ -34,12 +35,15 @@ def _super_admin_or_skip() -> UserRecord:
 
 
 def _admin_login(page, username: str, password: str) -> None:
-    """Logs in to the Officer Console (retrying a misread Security Code)."""
+    """Logs in to the Officer Console (retrying a misread Security Code) and waits for the dashboard:
+    login.php moves there by script 0.7 s after "Login Successful!", which would otherwise abort the
+    caller's next ``goto`` (net::ERR_ABORTED)."""
     login = AdminLoginPage(page)
     login.open()
     error = login.login_past_captcha(username, password)
     if error:
         pytest.fail(f"Admin login as {username} failed: {error}")
+    page.wait_for_url(ADMIN_DASHBOARD_URL)
 
 
 def _admin_logout(page) -> None:
