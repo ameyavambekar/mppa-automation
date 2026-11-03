@@ -115,6 +115,19 @@ class AdminLicensesPage(BasePage):
         """Main data rows only (detail rows excluded)."""
         return self.page.locator("table.tb tbody tr:not(.det-row)")
 
+    def table_data(self) -> list[dict]:
+        """Every main row read in one go: agency, registration_no (the agency's Application ID),
+        valid_upto ("DD Mon YYYY"), status (the ``.lb`` label, e.g. "Active") and email (from the
+        detail row)."""
+        return self.license_rows.evaluate_all("""rows => rows.map(r => {
+            const t = e => e ? e.textContent.replace(/\\s+/g, ' ').trim() : '';
+            const c = r.cells, det = r.nextElementSibling;
+            const email = det ? [...det.querySelectorAll('.df')].find(f => t(f.querySelector('.dk')) === 'Email') : null;
+            return {agency: t(c[1].querySelector('div')), registration_no: t(c[2].querySelector('.mppa')),
+                    valid_upto: t(c[4]).replace(/\\s*✓$/, ''), status: t(r.querySelector('.lb')),
+                    email: email ? t(email.querySelector('.dv')) : ''};
+        })""")
+
     def rows_with_status(self, status: str):
         """Status badges of all main rows in a given state.
         status: 'active', 'expiring', 'expired' or 'revoked'."""

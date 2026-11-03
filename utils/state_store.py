@@ -74,6 +74,27 @@ cleared Desktop Scrutiny and Physical Verification. Both live on the user's row:
     store.get_agency_users_with_application(certified=False)   # submitted, no certificate yet
     store.get_agency_user_by_application_id("2627498014398")
 
+Agency status
+-------------
+Where each agency stands as the Officer Console shows it (``AGENCY_STATUSES``):
+an unpaid draft (Registrations in Progress), a submitted application at a review
+stage, rejected, under first / second appeal, approved, or a licence that has
+expired, been suspended or revoked. ``utils.agency_status_sync`` reads the
+console and records them all; recording an Application ID or a certificate
+also moves the status on. A JSON ``status_data`` snapshot keeps the facts tests
+branch on — e.g. ``review`` (``REVIEW_STATES``) for a stage, ``valid_till`` for
+a licence, ``appeal_status`` for an appeal::
+
+    store.record_agency_status(username="yadnesh", status="desktop_scrutiny", data={"review": "show_cause"})
+
+    store.get_agency_users_in_status("rejected")                         # not appealed yet
+    store.get_agency_users_in_status(["first_appeal", "second_appeal"])
+    store.get_agency_users_in_status("desktop_scrutiny", review="under_review")
+
+A status of ``None`` means it has not been recorded yet. Agencies whose draft
+was deleted on the portal are kept as ``deleted`` and left out of every other
+agency query, so tests are never handed an account that no longer exists.
+
 The DB persists between test runs by design — it mirrors users actually
 registered in the dev environment.  Delete ``state/test_state.db`` only if you
 also reset the dev environment.
@@ -92,6 +113,32 @@ DEFAULT_DB_PATH = Path(__file__).parent.parent / "state" / "test_state.db"
 # Form-I wizard steps after account creation, in the order the portal unlocks them.
 FORM_STEPS = ("part_a", "part_b", "part_c", "part_f", "enclosures", "premises", "declaration", "payment")
 FORM_STEP_STATUSES = ("not_started", "in_progress", "completed")
+
+# Where an agency stands, as the Officer Console shows it, in lifecycle order.
+AGENCY_STATUSES = (
+    # Registrations in Progress (registered, not paid)
+    "filling_form",             # "Filling form"
+    "ready_to_pay",             # "Ready to pay" — all steps done
+    "draft_expired",            # "Expired" — past the 7-day deadline, deleted automatically soon
+    # Applications (paid) — the stage under review; see REVIEW_STATES
+    "desktop_scrutiny",         # Stage 1 — documents and forms
+    "physical_verification",    # Stage 2 — head office premises
+    "branch_verification",      # Stage 2 — branch offices
+    "rejected",                 # "Refused"; listed under Appeals › Rejected applications until appealed
+    "first_appeal",             # Appeals › First Appeals — Division (FORM-III)
+    "second_appeal",            # Appeals › Second Appeals — Commissionerate (FORM-IV)
+    # Licences & certificates
+    "approved",                 # certificate issued and valid ("Active", or "Expiring" within 30 days)
+    "licence_expired",
+    "suspended",                # Applications › Suspended / cancelled, Approved agencies › Suspended
+    "revoked",                  # revoked / cancelled
+    # Not on the portal any more (a draft deleted by an officer or after its deadline)
+    "deleted",
+)
+DRAFT_STATUSES = ("filling_form", "ready_to_pay", "draft_expired")
+# status_data["review"] for a stage: the Applications "Under review" / "Compliance — with agency" /
+# "Show cause / hearing" steps (the last two are the "On hold — with agency" list)
+REVIEW_STATES = ("under_review", "with_agency", "show_cause")
 
 # Numbered steps written before steps were named ("1" was Part A, as in the forms' headings).
 # Frozen: the numbering predates the "premises" step.
@@ -123,6 +170,8 @@ class UserRecord:
     steps: dict[str, str] = field(default_factory=dict)
     # {"part_a": {"legal_constitution": …}, …} — only steps saved with data
     step_data: dict[str, dict] = field(default_factory=dict)
+    agency_status: Optional[str] = None     # one of AGENCY_STATUSES; None until recorded
+    status_data: dict = field(default_factory=dict)
 
 
 class TestStateStore:
@@ -175,6 +224,10 @@ class TestStateStore:
             # Submitted application and the certificate issued for it (Oct 2026).
             "application_id": "TEXT",
             "certificate_no": "TEXT",
+            # Where the agency stands on the Officer Console (Nov 2026).
+            "agency_status": "TEXT",
+            "status_data": "TEXT",
+            "status_updated_at": "TIMESTAMP",
         }
         EXPECTED_FORM_COLS = {"user_id", "step", "status", "updated_at"}
 
@@ -246,7 +299,10 @@ class TestStateStore:
                      alt_phone       TEXT,
                      city_name       TEXT,
                      application_id  TEXT,
-                     certificate_no  TEXT
+                     certificate_no  TEXT,
+                     agency_status   TEXT,
+                     status_data     TEXT,
+                     status_updated_at TIMESTAMP
                  );
 
                  CREATE TABLE IF NOT EXISTS form_applications (
@@ -314,6 +370,8 @@ class TestStateStore:
             certificate_no=row["certificate_no"],
             steps=steps,
             step_data=step_data,
+            agency_status=row["agency_status"],
+            status_data=json.loads(row["status_data"]) if row["status_data"] else {},
         )
 
     # ── Writers ───────────────────────────────────────────────────────────────
@@ -374,13 +432,21 @@ class TestStateStore:
                 raise ValueError(f"No user found with username '{username}'")
 
     def record_application_id(self, *, username: str, application_id: str) -> None:
-        """Records the Application ID issued when the application was submitted (paid)."""
+        """Records the Application ID issued when the application was submitted (paid). A submitted
+        application starts at Desktop Scrutiny, so a draft (or unrecorded) status moves there."""
+        drafts = ",".join("?" * len(DRAFT_STATUSES))
         with self._connect() as conn:
             updated = conn.execute(
                 "UPDATE users SET application_id = ? WHERE username = ?", (application_id, username)
             ).rowcount
             if not updated:
                 raise ValueError(f"No user found with username '{username}'")
+            conn.execute(
+                f"""UPDATE users SET agency_status = 'desktop_scrutiny', status_data = ?,
+                        status_updated_at = CURRENT_TIMESTAMP
+                    WHERE username = ? AND (agency_status IS NULL OR agency_status IN ({drafts}))""",
+                (json.dumps({"review": "under_review"}), username, *DRAFT_STATUSES),
+            )
 
     def record_certificate_no(self, *, username: str, certificate_no: str) -> None:
         """Records the certificate number issued once the application has cleared Desktop
@@ -395,8 +461,29 @@ class TestStateStore:
             if not user["application_id"]:
                 raise ValueError(f"'{username}' has no recorded Application ID — record it before the certificate")
             conn.execute(
-                "UPDATE users SET certificate_no = ? WHERE username = ?", (certificate_no, username)
+                """UPDATE users SET certificate_no = ?, agency_status = 'approved', status_data = NULL,
+                       status_updated_at = CURRENT_TIMESTAMP
+                   WHERE username = ?""",
+                (certificate_no, username),
             )
+
+    def record_agency_status(self, *, username: str, status: str, data: Optional[dict] = None) -> None:
+        """Records where the agency stands on the Officer Console (one of ``AGENCY_STATUSES``).
+
+        ``data`` replaces the status snapshot (``review``, ``deadline``, ``valid_till``,
+        ``appeal_status``, …); leave it ``None`` to clear it."""
+        if status not in AGENCY_STATUSES:
+            raise ValueError(f"Unknown agency status '{status}' — expected one of {AGENCY_STATUSES}")
+        if data and "review" in data and data["review"] not in REVIEW_STATES:
+            raise ValueError(f"Unknown review state '{data['review']}' — expected one of {REVIEW_STATES}")
+        with self._connect() as conn:
+            updated = conn.execute(
+                """UPDATE users SET agency_status = ?, status_data = ?, status_updated_at = CURRENT_TIMESTAMP
+                   WHERE username = ? AND role = 'agency'""",
+                (status, json.dumps(data) if data else None, username),
+            ).rowcount
+            if not updated:
+                raise ValueError(f"No agency user found with username '{username}'")
 
     def mark_form_step_status(
         self, *, username: str, step: str, status: str, data: Optional[dict] = None
@@ -435,6 +522,8 @@ class TestStateStore:
 
     # "Other" at registration carries no Maharashtra district into Part A.
     _LISTED_DISTRICT_SQL = "AND u.district IS NOT NULL AND u.district NOT IN ('', 'Other')"
+    # Accounts the portal no longer has are never handed to a test.
+    _LIVE_SQL = "AND (agency_status IS NULL OR agency_status != 'deleted')"
 
     def get_any_agency_user(
         self, district: Optional[str] = None, listed_district_only: bool = False
@@ -444,7 +533,7 @@ class TestStateStore:
         i.e. users whose registration carries a Maharashtra district into Part A."""
         with self._connect() as conn:
             row = conn.execute(
-                f"""SELECT * FROM users u WHERE u.role = 'agency' AND (? IS NULL OR u.district = ?)
+                f"""SELECT * FROM users u WHERE u.role = 'agency' AND (? IS NULL OR u.district = ?) {self._LIVE_SQL}
                     {self._LISTED_DISTRICT_SQL if listed_district_only else ''} LIMIT 1""",
                 (district, district),
             ).fetchone()
@@ -483,7 +572,7 @@ class TestStateStore:
             rows = conn.execute(
                 f"""
                 SELECT u.* FROM users u
-                WHERE u.role = 'agency'
+                WHERE u.role = 'agency' {self._LIVE_SQL}
                   AND (
                       SELECT COUNT(*) FROM form_applications fa
                       WHERE fa.user_id = u.id
@@ -506,10 +595,10 @@ class TestStateStore:
     ) -> Optional[UserRecord]:
         with self._connect() as conn:
             row = conn.execute(
-                """
+                f"""
                 SELECT u.* FROM users u
                 JOIN form_applications fa ON fa.user_id = u.id
-                WHERE u.role = 'agency' AND fa.step = ? AND fa.status = ?
+                WHERE u.role = 'agency' AND fa.step = ? AND fa.status = ? {self._LIVE_SQL}
                 LIMIT 1
                 """,
                 (step, status),
@@ -520,8 +609,8 @@ class TestStateStore:
         """Every agency user recorded with its registered e-mail and PAN, oldest first."""
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT * FROM users WHERE role = 'agency' AND email IS NOT NULL AND email != ''
-                   AND pan IS NOT NULL AND pan != '' ORDER BY id"""
+                f"""SELECT * FROM users WHERE role = 'agency' AND email IS NOT NULL AND email != ''
+                   AND pan IS NOT NULL AND pan != '' {self._LIVE_SQL} ORDER BY id"""
             ).fetchall()
             return [self._row_to_record(row, conn) for row in rows]
 
@@ -533,7 +622,7 @@ class TestStateStore:
         with self._connect() as conn:
             rows = conn.execute(
                 f"""SELECT * FROM users WHERE role = 'agency' AND application_id IS NOT NULL
-                    {certificate_sql} ORDER BY id"""
+                    {certificate_sql} {self._LIVE_SQL} ORDER BY id"""
             ).fetchall()
             return [self._row_to_record(row, conn) for row in rows]
 
@@ -543,6 +632,36 @@ class TestStateStore:
                 "SELECT * FROM users WHERE role = 'agency' AND application_id = ?", (application_id,)
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
+
+    def get_agency_users_in_status(self, statuses, **data) -> list[UserRecord]:
+        """Every agency user whose recorded status is ``statuses`` (one of ``AGENCY_STATUSES``, or a
+        list of them), oldest first. Keyword arguments also match ``status_data`` facts, e.g.
+        ``review="show_cause"`` or ``appeal_status="rejected"``."""
+        statuses = [statuses] if isinstance(statuses, str) else list(statuses)
+        unknown = set(statuses) - set(AGENCY_STATUSES)
+        if unknown:
+            raise ValueError(f"Unknown agency status(es) {sorted(unknown)} — expected {AGENCY_STATUSES}")
+        data_sql = "".join(f" AND json_extract(status_data, '$.{key}') = ?" for key in data)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""SELECT * FROM users WHERE role = 'agency'
+                    AND agency_status IN ({",".join("?" * len(statuses))}){data_sql} ORDER BY id""",
+                (*statuses, *data.values()),
+            ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
+
+    def get_agency_user_in_status(self, statuses, **data) -> Optional[UserRecord]:
+        """The oldest agency user in ``statuses`` (see ``get_agency_users_in_status``)."""
+        users = self.get_agency_users_in_status(statuses, **data)
+        return users[0] if users else None
+
+    def get_agency_users(self, include_deleted: bool = False) -> list[UserRecord]:
+        """Every agency user still on the portal (not ``deleted``, unless ``include_deleted``), oldest first."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM users WHERE role = 'agency' {'' if include_deleted else self._LIVE_SQL} ORDER BY id"
+            ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
 
     def get_user_by_username(self, username: str) -> Optional[UserRecord]:
         with self._connect() as conn:
@@ -561,7 +680,7 @@ class TestStateStore:
             row = conn.execute(
                 f"""
                 SELECT * FROM users u
-                WHERE u.role = 'agency'
+                WHERE u.role = 'agency' {self._LIVE_SQL}
                   AND (? IS NULL OR u.district = ?)
                   {self._LISTED_DISTRICT_SQL if listed_district_only else ''}
                   AND NOT EXISTS (
