@@ -34,6 +34,12 @@ class AdminAppealsPage(BasePage):
     }
     STAT_LABELS = ("Total", "Pending", "Reviewing", "Allowed", "Partial",
                    "Rejected", "1st Appeal", "2nd Appeal")
+    # Officer Console redesign: ?view= tab (``a.apl-tab``) → label. Rows of every view carry the agency's
+    # Application ID (``.ui-mono``) and end with status badges; an empty view shows EMPTY_VIEW.
+    VIEWS = {"queue": "Awaiting decision", "first": "First Appeals — Division",
+             "second": "Second Appeals — Commissionerate", "rejections": "Rejected applications",
+             "hearings": "Hearings & appointments"}
+    EMPTY_VIEW = "No appeals in this list."
 
     # ── Reusable components ───────────────────────────────────────────────────
 
@@ -250,6 +256,27 @@ class AdminAppealsPage(BasePage):
     @allure.step("Open the Appeals Management page directly")
     def open(self):
         self.navigate(f"{ADMIN_BASE}/appeals/index.php")
+
+    @allure.step("Open the '{view}' appeals view")
+    def open_view(self, view: str):
+        """view: a key of ``VIEWS``."""
+        self.navigate(f"{ADMIN_BASE}/appeals/index.php?view={view}")
+
+    @property
+    def view_rows(self):
+        """Rows of the open view (not the empty-view row)."""
+        return self.page.locator("#adm-main table tbody tr:not(:has(td[colspan]))")
+
+    def view_table_data(self) -> list[dict]:
+        """Every row of the open view read in one go: agency, application_id (the 13-digit ID in the row)
+        and badges (the row's ``.ui-badge`` texts, e.g. the Rejected applications view's first / second
+        appeal columns "Not filed"; the last is the appeal's status in the First / Second Appeals views)."""
+        return self.view_rows.evaluate_all("""rows => rows.map(r => {
+            const t = e => e ? e.textContent.replace(/\\s+/g, ' ').trim() : '';
+            const id = (r.textContent.match(/\\b\\d{13}\\b/) || [''])[0];
+            return {agency: t(r.querySelector('strong') || r.cells[1]), application_id: id,
+                    badges: [...r.querySelectorAll('.ui-badge')].map(t)};
+        })""")
 
     @allure.step("Search appeals for: {query}")
     def search(self, query: str):
