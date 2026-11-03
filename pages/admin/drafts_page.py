@@ -24,8 +24,8 @@ class AdminDraftsPage(BasePage):
     Table (not paginated, newest registration first): one ``tr[onclick]`` per draft — Agency (name,
     "@username[ · <agency type>]"), Contact (email, mobile), District, Progress (7-segment ``.dr-bar``,
     "N/7 steps · next: <step>" or "✓ All steps done — awaiting payment"), Registered, Last activity,
-    Deadline (``.dr-pill`` ``ok`` "N day(s) left", ``warn`` "N hour(s) left", ``ready`` "✓ All steps
-    done — awaiting payment") and "▾". Clicking a row toggles the details row after it (``tr.dr-det``,
+    Deadline (``.dr-pill`` ``ok`` "N day(s) left", ``warn`` "N hour(s) left", ``late`` "Expired 1d ago"
+    until the draft is deleted, ``ready`` "✓ All steps done — awaiting payment") and "▾". Clicking a row toggles the details row after it (``tr.dr-det``,
     ``open`` while shown): the ``.dr-grid`` fields (see ``DETAIL_LABELS``), a ``.dr-step`` chip per step
     (``ok`` ✓ / ``no`` ○), a link per uploaded document (``a.dr-doc``, new tab), "Extend deadline"
     (``add_days`` +3 / +7 / +15, POST ``act=extend``) and "Delete draft" (POST ``act=delete`` behind a
@@ -57,6 +57,8 @@ class AdminDraftsPage(BasePage):
     PROGRESS = re.compile(r"^(\d)/7 steps · next: (.+)$")
     DAYS_LEFT = re.compile(r"^(\d+) day\(s\) left$")
     HOURS_LEFT = re.compile(r"^(\d+) hour\(s\) left$")
+    # Past the deadline but not deleted yet (``late`` pill); listed under Expired only
+    EXPIRED = re.compile(r"^Expired \d+[dhm] ago$")
     AUDIT_EXTEND = "DRAFT_EXTEND"
 
     @staticmethod
