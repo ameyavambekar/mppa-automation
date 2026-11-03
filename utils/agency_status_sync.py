@@ -83,7 +83,7 @@ def read_console_statuses(page) -> tuple[dict, dict]:
             applications[r["application_id"]] = (status, {"decided": r["period"].removeprefix("Decided ")}, r["email"])
 
     lp = AdminLicensesPage(page)
-    lp.open()
+    lp.open(status="all")
     for r in lp.table_data():
         email = r["email"] or applications.get(r["registration_no"], (None, None, ""))[2]
         applications[r["registration_no"]] = (_licence_status(r["status"]),

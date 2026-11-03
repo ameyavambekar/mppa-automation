@@ -1,31 +1,8 @@
-import os
-
 import pytest
 
+from fixtures.drafts_fixtures import _admin_login, _admin_logout
 from pages.admin.licenses_page import AdminLicensesPage
-from pages.admin.login_page import AdminLoginPage
-from test_data.licenses_factory import LicenseData, LicensesFactory
-from utils.state_store import TestStateStore, UserRecord
-from config import ADMIN_LOGOUT_URL
-
-
-
-# ── Credential helpers ─────────────────────────────────────────────────────────
-
-def _super_admin_or_skip() -> UserRecord:
-    store = TestStateStore()
-    username = os.getenv("ADMIN_SUPER_USERNAME")
-    password = os.getenv("ADMIN_SUPER_PASSWORD")
-    if username and password:
-        store.record_user(role="super_admin", username=username, password=password)
-        return store.get_user_by_username(username)
-    user = store.get_any_super_admin()
-    if user is not None:
-        return user
-    pytest.skip(
-        "Set ADMIN_SUPER_USERNAME / ADMIN_SUPER_PASSWORD in .env "
-        "(or seed a super_admin in the state store)."
-    )
+from test_data.licenses_factory import CertificateActionData, LicenseData, LicensesFactory
 
 
 # ── Page-object fixtures ───────────────────────────────────────────────────────
@@ -37,36 +14,42 @@ def admin_licenses_page(page) -> AdminLicensesPage:
 
 @pytest.fixture
 def logged_in_admin_licenses_page(page) -> AdminLicensesPage:
-    """Logs in as super admin then navigates directly to License Management.
+    """Logs in as the Super Admin and opens Licences & certificates on the Approved chip.
 
     Logs the admin out on teardown: the browser context is shared across the
     whole session, so the admin session cookie would otherwise persist and the
     next test's ``login.open()`` would redirect straight to the dashboard,
     breaking its login flow.
     """
-    admin = _super_admin_or_skip()
-    login = AdminLoginPage(page)
-    login.open()
-    login.login(admin.username, admin.password)
+    _admin_login(page)
     licenses = AdminLicensesPage(page)
-    licenses.open()
+    licenses.open(status="all")
     yield licenses
-    try:
-        page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
-    except Exception:
-        pass
+    _admin_logout(page)
+
+
+def _restore_certificate(lp: AdminLicensesPage, agency_name: str, valid_from: str, valid_upto: str) -> None:
+    """Lifts a suspension or reinstates an expired / cancelled certificate (whenever the row offers Lift
+    suspension or Reinstate — a renewed certificate that an officer had expired still offers Reinstate),
+    then re-issues the original validity dates if they changed."""
+    lp.open(status="all")
+    actions = lp.row_action_labels(agency_name)
+    if "Lift suspension" in actions:
+        lp.certificate_action(agency_name, "lift", "Automation cleanup — lifting the test suspension.")
+    elif "Reinstate" in actions:
+        lp.certificate_action(agency_name, "reinstate", "Automation cleanup — reinstating the test certificate.")
+    if lp.get_row_validity_dates(agency_name) != (valid_from, valid_upto):
+        lp.renew_license(agency_name, valid_from=valid_from, valid_upto=valid_upto,
+                         notes="Automation cleanup — restoring original validity dates.")
 
 
 @pytest.fixture
-def license_restorer(logged_in_admin_licenses_page: AdminLicensesPage):
-    """Restores an agency's validity dates after a date-mutating test.
+def certificate_restorer(logged_in_admin_licenses_page: AdminLicensesPage):
+    """Restores an agency's certificate after a test that changes it.
 
-    The test calls ``license_restorer(agency_name)`` BEFORE changing anything:
-    the agency's current Valid From / Valid Upto are captured from its table
-    row. On teardown each registered agency is re-issued its original window
-    via the row's Renew flow, so date-mutating tests (TC-262, TC-264, TC-267)
-    leave the dev data as they found it. License numbers entered by a test are
-    not reverted — only the validity dates drive status/tiles.
+    The test calls ``certificate_restorer(agency_name)`` BEFORE changing anything: the agency's Valid From /
+    Valid Upto are read from its row. On teardown the certificate is made active again (lift / reinstate)
+    and the original window re-issued, so the dev data is left as found (History keeps the test's entries).
     """
     lp = logged_in_admin_licenses_page
     originals = []
@@ -80,15 +63,22 @@ def license_restorer(logged_in_admin_licenses_page: AdminLicensesPage):
 
     for agency_name, valid_from, valid_upto in originals:
         try:
-            lp.open()
-            lp.renew_license(
-                agency_name,
-                valid_from=valid_from,
-                valid_upto=valid_upto,
-                notes="Automation cleanup — restoring original validity dates.",
-            )
-        except Exception:
-            pass
+            _restore_certificate(lp, agency_name, valid_from, valid_upto)
+        except Exception as e:  # leave the next agency's restore a chance
+            print(f"[certificate_restorer] Could not restore {agency_name}: {e}")
+
+
+@pytest.fixture
+def scratch_agency(logged_in_admin_licenses_page: AdminLicensesPage, certificate_restorer) -> str:
+    """An agency with an Active certificate that the test may suspend, expire, cancel or renew — the last
+    Active one in name order, so the first rows (which other modules' tests look at) are left alone.
+    Restored on teardown by ``certificate_restorer``."""
+    active = logged_in_admin_licenses_page.agencies_with_status("active")
+    if not active:
+        pytest.skip("No agency with an Active certificate on Licences & certificates.")
+    agency = active[-1]
+    certificate_restorer(agency)
+    return agency
 
 
 # ── Data fixtures ──────────────────────────────────────────────────────────────
@@ -101,7 +91,7 @@ def quick_duration_data() -> LicenseData:
 
 @pytest.fixture
 def valid_renewal_data() -> LicenseData:
-    """TC-262 — complete, valid renewal (today → today + 5 years)."""
+    """TC-262 / TC-639 — renewal from today for 5 years."""
     return LicensesFactory.valid_renewal()
 
 
@@ -117,13 +107,13 @@ def days_left_color_data() -> dict:
 
 @pytest.fixture
 def upto_before_from_data() -> LicenseData:
-    """TC-265 — Valid Upto earlier than Valid From, expects validation error."""
+    """TC-265 — Valid Upto earlier than Valid From."""
     return LicensesFactory.upto_before_from()
 
 
 @pytest.fixture
 def missing_agency_data() -> LicenseData:
-    """TC-266 — dates filled but no agency selected, expects validation error."""
+    """TC-266 — dates filled but no agency selected."""
     return LicensesFactory.missing_agency()
 
 
@@ -134,3 +124,45 @@ def expiring_boundary_data() -> dict:
         30: LicensesFactory.expiring_in_30_days(),
         31: LicensesFactory.expiring_in_31_days(),
     }
+
+
+@pytest.fixture
+def no_match_search() -> str:
+    """TC-640 — search text no agency has."""
+    return LicensesFactory.no_match_search()
+
+
+@pytest.fixture
+def suspension_data() -> CertificateActionData:
+    return LicensesFactory.suspension()
+
+
+@pytest.fixture
+def short_suspension_data() -> CertificateActionData:
+    return LicensesFactory.short_suspension()
+
+
+@pytest.fixture
+def lift_data() -> CertificateActionData:
+    return LicensesFactory.lift()
+
+
+@pytest.fixture
+def expiry_data() -> CertificateActionData:
+    return LicensesFactory.expiry()
+
+
+@pytest.fixture
+def cancellation_data() -> CertificateActionData:
+    return LicensesFactory.cancellation()
+
+
+@pytest.fixture
+def reinstatement_data() -> CertificateActionData:
+    return LicensesFactory.reinstatement()
+
+
+@pytest.fixture
+def reason_rules_data() -> dict:
+    """TC-635 — a reason one character short, and one exactly at the minimum."""
+    return {"short": LicensesFactory.reason_one_short(), "minimum": LicensesFactory.reason_minimum()}
