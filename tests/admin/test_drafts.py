@@ -18,7 +18,11 @@ Changing data:
 * TC-610 only cancels the Delete confirmation.
 
 TC-616 checks that a draft's deadline is 7 days after its registration; on dev
-(02-Nov-2026) the deadline is shown 5 h 30 min earlier (KAN-45 EC-1).
+(02-Nov-2026) the deadline is shown 5 h 30 min earlier (KAN-45 EC-1, defect sheet
+"Super admin" #58).
+
+Drafts past their deadline stay listed under Expired only (pill "Expired 1d ago")
+until they are deleted automatically.
 """
 
 import re
@@ -130,7 +134,7 @@ def test_tc603_row_content(logged_in_admin_drafts_page: AdminDraftsPage):
           "N/7 steps · next: <step>" with N of 7 bar segments filled (or "✓ All steps done — awaiting payment"),
           and Registered / Last activity as DD Mon YYYY, HH:MM AM/PM
     And   the Deadline pill is "N day(s) left" (ok) or, under 24 hours, "N hour(s) left" (warn) — for drafts
-          ready to pay too
+          ready to pay too — or, past the deadline until the draft is deleted, "Expired N[d/h/m] ago" (late)
 
     Notion: KAN-TC-603 | KAN-45 AC-3
     """
@@ -159,8 +163,10 @@ def test_tc603_row_content(logged_in_admin_drafts_page: AdminDraftsPage):
                 elif (r["bar_total"], r["bar_done"]) != (AdminDraftsPage.TOTAL_STEPS, int(progress.group(1))):
                     problems.append(f"{who}: bar {r['bar_done']}/{r['bar_total']} for '{r['progress']}'")
             days, hours = AdminDraftsPage.DAYS_LEFT.match(r["pill"]), AdminDraftsPage.HOURS_LEFT.match(r["pill"])
+            expired = AdminDraftsPage.EXPIRED.match(r["pill"])
             if not ((days and "ok" in r["pill_class"]) or (hours and "warn" in r["pill_class"]
-                                                           and int(hours.group(1)) < 24)):
+                                                           and int(hours.group(1)) < 24)
+                    or (expired and "late" in r["pill_class"])):
                 problems.append(f"{who}: deadline pill '{r['pill']}' ({r['pill_class']})")
 
     with allure.step("Verify no row is malformed"):
@@ -178,13 +184,15 @@ def test_tc604_filter_chips(logged_in_admin_drafts_page: AdminDraftsPage):
     Given I am on Registrations in Progress
     When  I click each chip
     Then  the URL has ?f=<filter>, that chip is highlighted and as many rows are listed as its count
-    And   Filling form lists no ready draft, Ready to pay only ready drafts, < 24 h left only hour pills
-    And   Filling form + Ready to pay = All drafts
+    And   Filling form lists no ready draft, Ready to pay only ready drafts, < 24 h left only hour pills,
+          Expired only "Expired … ago" pills
+    And   Filling form, Ready to pay and Expired share no draft and together list All drafts
 
     Notion: KAN-TC-604 | KAN-45 AC-4
     """
     dp = logged_in_admin_drafts_page
     counts = {f: dp.chip_number(f) for f in AdminDraftsPage.FILTERS}
+    listed = {}
 
     for filter_, label in AdminDraftsPage.FILTERS.items():
         with allure.step(f"Click '{label}'"):
@@ -198,6 +206,7 @@ def test_tc604_filter_chips(logged_in_admin_drafts_page: AdminDraftsPage):
 
         with allure.step(f"Verify the drafts listed match '{label}'"):
             rows = dp.table_data()
+            listed[filter_] = {r["sub"] for r in rows}
             if filter_ == "progress":
                 assert all(r["progress"] != AdminDraftsPage.READY for r in rows), "A ready draft is under Filling form"
             elif filter_ == "ready":
@@ -205,9 +214,16 @@ def test_tc604_filter_chips(logged_in_admin_drafts_page: AdminDraftsPage):
             elif filter_ == "urgent":
                 wrong = [r["sub"] for r in rows if not AdminDraftsPage.HOURS_LEFT.match(r["pill"])]
                 assert not wrong, f"Drafts under < 24 h left without an hours pill: {wrong}"
+            elif filter_ == "expired":
+                wrong = [r["sub"] for r in rows if not AdminDraftsPage.EXPIRED.match(r["pill"])]
+                assert not wrong, f"Drafts under Expired without an Expired pill: {wrong}"
 
-    with allure.step("Verify Filling form + Ready to pay = All drafts"):
-        assert counts["progress"] + counts["ready"] == counts["all"], counts
+    with allure.step("Verify Filling form, Ready to pay and Expired share no draft and together list All drafts"):
+        progress, ready, expired = listed["progress"], listed["ready"], listed["expired"]
+        assert not (progress & ready or progress & expired or ready & expired), \
+            f"Drafts under more than one chip: {sorted((progress & ready) | (progress & expired) | (ready & expired))}"
+        assert progress | ready | expired == listed["all"], counts
+        assert counts["progress"] + counts["ready"] + counts["expired"] == counts["all"], counts
 
 
 # ---------------------------------------------------------------------------
@@ -581,8 +597,8 @@ def test_tc616_deadline_is_seven_days_after_registration(logged_in_admin_drafts_
     Then  the Deadline is exactly 7 days after the Registered time (both shown in the same time zone)
 
     Notion: KAN-TC-616 | KAN-45 EC-1 | data: deadline_rule
-    Known defect (02-Nov-2026): the Deadline is 5 h 30 min earlier — it is shown in UTC, Registered in IST —
-    this test fails.
+    Known defect (02-Nov-2026, defect sheet "Super admin" #58): the Deadline is 5 h 30 min earlier — it is
+    shown in UTC, Registered in IST — this test fails.
     """
     dp = logged_in_admin_drafts_page
     rows = [r for r in dp.table_data() if r["deadline"] and "extended" not in r["deadline"]]
