@@ -13,15 +13,16 @@ Changing data:
   the account for 15 minutes) and then logs in correctly.
 * TC-296 logs in as the most recently paid agency.
 
-Known defects (02-Nov-2026) — these tests fail:
-* TC-293 — every search returns 0 events (KAN-36 EC-2).
-* TC-298 — choosing an action type or searching drops the date range (EC-9).
+Known defects (02-Nov-2026; defect sheet "MPPA", tab "Super admin", logged 03-Nov-2026) —
+these tests fail:
+* TC-293 — every search returns 0 events (KAN-36 EC-2; sheet #51, regression of #39).
+* TC-298 — choosing an action type or searching drops the date range (EC-9; #52).
 * TC-301 — the header clock is in UTC, entries mix IST and UTC, relative times read
-  "just now" for hours-old events (EC-3).
-* TC-621 — the full record's By chip always says "system" (EC-4).
-* TC-622 — a page beyond the last shows "Showing 29941–1712 of 1,712 events" (EC-5).
-* TC-623 — "Showing 1–0 of 0 events" and "1 Events" (EC-1 / EC-6).
-* TC-624 — the search box echoes the search HTML-escaped twice (EC-10).
+  "just now" for hours-old events (EC-3; #53).
+* TC-621 — the full record's By chip always says "system" (EC-4; #54).
+* TC-622 — a page beyond the last shows "Showing 29941–1712 of 1,712 events" (EC-5; #55).
+* TC-623 — "Showing 1–0 of 0 events" and "1 Events" (EC-1 / EC-6; #56).
+* TC-624 — the search box echoes the search HTML-escaped twice (EC-10; #57).
 """
 
 import json

@@ -41,7 +41,8 @@ class AdminAuditLogPage(BasePage):
     PAGE_SIZE = 30
     TIMESTAMP_FORMAT = "%d %b %Y, %H:%M:%S"
     CLOCK_FORMAT = "%d %b %Y · %H:%M"
-    TIME_AGO = re.compile(r"^(just now|\d+[mhd] ago)$")
+    # Relative time; events a week old or more show their date instead ("26 Oct 2026")
+    TIME_AGO = re.compile(r"^(just now|\d+[mhd] ago|\d{2} [A-Z][a-z]{2} \d{4})$")
     SHOWING = re.compile(r"^Showing ([\d,]+)–([\d,]+) of ([\d,]+) events?$")
     PAGINATION_INFO = re.compile(r"^([\d,]+)–([\d,]+) of ([\d,]+) · Page (\d+) / (\d+)$")
 
