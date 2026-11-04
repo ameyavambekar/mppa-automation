@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from pages.admin.dashboard_page import ADMIN_DASHBOARD_URL
 from pages.admin.login_page import AdminLoginPage
 from pages.admin.sessions_page import AdminSessionsPage
 from pages.login_page import LoginPage
@@ -38,8 +39,8 @@ def _super_admin_or_skip() -> UserRecord:
 class AgencySessionHandle:
     """A live agency session opened in an independent second browser.
 
-    ``page`` is sitting where login lands (the Form-I wizard for incomplete
-    registrations); ``username``
+    ``page`` is sitting where login lands (the agency home page — only
+    agencies with a submitted application are listed); ``username``
     is what the admin Sessions table shows in its Username column for this
     session (so the admin side can locate and kill exactly this session)."""
     page: object
@@ -64,7 +65,10 @@ def logged_in_admin_sessions_page(page) -> AdminSessionsPage:
     admin = _super_admin_or_skip()
     login = AdminLoginPage(page)
     login.open()
-    login.login(admin.username, admin.password)
+    error = login.login_past_captcha(admin.username, admin.password)
+    if error:
+        pytest.fail(f"Admin login as {admin.username} failed: {error}")
+    page.wait_for_url(ADMIN_DASHBOARD_URL)
     sessions = AdminSessionsPage(page)
     sessions.open()
     yield sessions
@@ -89,24 +93,26 @@ def agency_session(second_browser):
     handles: list[AgencySessionHandle] = []
 
     def _open() -> AgencySessionHandle:
-        agency = TestStateStore().get_any_agency_user()
-        if agency is None:
-            pytest.skip("No agency user in state store — run pre-registration tests first.")
+        # Only agencies with a submitted application (they land on home.php) get a row in Session
+        # Management; a user still in the Form-I wizard is never listed, so it cannot be killed.
+        agencies = TestStateStore().get_agency_users_with_application()
+        if not agencies:
+            pytest.skip("No agency with a submitted application in the state store — run the Payment tests first.")
 
         browser = second_browser()
-        ctx = browser.new_context(viewport={"width": 1280, "height": 800})
-        p = ctx.new_page()
-
-        login = LoginPage(p)
-        login.open()
-        login.login(agency.username, agency.password)
-        p.wait_for_load_state("networkidle")
-
-        handle = AgencySessionHandle(
-            page=p, username=agency.username, password=agency.password
-        )
-        handles.append(handle)
-        return handle
+        for agency in agencies[:3]:
+            ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+            p = ctx.new_page()
+            login = LoginPage(p)
+            login.open()
+            login.login(agency.username, agency.password)
+            p.wait_for_load_state("networkidle")
+            if "login" not in p.url:
+                handle = AgencySessionHandle(page=p, username=agency.username, password=agency.password)
+                handles.append(handle)
+                return handle
+            ctx.close()
+        pytest.fail("None of the first three agencies with an application could log in.")
 
     yield _open
 
@@ -115,6 +121,14 @@ def agency_session(second_browser):
             h.page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
         except Exception:
             pass
+
+
+@pytest.fixture
+def kill_all_allowed():
+    """Skips the test unless RUN_KILL_ALL_TESTS=true. Kill All Active (TC-251, TC-256) ends EVERY open
+    agency session on dev — anyone testing as an agency is logged out — so it is run only on purpose."""
+    if os.getenv("RUN_KILL_ALL_TESTS", "false").lower() != "true":
+        pytest.skip("Kill All ends every open agency session on dev — set RUN_KILL_ALL_TESTS=true to run.")
 
 
 # ── Data fixtures ──────────────────────────────────────────────────────────────
