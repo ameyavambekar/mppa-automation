@@ -60,6 +60,7 @@ pytest_plugins = [
     "fixtures.drafts_fixtures",
     "fixtures.audit_log_fixtures",
     "fixtures.compliance_fixtures",
+    "fixtures.district_breakup_fixtures",
 ]
 
 
