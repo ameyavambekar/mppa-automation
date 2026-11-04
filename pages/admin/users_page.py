@@ -1,385 +1,353 @@
+import re
+
 import allure
 
-from pages.base_page import BasePage
 from config import ADMIN_BASE
+from pages.admin.components.sidebar import AdminSidebar
+from pages.base_page import BasePage
+
+OFFICERS_URL = f"{ADMIN_BASE}/users/index.php"
+
+_API_JS = """async ([route, data, query]) => {
+  try { return {ok: true, data: await Portal.api(route, data, {silent: true, query: query || {}})}; }
+  catch (e) { return {ok: false, msg: e.message, code: e.code || null}; }
+}"""
 
 
-class AdminUsersPage(BasePage):
-    """Super Admin — Admin User Management dashboard.
+class OfficersPage(BasePage):
+    """Officers & Access (Administration › Officers & access, /module/admin/users/index.php).
 
-    Lists all admin accounts in a table with an active/inactive toggle and
-    per-row Perms / Delete actions, plus two modals: Create Admin
-    (``#create-modal``) and Permissions (``#perm-modal``). Row locators are
-    keyed by username since row order and numeric admin IDs vary.
+    A JS page over the portal API: the list (``#rows``) is loaded with ``admins.list?q=`` and redrawn after
+    every save / toggle / delete without a page reload. Add / Edit open the ``#frm`` dialog (form
+    ``#frmBody``); each field sits in a ``.ui-field[data-f=<name>]`` box whose ``.f-err`` holds its message.
+    Results appear as toasts (``#uiToasts .ui-toast``); Deactivate and Delete ask with a browser confirm().
 
-    Deleting an admin fires a JS ``confirm()`` dialog — handled via the
-    base-page dialog pattern. Toggle failures surface as JS ``alert()``s.
+    Rows are keyed by username (the muted line under the officer's name is "<username>" or
+    "<username> · <designation>").
     """
 
-    # Permission checkbox values available in both modals
-    PERMISSIONS = (
-        "view_agencies", "edit_agency_status", "view_part_a", "view_part_b",
-        "view_part_c", "view_part_e", "view_part_f", "view_enclosures",
-        "view_declarations", "manage_appeals", "view_audit_log",
-        "view_sessions", "manage_admins", "view_payments",
-    )
+    ROLE_VALUES = {"Commissioner (State)": "commissioner", "Divisional Officer": "division",
+                   "District Officer": "district", "Super Administrator": "superadmin"}
 
-    # ── Topbar ────────────────────────────────────────────────────────────────
+    # ── Page ──────────────────────────────────────────────────────────────────
 
     @property
-    def topbar_role_badge(self):
-        # e.g. "Super Administrator"
-        return self.page.locator("#adm-topbar .tb-role")
+    def sidebar(self) -> AdminSidebar:
+        return AdminSidebar(self.page)
 
     @property
-    def topbar_title(self):
-        return self.page.locator("#adm-topbar h1")
+    def heading(self):
+        return self.page.locator("main h2")
 
     @property
-    def topbar_welcome_text(self):
-        return self.page.locator("#adm-topbar .tb-user")
+    def sub_heading(self):
+        return self.page.locator("main h2 + p")
 
     @property
-    def topbar_logout_link(self):
-        return self.page.locator("#adm-topbar a[href*='logout']")
-
-    # ── Sidebar ───────────────────────────────────────────────────────────────
+    def search_input(self):
+        return self.page.locator("#q")
 
     @property
-    def sidebar_user_name(self):
-        return self.page.locator("#adm-sb .sb-foot .nm")
+    def add_button(self):
+        return self.page.get_by_role("button", name="Add officer", exact=True)
 
     @property
-    def sidebar_user_role(self):
-        return self.page.locator("#adm-sb .sb-foot .rl")
-
-    def sidebar_nav_item(self, label: str):
-        """label as shown in the sidebar, e.g. 'Legacy admin tools', 'Officers & access',
-        'Audit log', 'Applications'."""
-        return self.page.locator(f"//*[@id='adm-sb']//a[contains(normalize-space(.),'{label}')]")
+    def table(self):
+        return self.page.locator("main table")
 
     @property
-    def sidebar_active_item(self):
-        return self.page.locator("#adm-sb .ni.active")
-
-    def sidebar_nav_badge(self, label: str):
-        """The count badge on a sidebar item, e.g. '9' on 'Notifications'."""
-        return self.sidebar_nav_item(label).locator(".bc")
-
-    # ── Page header ───────────────────────────────────────────────────────────
+    def table_headers(self):
+        return self.table.locator("thead th")
 
     @property
-    def page_title(self):
-        # "👤 Admin User Management (4)"
-        return self.page.locator(".adm-page-title span").first
+    def rows(self):
+        return self.page.locator("#rows tr")
 
     @property
-    def total_accounts_text(self):
-        # "51 admin accounts"
-        return self.page.locator("//p[contains(text(),'admin accounts')]")
+    def officer_rows(self):
+        """Rows that hold an officer (not the 'No officers found.' row)."""
+        return self.page.locator("#rows tr:has(td:nth-child(7))")
 
     @property
-    def create_admin_button(self):
-        return self.page.locator("//button[contains(normalize-space(.),'Create Admin')]").first
-
-    # ── Alerts ────────────────────────────────────────────────────────────────
+    def empty_row(self):
+        return self.page.locator("#rows td", has_text="No officers found.")
 
     @property
-    def success_alert(self):
-        return self.page.locator(".salt-s")
+    def toast(self):
+        return self.page.locator("#uiToasts .ui-toast").last
 
     @property
-    def error_alert(self):
-        return self.page.locator(".salt-e")
+    def access_denied(self):
+        return self.page.get_by_text(re.compile(r"Access denied"))
 
-    @property
-    def duplicate_error_alert(self):
-        return self.page.locator("//div[contains(text(),'Username or email already exists.')]")
+    def row(self, username: str):
+        return self.rows.filter(has=self.page.locator(
+            "td:first-child div.ui-muted", has_text=re.compile(rf"^{re.escape(username)}( ·|$)")))
 
-    # ── Admin users table (rows keyed by username) ────────────────────────────
+    def rows_with_role(self, label: str):
+        return self.rows.filter(has=self.page.locator("td:nth-child(2) .ui-badge", has_text=re.compile(rf"^{re.escape(label)}$")))
 
-    @property
-    def admin_table(self):
-        return self.page.locator(".stbl")
+    def cell(self, username: str, index: int):
+        """0 Officer · 1 Role · 2 Area · 3 Contact · 4 Last login · 5 Status · 6 actions."""
+        return self.row(username).locator("td").nth(index)
 
-    @property
-    def admin_rows(self):
-        return self.page.locator(".stbl tbody tr")
-
-    def admin_row(self, username: str):
-        return self.page.locator(f"//table[contains(@class,'stbl')]//tbody/tr[td[normalize-space(text())='{username}']]")
-
-    @property
-    def superadmin_row(self):
-        """The protected Super Admin row, located by its role badge (so it is
-        found regardless of which username holds the superadmin role)."""
-        return self.page.locator(
-            "//table[contains(@class,'stbl')]/tbody/tr[.//span[contains(@class,'sb-superadmin')]]"
-        )
-
-    @property
-    def subadmin_rows(self):
-        """Deletable sub-admin rows — those exposing a Perms button (the
-        Super Admin row shows 'Protected' instead and is excluded)."""
-        return self.page.locator(
-            "//table[contains(@class,'stbl')]/tbody/tr[.//button[contains(normalize-space(.),'Perms')]]"
-        )
-
-    def full_name_cell(self, username: str):
-        return self.admin_row(username).locator("td").nth(2)
-
-    def email_cell(self, username: str):
-        return self.admin_row(username).locator("td").nth(3)
+    def officer_sub_line(self, username: str):
+        return self.cell(username, 0).locator("div.ui-muted")
 
     def role_badge(self, username: str):
-        # Carries class sb-superadmin / sb-admin / sb-officer / sb-viewer
-        return self.admin_row(username).locator(".sb")
+        return self.cell(username, 1).locator(".ui-badge")
 
-    def active_toggle(self, username: str):
-        return self.admin_row(username).locator(".stog input[type='checkbox']")
+    def status_badge(self, username: str):
+        return self.cell(username, 5).locator(".ui-badge")
 
-    def active_status_label(self, username: str):
-        # "Active" / "Inactive" text next to the toggle (span id='stl-{admin_id}')
-        return self.admin_row(username).locator("span[id^='stl-']")
+    def action_buttons(self, row):
+        return row.locator("td:nth-child(7) button")
 
-    def last_login_cell(self, username: str):
-        return self.admin_row(username).locator("td").nth(6)
+    def edit_button(self, username: str):
+        return self.row(username).get_by_role("button", name="Edit")
 
-    def last_ip_cell(self, username: str):
-        return self.admin_row(username).locator("td").nth(7)
+    def deactivate_button(self, username: str):
+        return self.row(username).get_by_role("button", name="Deactivate")
 
-    def permissions_button(self, username: str):
-        return self.admin_row(username).locator("//button[contains(normalize-space(.),'Perms')]")
+    def activate_button(self, username: str):
+        return self.row(username).get_by_role("button", name="Activate")
 
     def delete_button(self, username: str):
-        return self.admin_row(username).locator("form button[type='submit']")
+        return self.row(username).get_by_role("button", name="Delete")
 
-    def protected_label(self, username: str):
-        # Shown instead of action buttons for the superadmin account
-        return self.admin_row(username).locator("//span[contains(text(),'Protected')]")
-
-    # ── Create Admin modal (#create-modal) ────────────────────────────────────
+    # ── Add / Edit officer dialog ────────────────────────────────────────────
 
     @property
-    def create_modal(self):
-        return self.page.locator("#create-modal")
+    def dialog(self):
+        return self.page.locator("#frm")
 
     @property
-    def create_username_input(self):
-        return self.create_modal.locator("input[name='username']")
+    def dialog_title(self):
+        return self.page.locator("#frmTitle")
 
     @property
-    def create_full_name_input(self):
-        return self.create_modal.locator("input[name='full_name']")
+    def close_button(self):
+        return self.dialog.locator(".ui-card-head").get_by_role("button", name="Close")
 
     @property
-    def create_email_input(self):
-        return self.create_modal.locator("input[name='email']")
+    def cancel_button(self):
+        return self.dialog.get_by_role("button", name="Cancel")
 
     @property
-    def create_password_input(self):
-        return self.create_modal.locator("input[name='password']")
+    def save_button(self):
+        return self.page.locator("#saveBtn")
 
     @property
-    def create_role_select(self):
-        return self.create_modal.locator("select[name='role']")
-
-    def create_permission_checkbox(self, permission: str):
-        """permission: one of PERMISSIONS, e.g. 'view_agencies'."""
-        return self.create_modal.locator(f"input[name='permissions[]'][value='{permission}']")
+    def form_error(self):
+        return self.page.locator("#formErr")
 
     @property
-    def create_submit_button(self):
-        return self.create_modal.locator("button[type='submit']")
+    def role_select(self):
+        return self.page.locator("#f_role")
 
     @property
-    def create_cancel_button(self):
-        return self.create_modal.locator("//button[normalize-space(text())='Cancel']")
+    def division_select(self):
+        return self.page.locator("#f_div")
 
     @property
-    def create_close_button(self):
-        return self.create_modal.locator("//button[normalize-space(text())='✕']")
-
-    # ── Permissions modal (#perm-modal) ───────────────────────────────────────
+    def district_select(self):
+        return self.page.locator("#f_dist")
 
     @property
-    def perm_modal(self):
-        return self.page.locator("#perm-modal")
+    def division_field(self):
+        return self.page.locator("#w_div")
 
     @property
-    def perm_modal_admin_name(self):
-        return self.page.locator("#perm-name")
-
-    def perm_checkbox(self, permission: str):
-        """permission: one of PERMISSIONS, e.g. 'manage_appeals'."""
-        return self.perm_modal.locator(f".perm-cb[value='{permission}']")
+    def district_field(self):
+        return self.page.locator("#w_dist")
 
     @property
-    def perm_checkboxes(self):
-        return self.perm_modal.locator(".perm-cb")
+    def full_name_input(self):
+        return self.page.locator("#f_name")
 
     @property
-    def perm_select_all_button(self):
-        return self.perm_modal.locator("//button[normalize-space(text())='Select All']")
+    def designation_input(self):
+        return self.page.locator("#f_desig")
 
     @property
-    def perm_clear_all_button(self):
-        return self.perm_modal.locator("//button[normalize-space(text())='Clear All']")
+    def username_input(self):
+        return self.page.locator("#f_user")
 
     @property
-    def perm_save_button(self):
-        return self.perm_modal.locator("button[type='submit']")
+    def email_input(self):
+        return self.page.locator("#f_email")
 
     @property
-    def perm_cancel_button(self):
-        return self.perm_modal.locator("//button[normalize-space(text())='Cancel']")
+    def mobile_input(self):
+        return self.page.locator("#f_mob")
 
     @property
-    def perm_close_button(self):
-        return self.perm_modal.locator("//button[normalize-space(text())='✕']")
+    def password_input(self):
+        return self.page.locator("#f_pass")
+
+    @property
+    def confirm_input(self):
+        return self.page.locator("#f_pass2")
+
+    @property
+    def password_show_button(self):
+        return self.page.locator('[data-f="password"] .pw-toggle')
+
+    @property
+    def password_rules(self):
+        return self.page.locator("#pwRules li")
+
+    @property
+    def password_rules_met(self):
+        return self.page.locator("#pwRules li.ok")
+
+    @property
+    def password_bar(self):
+        return self.page.locator("#pwBar")
+
+    @property
+    def password_required_mark(self):
+        return self.page.locator("#passReq")
+
+    @property
+    def password_help(self):
+        return self.page.locator("#passHelp")
+
+    def field_box(self, name: str):
+        """name: role, division_id, district_id, full_name, designation, username, email, mobile, password, confirm."""
+        return self.page.locator(f'#frmBody [data-f="{name}"]')
+
+    def field_error(self, name: str):
+        return self.field_box(name).locator(".f-err")
+
+    def field_help(self, name: str):
+        return self.field_box(name).locator(".ui-help")
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open the Admin Users management page directly")
+    def _list_reload(self):
+        return self.page.expect_response(lambda r: "r=admins.list" in r.url)
+
+    @allure.step("Open Officers & Access")
     def open(self):
-        self.navigate(f"{ADMIN_BASE}/admins/index.php")
+        with self._list_reload():
+            self.navigate(OFFICERS_URL)
+        self.wait_for_load()
 
-    @allure.step("Click sidebar item: {label}")
-    def click_sidebar_item(self, label: str):
-        self.sidebar_nav_item(label).click()
+    @allure.step("Search officers for '{text}'")
+    def search(self, text: str):
+        with self._list_reload():
+            self.search_input.fill(text)
 
-    @allure.step("Click topbar Logout")
-    def click_logout(self):
-        self.topbar_logout_link.click()
+    @allure.step("Click 'Add officer'")
+    def open_add_form(self):
+        self.add_button.click()
+        self.dialog_title.wait_for()
 
-    # -- Table actions --
+    @allure.step("Click Edit on '{username}'")
+    def open_edit_form(self, username: str):
+        self.edit_button(username).click()
+        self.page.wait_for_function("document.getElementById('frm').classList.contains('is-open')")
 
-    @allure.step("Toggle active state for admin: {username}")
-    def toggle_admin_active(self, username: str):
-        """Clicks the toggle track (the checkbox itself is visually hidden)."""
-        self.admin_row(username).locator(".stog-track").click()
+    @allure.step("Choose role '{label}'")
+    def choose_role(self, label: str):
+        self.role_select.select_option(label=label)
 
-    @allure.step("Toggle active state for admin '{username}' and wait for the save")
-    def toggle_admin_active_and_wait(self, username: str):
-        """Toggles the active state and waits for the AJAX save to complete.
+    @allure.step("Choose division '{label}'")
+    def choose_division(self, label: str):
+        with self.page.expect_response(lambda r: "r=meta.districts" in r.url):
+            self.division_select.select_option(label=label)
+        self.page.wait_for_function("document.querySelectorAll('#f_dist option').length > 1")
 
-        The toggle POSTs ``toggle_admin`` via ``fetch`` (no page reload) and the
-        label is updated in the response handler, so callers that reload
-        immediately can race the save. Waiting for the POST response makes the
-        change deterministic before any reload."""
-        with self.page.expect_response(lambda r: r.request.method == "POST"):
-            self.toggle_admin_active(username)
+    @allure.step("Choose district '{label}'")
+    def choose_district(self, label: str):
+        self.district_select.select_option(label=label)
 
-    @allure.step("Delete admin '{username}' (confirm dialog: {action})")
-    def delete_admin(self, username: str, action: str = "accept") -> str:
-        """Clicks the row's delete button and answers the 'Delete this admin?'
-        confirm dialog. action='accept' confirms, 'dismiss' cancels.
-        Returns the dialog message."""
-        return self.click_and_handle_alert(self.delete_button(username), action=action)
+    def type_into(self, locator, text: str):
+        """Fills a field (input event → live check) and leaves it (blur → tidy + check)."""
+        locator.fill(text)
+        locator.blur()
 
-    # -- Create Admin modal actions --
+    @allure.step("Fill the officer form")
+    def fill_form(self, data, password: bool = True):
+        self.choose_role(data.role_label)
+        if data.division:
+            self.choose_division(data.division)
+        if data.district:
+            self.choose_district(data.district)
+        self.fill_details(data, password)
 
-    @allure.step("Open the Create Admin modal")
-    def open_create_admin_modal(self):
-        self.create_admin_button.click()
+    @allure.step("Fill name, designation, username, email, mobile (and password)")
+    def fill_details(self, data, password: bool = True):
+        self.type_into(self.full_name_input, data.full_name)
+        self.type_into(self.designation_input, data.designation)
+        self.type_into(self.username_input, data.username)
+        self.type_into(self.email_input, data.email)
+        self.type_into(self.mobile_input, data.mobile)
+        if password:
+            self.type_into(self.password_input, data.password)
+            self.type_into(self.confirm_input, data.password)
 
-    @allure.step("Select role in Create Admin modal: {role}")
-    def select_create_role(self, role: str):
-        """role: 'officer', 'admin' or 'viewer'."""
-        self.create_role_select.select_option(value=role)
+    @allure.step("Click Save")
+    def save(self, expect_saved: bool = True):
+        """Clicks Save. With expect_saved, waits for the list to reload after the save."""
+        if not expect_saved:
+            self.save_button.click()
+            return
+        with self._list_reload():
+            self.save_button.click()
 
-    @allure.step("Set permission '{permission}' to {checked} in Create Admin modal")
-    def set_create_permission(self, permission: str, checked: bool = True):
-        self.create_permission_checkbox(permission).set_checked(checked)
+    @allure.step("Click Deactivate on '{username}' (prompt: {action})")
+    def deactivate(self, username: str, action: str = "accept") -> str:
+        if action != "accept":
+            return self.click_and_handle_alert(self.deactivate_button(username), action=action)
+        with self._list_reload():
+            return self.click_and_handle_alert(self.deactivate_button(username), action=action)
 
-    @allure.step("Submit the Create Admin modal")
-    def submit_create_admin(self):
-        self.create_submit_button.click()
+    @allure.step("Click Activate on '{username}'")
+    def activate(self, username: str) -> str:
+        """Returns the text of any prompt shown ('' when none — Activate has no prompt)."""
+        with self._list_reload():
+            return self.click_and_handle_alert(self.activate_button(username), action="accept")
 
-    @allure.step("Cancel the Create Admin modal")
-    def cancel_create_admin(self):
-        self.create_cancel_button.click()
+    @allure.step("Click Delete on '{username}' (prompt: {action})")
+    def delete(self, username: str, action: str = "accept") -> str:
+        if action != "accept":
+            return self.click_and_handle_alert(self.delete_button(username), action=action)
+        with self._list_reload():
+            return self.click_and_handle_alert(self.delete_button(username), action=action)
 
-    @allure.step("Create admin user: {username} (role: {role})")
-    def create_admin(self, username: str, full_name: str, email: str, password: str,
-                     role: str = "officer", permissions: list = None):
-        """Opens the Create Admin modal, fills all fields, ticks the given
-        permissions (values from PERMISSIONS) and submits."""
-        self.open_create_admin_modal()
-        self.create_username_input.fill(username)
-        self.create_full_name_input.fill(full_name)
-        self.create_email_input.fill(email)
-        self.create_password_input.fill(password)
-        self.select_create_role(role)
-        for permission in (permissions or []):
-            self.set_create_permission(permission, True)
-        self.submit_create_admin()
+    # ── Reading / API (no assertions) ────────────────────────────────────────
 
-    # -- Permissions modal actions --
+    def api(self, route: str, data=None, query=None) -> dict:
+        """Calls the portal API in this browser session: {'ok': True, 'data': …} or {'ok': False, 'msg': …}."""
+        return self.page.evaluate(_API_JS, [route, data, query])
 
-    @allure.step("Open the Permissions modal for admin: {username}")
-    def open_permissions_modal(self, username: str):
-        self.permissions_button(username).click()
+    def list_officers(self, q: str = "") -> list[dict]:
+        res = self.api("admins.list", None, {"q": q})
+        return res.get("data") or []
 
-    @allure.step("Set permission '{permission}' to {checked} in Permissions modal")
-    def set_permission(self, permission: str, checked: bool = True):
-        self.perm_checkbox(permission).set_checked(checked)
+    def find_officer(self, username: str):
+        return next((r for r in self.list_officers(username) if r["username"] == username), None)
 
-    @allure.step("Click 'Select All' permissions")
-    def select_all_permissions(self):
-        self.perm_select_all_button.click()
+    def division_id(self, name: str) -> str:
+        return self.division_select.locator("option", has_text=re.compile(rf"^{re.escape(name)}$")).get_attribute("value")
 
-    @allure.step("Click 'Clear All' permissions")
-    def clear_all_permissions(self):
-        self.perm_clear_all_button.click()
+    def district_id(self, division: str, district: str) -> str:
+        res = self.api("meta.districts", None, {"division_id": self.division_id(division)})
+        return str(next(d["id"] for d in res["data"] if d["district_name"] == district))
 
-    @allure.step("Save the Permissions modal")
-    def save_permissions(self):
-        self.perm_save_button.click()
+    def save_payload(self, data) -> dict:
+        """The JSON the form sends to admins.save for ``data`` (no id → create)."""
+        return {"id": "", "role": data.role, "full_name": data.full_name, "designation": data.designation,
+                "username": data.username, "email": data.email, "mobile": data.mobile, "password": data.password,
+                "division_id": self.division_id(data.division) if data.division else "",
+                "district_id": self.district_id(data.division, data.district) if data.district else ""}
 
-    @allure.step("Cancel the Permissions modal")
-    def cancel_permissions(self):
-        self.perm_cancel_button.click()
+    def row_texts(self) -> list[str]:
+        return self.officer_rows.evaluate_all("rs => rs.map(r => r.innerText.replace(/\\s+/g, ' ').trim())")
 
-    @allure.step("Update permissions for admin '{username}'")
-    def update_permissions(self, username: str, permissions: list):
-        """Opens the Permissions modal for username, clears everything, ticks
-        exactly the given permissions and saves."""
-        self.open_permissions_modal(username)
-        self.clear_all_permissions()
-        for permission in permissions:
-            self.set_permission(permission, True)
-        self.save_permissions()
-
-    def get_checked_permissions(self) -> list:
-        """Returns the permission values currently ticked in the open
-        Permissions modal."""
-        checked = []
-        for i in range(self.perm_checkboxes.count()):
-            checkbox = self.perm_checkboxes.nth(i)
-            if checkbox.is_checked():
-                checked.append(checkbox.get_attribute("value"))
-        return checked
-
-    # ── Read helpers (queries, not assertions) ────────────────────────────────
-
-    def get_title_count(self) -> int:
-        """The N from the 'Admin User Management (N)' page heading."""
-        import re
-        match = re.search(r"\((\d+)\)", self.page_title.text_content() or "")
-        return int(match.group(1)) if match else 0
-
-    def row_exists(self, username: str) -> bool:
-        return self.admin_row(username).count() > 0
-
-    def get_username_of_row(self, row) -> str:
-        """Username (column 2) of a given row locator."""
-        return row.locator("td").nth(1).text_content().strip()
-
-    def get_email_of_row(self, row) -> str:
-        """Email (column 4) of a given row locator."""
-        return row.locator("td").nth(3).text_content().strip()
-
-    def get_active_state(self, username: str) -> str:
-        """The current 'Active' / 'Inactive' label text for an admin row."""
-        return self.active_status_label(username).text_content().strip()
+    def dispatch_paste(self, locator) -> bool:
+        """Fires a paste event on the field; True when the page blocked it."""
+        return locator.evaluate("""el => { const e = new ClipboardEvent('paste', {clipboardData: new DataTransfer(),
+            bubbles: true, cancelable: true}); el.dispatchEvent(e); return e.defaultPrevented; }""")
