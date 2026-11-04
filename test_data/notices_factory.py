@@ -8,6 +8,7 @@ Notion test cases KAN-TC-233 through KAN-TC-245.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 
@@ -30,6 +31,20 @@ class NoticesFactory:
     # cleanup helper can find and delete it).
     EXTRA_ALERT_TITLE: str = "Filter Tab Count Update Test — Alert"
 
+    # Badge colours (background) in the form preview, the admin list and on the public board (KAN-31 AC-5)
+    BADGE_COLOURS = {"new": "rgb(185, 28, 28)", "alert": "rgb(217, 119, 6)", "info": "rgb(29, 78, 216)",
+                     "urgent": "rgb(124, 58, 237)", "general": "rgb(71, 85, 105)"}
+    # Officer Console page-title form (EC-7) and the allowed clock difference from IST (EC-4)
+    EXPECTED_TITLE = "Notices — MPPA Officer Console"
+    CLOCK_TOLERANCE_MINUTES = 2
+    MISSING_NOTICE_ID = 999999
+    BODY_REQUIRED = "Notice body is required."
+    BADGE_OUTSIDE_LIST = "breaking"
+
+    @staticmethod
+    def today_ist() -> datetime:
+        return datetime.now(timezone(timedelta(hours=5, minutes=30))).replace(tzinfo=None)
+
     # ── TC-233 — Valid mandatory fields ───────────────────────────────────────
 
     @staticmethod
@@ -38,6 +53,7 @@ class NoticesFactory:
             title="Automation Test Notice — Mandatory Fields",
             body="This notice was created by an automated test to verify mandatory-field submission.",
             badge="alert",
+            dept="Registering Authority",
             scenario_label="valid_notice",
         )
 
@@ -48,7 +64,8 @@ class NoticesFactory:
         return NoticeData(
             title="Active Notice — Public Board Visibility Test",
             body="This active notice should appear on the agency-facing notice board.",
-            badge="info",
+            badge="new",
+            dept="Portal Administration",
             active=True,
             scenario_label="active_notice",
         )
@@ -171,8 +188,64 @@ class NoticesFactory:
             badge="info",
             attachment_path=attachment_path,
             scenario_label="oversized_attachment",
-            expected_error="Failed to upload attachment.",
+            expected_error="File exceeds 5 MB limit. Please choose a smaller file.",
         )
+
+    # ── TC-700 / TC-701 — Status and Pin toggles in the list ─────────────────
+
+    @staticmethod
+    def toggle_status_notice() -> NoticeData:
+        return NoticeData(title="Toggle Status Test — Notice", body="Automated notice for the status button.",
+                          badge="info", active=True, scenario_label="toggle_status")
+
+    @staticmethod
+    def toggle_pin_notice() -> NoticeData:
+        return NoticeData(title="Toggle Pin Test — Notice", body="Automated notice for the Pin button.",
+                          badge="info", active=True, pinned=False, scenario_label="toggle_pin")
+
+    # ── TC-702 — Cancel Edit ──────────────────────────────────────────────────
+
+    CANCELLED_TITLE: str = "Cancel Edit Test — Should Not Be Saved"
+
+    @staticmethod
+    def notice_to_cancel_edit() -> NoticeData:
+        return NoticeData(title="Cancel Edit Test — Original Title", body="Automated notice for Cancel Edit.",
+                          badge="urgent", dept="NIC Technical Team", scenario_label="cancel_edit")
+
+    # ── TC-705 — Blank body ───────────────────────────────────────────────────
+
+    @classmethod
+    def blank_body(cls) -> NoticeData:
+        return NoticeData(title="Body Validation Test — Blank Body", body="", badge="info",
+                          scenario_label="blank_body", expected_error=cls.BODY_REQUIRED)
+
+    # ── TC-706 — Maximum lengths ──────────────────────────────────────────────
+
+    MAX_LENGTH_PREFIX: str = "Max Length Test "
+
+    @classmethod
+    def over_max_lengths(cls) -> NoticeData:
+        """One character over each limit (title 200, body 2,000, department 120)."""
+        return NoticeData(title=(cls.MAX_LENGTH_PREFIX + "a" * 200)[:201], body="b" * 2001, dept="c" * 121,
+                          badge="info", scenario_label="one_over_max_lengths")
+
+    # ── TC-707 — Badge outside the list ───────────────────────────────────────
+
+    @classmethod
+    def badge_outside_list(cls) -> NoticeData:
+        return NoticeData(title="Badge Validation Test — Unknown Badge", body="Automated notice with a tampered "
+                          "badge type.", badge=cls.BADGE_OUTSIDE_LIST, scenario_label="badge_outside_list")
+
+    # ── TC-712 — Long text, HTML, quotes, Marathi ─────────────────────────────
+
+    SPECIAL_PREFIX: str = "Special Text Test "
+
+    @classmethod
+    def special_text(cls) -> NoticeData:
+        tail = " <b>bold</b> \"quotes\" 'apostrophes' सूचना"
+        return NoticeData(title=(cls.SPECIAL_PREFIX + "x" * 200)[:200 - len(tail)] + tail,
+                          body="<b>bold</b> <script>window.__xss = 1</script> \"quotes\" 'apostrophes' सूचना",
+                          badge="general", dept="कौशल्य विकास विभाग", scenario_label="html_quotes_marathi")
 
     # ── Cleanup support ───────────────────────────────────────────────────────
 
@@ -197,6 +270,14 @@ class NoticesFactory:
             cls.invalid_attachment("").title,
             cls.oversized_attachment("").title,
             cls.EXTRA_ALERT_TITLE,
+            cls.toggle_status_notice().title,
+            cls.toggle_pin_notice().title,
+            cls.notice_to_cancel_edit().title,
+            cls.CANCELLED_TITLE,
+            cls.blank_body().title,
+            cls.MAX_LENGTH_PREFIX,
+            cls.badge_outside_list().title,
+            cls.SPECIAL_PREFIX,
         ]
         titles += [
             cls.badge_notice(b).title

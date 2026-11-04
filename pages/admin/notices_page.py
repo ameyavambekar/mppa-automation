@@ -1,3 +1,5 @@
+import re
+
 import allure
 
 from pages.admin.components.sidebar import AdminSidebar
@@ -8,11 +10,37 @@ NOTICES_URL = f"{ADMIN_BASE}/notices/Admin%20notices%20manage.php"
 
 
 class AdminNoticesPage(BasePage):
-    """Admin Notices Management page object.
+    """Admin — Manage Notices (/module/admin/notices/Admin notices manage.php), Administration › Notices.
 
-    Left panel: Add / Edit notice form.
-    Right panel: Notice list table with badge-type filter pills.
+    Header ``.n-page-title``: "Manage Notices" and the ``.pt-date`` clock "DD Mon YYYY · HH:MM".
+
+    Left panel: the Add New Notice form (``.n-form-title``; title, body, badge type with the ``#badgePreview``
+    chip, department, attachment with the client-side 5 MB guard ``#fileSizeError``, Pin, Active, "Add
+    Notice"). ``?edit=<id>`` turns it into "Edit Notice" with "Update Notice", "✕ Cancel Edit" and a "View
+    File" link for an existing attachment; an unknown id leaves the Add form.
+
+    Right panel: filter pills (``.n-pill``, links ``?badge=<type>``; only "All (N)" carries a count — the
+    number of rows listed) and the ``.ntbl`` table: #, TITLE (title + department), BADGE (``.nbadge``),
+    STATUS (``button.act-tog`` — "Active" with ``.dot-on`` / "Hidden" — a POST toggle), PIN
+    (``button.act-pin`` "Pinned" / "Pin" — a POST toggle), DATE ("DD Mon YYYY") and ACTIONS (Edit link,
+    Del button with a confirm). With no rows the table is replaced by ``EMPTY_LIST``. Saves and toggles
+    reload the page, with ``.salt-s`` / ``.salt-e`` alerts.
     """
+
+    HEADING = "Manage Notices"
+    ADD_FORM_TITLE = "Add New Notice"
+    EDIT_FORM_TITLE = "Edit Notice"
+    ADD_BUTTON = "Add Notice"
+    UPDATE_BUTTON = "Update Notice"
+    COLUMNS = ("#", "TITLE", "BADGE", "STATUS", "PIN", "DATE", "ACTIONS")
+    FILTERS = ("All", "New", "Alert", "Info", "Urgent", "General")
+    EMPTY_LIST = "No notices yet. Add one using the form on the left."
+    DELETE_CONFIRM = "Delete this notice? This cannot be undone."
+    FILE_SIZE_ERROR = "File exceeds 5 MB limit. Please choose a smaller file."
+    ATTACHMENT_ACCEPT = "image/jpeg,image/png,application/pdf"
+    MAX_LENGTHS = {"title": 200, "body": 2000, "dept_name": 120}
+    CLOCK_FORMAT = "%d %b %Y · %H:%M"
+    DATE_FORMAT = "%d %b %Y"
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
 
@@ -29,6 +57,17 @@ class AdminNoticesPage(BasePage):
     @property
     def error_alert(self):
         return self.page.locator(".salt.salt-e")
+
+    # ── Page header ───────────────────────────────────────────────────────────
+
+    @property
+    def heading(self):
+        return self.page.locator(".n-page-title span").first
+
+    @property
+    def page_clock(self):
+        # "04 Nov 2026 · 06:46"
+        return self.page.locator(".n-page-title .pt-date")
 
     # ── Form header ───────────────────────────────────────────────────────────
 
@@ -78,6 +117,25 @@ class AdminNoticesPage(BasePage):
     def cancel_link(self):
         return self.page.locator("a.n-cancel")
 
+    @property
+    def notice_id_input(self):
+        """The form's hidden notice_id (0 when adding)."""
+        return self.page.locator("form:has(#badgeSelect) input[name='notice_id']")
+
+    @property
+    def form_labels(self):
+        return self.page.locator("form:has(#badgeSelect) label.nfl")
+
+    @property
+    def file_size_error(self):
+        """Client-side "File exceeds 5 MB limit…" message under the attachment field."""
+        return self.page.locator("#fileSizeError")
+
+    @property
+    def view_file_link(self):
+        """"View File" link for the notice's current attachment (edit mode)."""
+        return self.page.locator("form:has(#badgeSelect) a", has_text="View File")
+
     # ── Filter pills ──────────────────────────────────────────────────────────
 
     def filter_pill(self, label: str):
@@ -87,6 +145,15 @@ class AdminNoticesPage(BasePage):
     @property
     def active_filter_pill(self):
         return self.page.locator(".n-pill.on")
+
+    @property
+    def filter_pills(self):
+        return self.page.locator(".n-pill")
+
+    def all_count(self) -> int:
+        """N from the "All (N)" pill."""
+        match = re.search(r"\((\d+)\)", self.filter_pill("All").inner_text())
+        return int(match.group(1)) if match else 0
 
     # ── Notice table ──────────────────────────────────────────────────────────
 
@@ -98,10 +165,26 @@ class AdminNoticesPage(BasePage):
     def notice_rows(self):
         return self.page.locator(".ntbl tbody tr")
 
+    @property
+    def table_headers(self):
+        return self.page.locator(".ntbl thead th")
+
+    @property
+    def empty_list(self):
+        return self.page.get_by_text(self.EMPTY_LIST, exact=True)
+
     def notice_row(self, title: str):
-        return self.page.locator(
-            f".ntbl tbody tr:has-text('{title}')"
-        ).first
+        """The first row whose title cell contains ``title``."""
+        return self.notice_rows.filter(has=self.page.locator("td:nth-child(2) div", has_text=title)).first
+
+    def notice_title_cell(self, title: str):
+        return self.notice_row(title).locator("td:nth-child(2) div").first
+
+    def notice_dept(self, title: str):
+        return self.notice_row(title).locator("td:nth-child(2) div:nth-child(2)")
+
+    def notice_date(self, title: str):
+        return self.notice_row(title).locator("td:nth-child(6)")
 
     def notice_badge(self, title: str):
         return self.notice_row(title).locator(".nbadge")
@@ -118,12 +201,47 @@ class AdminNoticesPage(BasePage):
     def notice_delete_button(self, title: str):
         return self.notice_row(title).locator("button.act-del")
 
+    # ── Reading ───────────────────────────────────────────────────────────────
+
+    def rows_data(self) -> list[dict]:
+        """Every row, in page order: title, dept, badge, badge_colour, status ('Active' / 'Hidden'),
+        active (bool), pin ('Pinned' / 'Pin') and date."""
+        return self.notice_rows.evaluate_all("""rows => rows.map(r => {
+            const t = e => e ? e.textContent.replace(/\\s+/g, ' ').trim() : '';
+            const divs = r.cells[1].querySelectorAll('div'), badge = r.querySelector('.nbadge');
+            return {title: t(divs[0]), dept: t(divs[1]), badge: t(badge),
+                    badge_colour: badge ? getComputedStyle(badge).backgroundColor : '',
+                    status: t(r.querySelector('button.act-tog')), active: !!r.querySelector('.dot-on'),
+                    pin: t(r.querySelector('button.act-pin')), date: t(r.cells[5])};
+        })""")
+
+    def badge_preview_colour(self) -> str:
+        return self.badge_preview.evaluate("e => getComputedStyle(e).backgroundColor")
+
+    def attachment_file_count(self) -> int:
+        return self.attachment_input.evaluate("e => e.files.length")
+
     # ── Actions ───────────────────────────────────────────────────────────────
 
     @allure.step("Open Admin Notices Management page")
     def open(self):
         self.navigate(NOTICES_URL)
         self.wait_for_load()
+
+    @allure.step("Open Manage Notices with '?{query}'")
+    def open_with(self, query: str):
+        """e.g. 'edit=6' or 'badge=alert'."""
+        self.navigate(f"{NOTICES_URL}?{query}")
+        self.wait_for_load()
+
+    @allure.step("Click '✕ Cancel Edit'")
+    def cancel_edit(self):
+        self.cancel_link.click()
+        self.wait_for_load()
+
+    @allure.step("Click Del for '{title}' and dismiss the prompt")
+    def delete_notice_dismiss(self, title: str) -> str:
+        return self.click_and_handle_alert(self.notice_delete_button(title), action="dismiss")
 
     @allure.step("Fill notice title: '{title}'")
     def fill_title(self, title: str):
