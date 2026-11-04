@@ -14,10 +14,11 @@ next day) and KAN-TC-643 (Revoke — under review, not tried on dev).
 KAN-TC-637 (District officer powers) skips unless ADMIN_DISTRICT_USERNAME /
 ADMIN_DISTRICT_PASSWORD / ADMIN_DISTRICT_NAME are set.
 
-Known failures (03-Nov-2026): TC-263 (View Cert is 404 — "Super admin" #59),
-TC-262 and TC-639 (a renewal adds no "Renewed" History entry), TC-625 (the
-page clock is in UTC), TC-633 (a cancelled certificate is counted under
-Active, not Revoked) and TC-642 (an Expiring certificate offers Reinstate).
+Known failures (03-Nov-2026, defect sheet "Super admin"): TC-263 (View Cert
+is 404 — #59), TC-262 and TC-639 (a renewal adds no "Renewed" History entry —
+#60), TC-625 (the page clock is in UTC — #61), TC-633 (a cancelled certificate
+is counted under Active, not Revoked — #62) and TC-642 (an Expiring
+certificate offers Reinstate — #63).
 """
 
 import re
@@ -305,7 +306,7 @@ def test_tc262_save_updates_validity(
     When  I renew it from today for 5 years (+5 Years) with a remark
     Then  the row shows the new dates (with ✓ and '✓ approvals'), Days Left and Active
     And   the detail row's 'Valid From / Valid Upto (approvals)' show the new dates
-    And   History shows 'Renewed' with my name and role (known failure 03-Nov-2026: no entry is added)
+    And   History shows 'Renewed' with my name and role (known defect "Super admin" #60: no entry is added)
 
     AIO: KAN-TC-262 | data: valid_renewal
     """
@@ -356,7 +357,7 @@ def test_tc263_view_cert_reflects_row(logged_in_admin_licenses_page: AdminLicens
           No., a Certificate No., the row's Valid Upto, Print and Download PDF
     And   'View Full Certificate (MPPA FORM-II)' in the details opens the same certificate
 
-    Known failure (03-Nov-2026, "Super admin" #59): the link is 404 Not Found.
+    Known defect ("Super admin" #59): the link is 404 Not Found.
 
     AIO: KAN-TC-263 | data: first Active row
     """
@@ -565,7 +566,7 @@ def test_tc625_page_loads(logged_in_admin_licenses_page: AdminLicensesPage):
     And   the 'Who can do what' note, the five chips, search, Issue / Renew License, Renewal
           applications and the table sorted by Agency ▲
 
-    Known failure (03-Nov-2026): the clock shows UTC, 5 h 30 min behind.
+    Known defect ("Super admin" #61): the clock shows UTC, 5 h 30 min behind.
 
     AIO: KAN-TC-625 | data: none
     """
@@ -943,7 +944,7 @@ def test_tc633_cancel(
     Given an agency with an Active certificate
     When  I click Cancel, give a reason, click 'Cancel certificate' and accept the confirmation
     Then  a success message shows; the row is Cancelled; Suspend, Expire and Cancel are no longer offered
-    And   it is listed under Revoked and not under Active (known failure 03-Nov-2026: still counted Active)
+    And   it is listed under Revoked and not under Active (known defect "Super admin" #62: still counted Active)
     And   History shows 'Cancelled' with the reason
 
     AIO: KAN-TC-633 | data: cancellation (reinstated on teardown)
@@ -1197,7 +1198,7 @@ def test_tc639_renew_expired(
     When  I renew it from today for 5 years
     Then  the row is Active with the new Valid Upto and a green bar
     And   it is listed under Active and not under Expired
-    And   History shows 'Renewed' (known failure 03-Nov-2026: no entry is added)
+    And   History shows 'Renewed' (known defect "Super admin" #60: no entry is added)
 
     AIO: KAN-TC-639 | data: expiry, valid_renewal
     """
@@ -1339,7 +1340,7 @@ def test_tc642_actions_by_state(
     Given certificates that are Active, Expiring, Suspended, Expired and Cancelled (the last three made
           on one agency in turn)
     Then  Active / Expiring rows offer Suspend, Expire, Cancel, History, Issue or Renew and View, but not
-          Lift suspension or Reinstate (known failure 03-Nov-2026: an Expiring row offers Reinstate)
+          Lift suspension or Reinstate (known defect "Super admin" #63: an Expiring row offers Reinstate)
     And   a Suspended row offers Lift suspension, not Suspend or Reinstate
     And   an Expired row offers Reinstate, not Lift suspension
     And   a Cancelled row offers Reinstate, not Suspend, Expire or Cancel
