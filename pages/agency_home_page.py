@@ -262,6 +262,39 @@ class AgencyHomePage(BasePage):
     def notification_open_link(self, title: str):
         return self.notification(title).get_by_role("link", name=self.OPEN_LABEL)
 
+    # ── Appeals (only once the application is refused) ────────────────────────
+
+    @property
+    def appeals_card(self):
+        """``#appeals``: 'N of 2 appeals remaining', the reason given in the refusal order, one row per appeal
+        level with its badge, a hint line and the 'File First Appeal' / 'View First Appeal' button."""
+        return self.page.locator("#appeals")
+
+    @property
+    def appeals_remaining(self):
+        return self.appeals_card.locator(".ui-card-sub")
+
+    @property
+    def appeals_order_reason(self):
+        """'Reason given in the order: …'."""
+        return self.appeals_card.locator(".ui-alert")
+
+    def appeal_level_row(self, level: str):
+        """'First Appeal' or 'Second Appeal' row of the appeals table."""
+        return self.appeals_card.locator("tr").filter(has=self.page.locator("strong", has_text=level))
+
+    def appeal_level_badge(self, level: str):
+        return self.appeal_level_row(level).locator(".ui-badge")
+
+    @property
+    def appeals_hint(self):
+        return self.appeals_card.locator("p.ui-small")
+
+    @property
+    def first_appeal_links(self):
+        """Every link on the page to FORM-III ('File First Appeal' / 'View First Appeal')."""
+        return self.page.locator("a[href*='appeals/first.php']")
+
     # ── Side column ───────────────────────────────────────────────────────────
 
     @property
