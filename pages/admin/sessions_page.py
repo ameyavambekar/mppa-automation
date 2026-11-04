@@ -7,6 +7,7 @@ from pages.admin.components.sidebar import AdminSidebar
 from pages.base_page import BasePage
 from config import ADMIN_BASE
 
+SESSIONS_URL = f"{ADMIN_BASE}/sessions/index.php"
 
 class AdminSessionsPage(BasePage):
     """Admin — Session Management dashboard (/module/admin/sessions/index.php).
@@ -61,8 +62,27 @@ class AdminSessionsPage(BasePage):
 
     @property
     def page_title(self):
-        # "🔌 Session Management · Page 1 of 19"
+        # "Session Management · Page 1 of 16"
         return self.page.locator(".adm-page-title span").first
+
+    @property
+    def clock(self):
+        # "04 Nov 2026 · 07:44"
+        return self.page.locator(".adm-page-title .pg-date")
+
+    @property
+    def stat_tiles(self):
+        """All five tiles (four a.sc links + the Unique Users div.sc)."""
+        return self.page.locator(".sc-row .sc")
+
+    @property
+    def filter_tabs(self):
+        return self.page.locator("a.ftab")
+
+    @property
+    def empty_list(self):
+        """'No sessions found.' — shown in the table when nothing matches."""
+        return self.page.locator("table.stbl tbody td", has_text="No sessions found.")
 
     # ── Summary tiles ─────────────────────────────────────────────────────────
 
@@ -261,7 +281,53 @@ class AdminSessionsPage(BasePage):
 
     @allure.step("Open the Session Management dashboard directly")
     def open(self):
-        self.navigate(f"{ADMIN_BASE}/sessions/index.php")
+        self.navigate(SESSIONS_URL)
+
+    @allure.step("Open Session Management with '?{query}'")
+    def open_with(self, query: str):
+        """e.g. 'type=ended', 'page=999', 'type=all&q=x'."""
+        self.navigate(f"{SESSIONS_URL}?{query}")
+
+    @allure.step("Click '›' (next page)")
+    def go_to_next_page(self):
+        self.next_page_link.first.click()
+        self.wait_for_load()
+
+    # ── Reading ───────────────────────────────────────────────────────────────
+
+    def rows_data(self) -> list[dict]:
+        """Every session row on the current page, top to bottom: num, status, agency, username, ip, login,
+        ping, end, duration, reason, killable (has a Kill button) and session_id (open rows only).
+        The 'No sessions found.' row is skipped."""
+        return self.session_rows.evaluate_all("""rows => rows.filter(r => r.cells.length > 5).map(r => {
+            const c = i => r.cells[i].textContent.replace(/\\s+/g, ' ').trim();
+            const sid = r.querySelector("input[name='session_id']");
+            return {num: c(0), status: c(1), agency: c(2), username: c(3), ip: c(4), login: c(5), ping: c(6),
+                    end: c(7), duration: c(8), reason: c(9), action: c(10),
+                    killable: !!r.querySelector('button.btn-r'), session_id: sid ? sid.value : null};
+        })""")
+
+    def range_total(self) -> int:
+        """N from the range line '1–20 of N sessions · Page 1 of P' (0 when the list is empty)."""
+        if self.pagination_info.count() == 0:
+            return 0
+        match = re.search(r"of (\d+) sessions", self.pagination_info.inner_text())
+        return int(match.group(1)) if match else 0
+
+    def parse_time(self, text: str) -> datetime:
+        """'03 Nov 2026, 12:42' (Login Time / Last Ping / Logout / End) → datetime."""
+        return datetime.strptime(text.strip(), self._LOGIN_TIME_FMT)
+
+    @allure.step("Read every row of the '{type_}' list")
+    def all_rows(self, type_: str = "all") -> list[dict]:
+        """rows_data() of every page of a list, read with GET requests in this browser session."""
+        rows, page = [], 1
+        while True:
+            self.open_with(f"type={type_}&q=&page={page}")
+            rows += self.rows_data()
+            if self.next_page_link.count() == 0:
+                return rows
+            page += 1
 
     @allure.step("Filter sessions by tab: {type_}")
     def filter_by_tab(self, type_: str):
@@ -289,9 +355,11 @@ class AdminSessionsPage(BasePage):
         """Clicks a row's 🚫 Kill button and answers the 'Terminate this
         session?' confirm dialog. Returns the dialog message. Accepting submits
         the form and reloads the page."""
-        message = self.click_and_handle_alert(self.kill_button(row), action=action)
-        if action == "accept":
-            self.wait_for_load()
+        if action != "accept":
+            return self.click_and_handle_alert(self.kill_button(row), action=action)
+        with self.page.expect_navigation():
+            message = self.click_and_handle_alert(self.kill_button(row), action=action)
+        self.wait_for_load()
         return message
 
     @allure.step("Click 'Kill All Active' (confirm dialog: {action})")
@@ -300,9 +368,11 @@ class AdminSessionsPage(BasePage):
         dialog. Defaults to *dismiss* (abort) so the destructive path is opt-in;
         pass action='accept' to actually terminate every active session.
         Returns the dialog message."""
-        message = self.click_and_handle_alert(self.kill_all_button, action=action)
-        if action == "accept":
-            self.wait_for_load()
+        if action != "accept":
+            return self.click_and_handle_alert(self.kill_all_button, action=action)
+        with self.page.expect_navigation():
+            message = self.click_and_handle_alert(self.kill_all_button, action=action)
+        self.wait_for_load()
         return message
 
     def _walk_pages(self, type_: str = "all"):
