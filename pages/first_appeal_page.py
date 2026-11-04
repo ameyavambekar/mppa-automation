@@ -6,6 +6,8 @@ from pages.base_page import BasePage
 from config import AGENCY_BASE
 
 FIRST_APPEAL_URL = f"{AGENCY_BASE}/appeals/first.php"
+SECOND_APPEAL_URL = f"{AGENCY_BASE}/appeals/second.php"
+MY_APPLICATION_URL = f"{AGENCY_BASE}/forms/view_application.php"
 
 
 class FirstAppealPage(BasePage):
@@ -58,12 +60,33 @@ class FirstAppealPage(BasePage):
     # ── Page header, note and journey ─────────────────────────────────────────
 
     @property
+    def breadcrumb(self):
+        """'Home › My Application › First Appeal (FORM-III)' under the site header."""
+        return self.page.locator(".border-b .max-w-6xl").first
+
+    @property
     def form_badge(self):
         return self.page.get_by_text("FORM-III · See Rule 8", exact=True)
 
     @property
     def page_heading(self):
         return self.page.locator(".ap-wrap h2")
+
+    @property
+    def header_lines(self):
+        """The two lines under the heading: 'To be decided by the …' and 'Under Section 7(1) …'."""
+        return self.page.locator(".ap-wrap h2 ~ p")
+
+    @property
+    def header_links(self):
+        """Every link / button in the page header (only '← My Application')."""
+        return self.page.locator(".ap-wrap > div").first.locator("a, button")
+
+    @property
+    def blocking_note(self):
+        """The note shown instead of the form when no appeal can be filed — e.g. 'An appeal can be filed only
+        when your application has been rejected …' (or, on the Second Appeal page, why it is not open yet)."""
+        return self.page.locator(".ap-note").filter(has_not_text="You can file only TWO")
 
     @property
     def my_application_link(self):
@@ -167,8 +190,17 @@ class FirstAppealPage(BasePage):
         return self.page.locator("input[name='place']")
 
     @property
+    def verification_date(self):
+        """The read-only Date in the Verification card."""
+        return self.card("✓").locator(".ap-ro")
+
+    @property
     def declaration_checkbox(self):
         return self.page.locator("input[name='declare']")
+
+    @property
+    def declaration_text(self):
+        return self.page.locator("label.ap-chk").filter(has=self.declaration_checkbox)
 
     @property
     def submit_button(self):
@@ -218,6 +250,25 @@ class FirstAppealPage(BasePage):
     def open(self):
         self.navigate(FIRST_APPEAL_URL)
         self.wait_for_load()
+
+    @allure.step("Open the Second Appeal (FORM-IV) page")
+    def open_second_appeal(self):
+        """The Second Appeal page shares this page's header, note and journey; only its blocking note is read
+        here (the FORM-IV form itself is KAN-15)."""
+        self.navigate(SECOND_APPEAL_URL)
+        self.wait_for_load()
+
+    @allure.step("Click the box of the ground '{value}'")
+    def click_ground_box(self, value: str):
+        """Clicks the label text (not the small checkbox) — the whole box toggles the ground."""
+        self.ground_box(value).get_by_text(re.compile(r"\w")).first.click()
+
+    @allure.step("Type into 'Specify other ground' key by key")
+    def type_other_ground(self, text: str):
+        """Types like a user, so the field's 300-character limit applies."""
+        self.ground_checkbox("other").check()
+        self.grounds_other_input.fill("")
+        self.grounds_other_input.press_sequentially(text)
 
     @allure.step("Tick grounds of appeal: {grounds}")
     def select_grounds(self, grounds):
@@ -330,8 +381,16 @@ class FirstAppealPage(BasePage):
         return self.appeal_form.evaluate("f => f.checkValidity()")
 
     def invalid_fields(self) -> list[str]:
-        """Names of the fields the browser's built-in checks reject."""
-        return self.appeal_form.evaluate("f => [...f.elements].filter(e => e.name && !e.checkValidity()).map(e => e.name)")
+        """Names of the fields the browser's built-in checks reject (a radio group is named once)."""
+        return self.appeal_form.evaluate(
+            "f => [...new Set([...f.elements].filter(e => e.name && !e.checkValidity()).map(e => e.name))]")
+
+    def read_only_labels(self, card_number: str) -> list[str]:
+        """Labels of the read-only boxes in a card, in page order (e.g. '1–4')."""
+        return self.card(card_number).locator(".ap-ro small").all_text_contents()
+
+    def files_chosen(self, slot: str) -> int:
+        return self.document_input(slot).evaluate("e => e.files.length")
 
     def has_existing_appeal(self) -> bool:
         """Whether a first appeal is already on file (the form is no longer offered)."""

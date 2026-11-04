@@ -51,6 +51,40 @@ class FirstAppealFactory:
     ORDER_LOCKED = "These details are taken from the official order and cannot be changed."
     WITHIN_LIMIT = "✓ Yes — day {days} of 60"
 
+    # Page texts (KAN-14)
+    TAB_TITLE = "First Appeal — FORM-III | Placement Agency Regulation Portal"
+    BREADCRUMB = "Home › My Application › First Appeal (FORM-III)"
+    HEADING = "First Appeal — Divisional Level"
+    HEADER_LINES = ["To be decided by the Divisional Appellate Authority",
+                    "Under Section 7(1) of the Maharashtra Private Placement Agencies (Regulation) Act, 2025"]
+    TWO_APPEALS_NOTE = ("You can file only TWO appeals in total — one First Appeal and, only if it is rejected, one "
+                        "Second Appeal. The decision on the Second Appeal is final.")
+    ADDRESSEE = ("To, The First Appellate Authority, Deputy Commissioner, Skill Development, Employment & "
+                 "Entrepreneurship, {district} District, Maharashtra.")
+    SUBJECT = "Subject: Appeal against the order of the Registering Authority — Registering Authority, {district} District"
+    DECLARATION = ("I verify that the facts stated above are true and correct to the best of my knowledge and belief. "
+                   "I understand that I can file only two appeals in total, and that a false or frivolous appeal is an "
+                   "offence under the Act.")
+    SUBMIT_LABEL = "Submit First Appeal to the Division (FORM-III)"
+    SUBMITTED = ("Your First Appeal (FORM-III) #{n} has been submitted to the reviewing authority. A confirmation "
+                 "e-mail with all details has been sent to you.")
+    NOT_REJECTED = ("An appeal can be filed only when your application has been rejected by the Registering "
+                    "Authority. Your application status is {status}.")
+    SECOND_BEFORE_FIRST = ("Please file your First Appeal (FORM-III) first. A Second Appeal is possible only after "
+                           "the First Appeal is decided and rejected.")
+    SECOND_WHILE_PENDING = "Your First Appeal #{n} is still pending. You can file a Second Appeal only if it is rejected."
+    DECISION_DAYS = 60
+    OTHER_MAX = 300
+    FACTS_MIN = 20
+    RELIEF_MIN = 10
+    # Home › Appeals card and My Application
+    HOME_REMAINING = "{n} of 2 appeals remaining"
+    HOME_FILE_HINT = ("File your appeal to the Divisional Appellate Authority within 60 days of the order. Only two "
+                      "appeals are allowed in total.")
+    HOME_PENDING_HINT = "Your appeal is with the authority. You will be informed here and by e-mail."
+    HOME_PENDING_BADGE = "Pending — decision by {date}"
+    MY_APP_INVITE = "Review admin remarks below and file an appeal if needed."
+
     @staticmethod
     def valid_with_documents(file_path: str) -> FirstAppealData:
         """A complete appeal carrying all five documents (``file_path`` reused for every slot), so the
@@ -109,6 +143,51 @@ class FirstAppealFactory:
         data.documents["other"] = oversized_path
         data.scenario_label = "oversized_document"
         data.expected_error = FirstAppealFactory.TOO_LARGE_ALERT
+        return data
+
+    @staticmethod
+    def oversized_order(oversized_path: str) -> FirstAppealData:
+        """The required order itself is over 2 MB — the page refuses to submit."""
+        data = FirstAppealFactory.valid_order_only(oversized_path)
+        data.scenario_label = "oversized_order"
+        data.expected_error = FirstAppealFactory.TOO_LARGE_ALERT
+        return data
+
+    @staticmethod
+    def other_ground_blank(file_path: str) -> FirstAppealData:
+        """'Other' ticked with nothing specified — must be refused (defect "I & II Appeal" #65: it is not)."""
+        data = FirstAppealFactory.other_ground(file_path)
+        data.grounds_other = ""
+        data.scenario_label = "other_ground_blank"
+        return data
+
+    @staticmethod
+    def other_ground_too_long() -> str:
+        """301 characters for 'Specify other ground' (limit 300)."""
+        return ("QA automation other ground " * 12)[:FirstAppealFactory.OTHER_MAX + 1]
+
+    @staticmethod
+    def brief_facts_of_length(file_path: str, length: int) -> FirstAppealData:
+        """A valid appeal whose Brief Facts are exactly ``length`` characters (minimum 20)."""
+        data = FirstAppealFactory.valid_order_only(file_path)
+        data.brief_facts = "QA automation facts, appeal test data only"[:length]
+        data.scenario_label = f"brief_facts_{length}_chars"
+        return data
+
+    @staticmethod
+    def relief_of_length(file_path: str, length: int) -> FirstAppealData:
+        """A valid appeal whose relief text is exactly ``length`` characters (minimum 10)."""
+        data = FirstAppealFactory.valid_order_only(file_path)
+        data.relief_sought = "QA-relief-sought-test"[:length]
+        data.scenario_label = f"relief_{length}_chars"
+        return data
+
+    @staticmethod
+    def invalid_order_document(path: str, label: str) -> FirstAppealData:
+        """A valid appeal whose required order is not an acceptable PDF (a .docx, an empty file) — the
+        portal must refuse it."""
+        data = FirstAppealFactory.valid_order_only(path)
+        data.scenario_label = label
         return data
 
 

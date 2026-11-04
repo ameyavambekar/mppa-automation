@@ -235,7 +235,91 @@ def appealed_agency_page(second_browser):
         context.close()
 
 
+@pytest.fixture
+def agency_login(page):
+    """Returns ``login(status) -> UserRecord``: logs the primary page in as the oldest agency the state store
+    records in ``status`` (e.g. 'rejected', 'desktop_scrutiny', 'approved') and lands on Home. Skips when none
+    can log in. Call it again to switch agency (it logs out first); logs out on teardown."""
+    store = TestStateStore()
+
+    def login(status: str) -> UserRecord:
+        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+        for agency in store.get_agency_users_in_status(status):
+            lp = LoginPage(page)
+            lp.open()
+            lp.login(agency.username, agency.password)
+            page.wait_for_load_state("networkidle")
+            if "login" not in page.url:
+                return agency
+        pytest.skip(f"No agency recorded as '{status}' in the state store could log in.")
+
+    yield login
+    try:
+        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+    except Exception:
+        pass
+
+
+@pytest.fixture
+def appeal_filing_allowed():
+    """Skips unless RUN_APPEAL_FILING_TESTS=true. Each filing uses up a refused agency for good (one First
+    Appeal per agency; refusing more takes the long officer + agency loop), so these tests run only on purpose."""
+    if os.getenv("RUN_APPEAL_FILING_TESTS", "false").lower() != "true":
+        pytest.skip("Files a First Appeal and uses up a refused agency — set RUN_APPEAL_FILING_TESTS=true to run.")
+
+
+@pytest.fixture
+def decided_appeal_agency_page(second_browser):
+    """FORM-III in a separate browser for an agency whose First Appeal has been decided (its card no longer
+    says 'Pending decision'). Yields (FirstAppealPage, UserRecord); skips when no appeal has been decided."""
+    browser = second_browser()
+    context = browser.new_context()
+    page = context.new_page()
+    try:
+        for agency in TestStateStore().get_agency_users_in_status("first_appeal"):
+            lp = LoginPage(page)
+            lp.open()
+            lp.login(agency.username, agency.password)
+            page.wait_for_load_state("networkidle")
+            if "login" in page.url:
+                continue
+            fa = FirstAppealPage(page)
+            fa.open()
+            if fa.filed_appeal_card.count() and "Pending decision" not in fa.filed_appeal_title.text_content():
+                yield fa, agency
+                return
+            page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+        pytest.skip("No First Appeal has been decided yet (KAN-29 / KAN-TC-363 passes one).")
+    finally:
+        context.close()
+
+
 # ── Agency-side data fixtures ──────────────────────────────────────────────────
+
+@pytest.fixture
+def first_appeal_full_data() -> FirstAppealData:
+    return FirstAppealFactory.valid_with_documents(file_manager.VALID_CERTIFICATE)
+
+
+@pytest.fixture
+def other_ground_blank_data() -> FirstAppealData:
+    return FirstAppealFactory.other_ground_blank(file_manager.VALID_CERTIFICATE)
+
+
+@pytest.fixture
+def oversized_order_data() -> FirstAppealData:
+    return FirstAppealFactory.oversized_order(file_manager.OVERSIZED_FILE)
+
+
+@pytest.fixture
+def docx_order_data() -> FirstAppealData:
+    return FirstAppealFactory.invalid_order_document(file_manager.UNSUPPORTED_CERTIFICATE, "docx_order")
+
+
+@pytest.fixture
+def empty_order_data() -> FirstAppealData:
+    return FirstAppealFactory.invalid_order_document(file_manager.EMPTY_PDF, "empty_order")
+
 
 @pytest.fixture
 def first_appeal_valid_data() -> FirstAppealData:
