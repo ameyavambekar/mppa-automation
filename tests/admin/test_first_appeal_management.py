@@ -1,26 +1,28 @@
 """
-First Appeal Management — Admin Portal
-======================================
-Covers KAN-TC-360 through KAN-TC-368 (Admin Console · Appeals module · 1st
-Appeals / FORM-III).
+First Appeal Management — Officer Console + agency FORM-III
+===========================================================
+Covers KAN-TC-360 through KAN-TC-368, rewritten 04-Nov-2026 for the redesigned
+pages: the officer's Appeals (/module/admin/appeals/index.php — views + the
+"Review & decide" pop-up) and the agency's First Appeal FORM-III
+(/module/agency/appeals/first.php).
 
-The admin assertions run against the live Appeals list and review modal
-(``AdminAppealsPage``) plus the Audit Log (``AdminAuditLogPage``). Most tests
-discover a suitable FORM-III appeal from the current dev data and skip when none
-exists — matching the dynamic-discovery style of ``test_agencies.py``.
+Test data. An appeal can only be filed by an agency whose application was
+refused, and each such agency can file one first appeal. Refused agencies are
+prepared on the Officer Console and recorded as ``rejected`` in the state store;
+fixtures that file (``pending_first_appeal`` when no appeal is pending) use one
+up and record it as ``first_appeal``.
 
-Three tests need a precondition that cannot be assumed present (an appeal WITH
-all documents, an appeal WITHOUT documents, or a LATE-filed appeal). Those
-request a ``filed_first_appeal_*`` fixture, which files exactly that appeal in a
-separate agency browser via the FirstAppealPage object and yields its order
-number for the admin side to locate. Those fixtures skip when the agency cannot
-file (e.g. it already has an appeal on record).
-
-Outcome tests (TC-363/365) record a decision; appeal outcomes are not cleanly
-reversible from the UI, so those mutations are left in place on the dev data.
+* Read-only tests — TC-360, 361, 362, 364, 367, 368 — reuse an appeal already
+  awaiting decision (``pending_first_appeal`` files one only when none is
+  pending); TC-368 opens FORM-III for a refused agency without filing.
+* TC-363 passes an appellate order (irreversible, uses up the pending appeal):
+  opt-in with RUN_APPEAL_DECISION_TESTS=true.
+* TC-365 / TC-366 check the audit log and the agency's e-mail for an appeal
+  that has already been decided (skip when none has).
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 
 import allure
 import pytest
@@ -28,360 +30,386 @@ from playwright.sync_api import expect
 
 from pages.admin.appeals_page import AdminAppealsPage
 from pages.admin.audit_log_page import AdminAuditLogPage
-from test_data.first_appeal_factory import AppealOutcomeData
+from pages.first_appeal_page import FirstAppealPage
+from test_data.first_appeal_factory import AppealOutcomeData, AppealOutcomeFactory, FirstAppealFactory
 from utils.aio import aio_case
+from utils.email_otp import get_emails_to
 
-FORM_III_TAB = "1st Appeal (FORM-III)"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _first_appeals_or_skip(ap: AdminAppealsPage):
-    """Filter the list to FORM-III and return the row locator, or skip."""
-    ap.filter_by_type(FORM_III_TAB)
-    expect(ap.appeals_table).to_be_visible()
-    if ap.appeal_rows.count() == 0:
-        pytest.skip("No FORM-III (first) appeals in the dev data.")
-    return ap.appeal_rows
+STORY = "First Appeal Management"
+O = AppealOutcomeFactory
+IST = timezone(timedelta(hours=5, minutes=30))
+DOC_LABELS = ["Registering Authority order", "Original application", "Acknowledgement", "Fee receipt", "Other document"]
+GROUND_LABELS = {"error_of_law": "Error of law", "procedural_irregularity": "Procedural irregularity",
+                 "jurisdictional_error": "Jurisdictional error", "non_consideration": "Non-consideration of material record",
+                 "natural_justice": "Violation of principles of natural justice", "other": "Other (specified)"}
 
 
-def _submitted_first_appeal_or_skip(ap: AdminAppealsPage) -> int:
-    """Id of a pending (submitted) FORM-III appeal, or skip."""
-    ap.filter_by_type(FORM_III_TAB)
-    expect(ap.appeals_table).to_be_visible()
-    appeal_id = ap.get_first_appeal_id_with_status("submitted")
-    if appeal_id == -1:
-        pytest.skip("No pending (submitted) FORM-III appeal to record an outcome on.")
-    return appeal_id
+def _grounds_text(appeal: dict) -> str:
+    g = appeal["grounds"]
+    return ", ".join(GROUND_LABELS.get(k, k) for k in g["checkboxes"]) + (f" — {g['other']}" if g.get("other") else "")
 
 
-def _open_seeded_appeal_or_skip(ap: AdminAppealsPage, seeded: dict) -> int:
-    """Locate a seeded appeal (by order number, falling back to Reg ID) and open
-    its review modal. The newest matching row is the just-filed appeal."""
-    ap.search(seeded["order_number"])
-    if ap.appeal_rows.count() == 0 and seeded.get("reg_id"):
-        ap.search(seeded["reg_id"])
-    if ap.appeal_rows.count() == 0:
-        pytest.skip(f"Seeded appeal '{seeded['order_number']}' not found in the admin list.")
-    appeal_id = ap.get_appeal_id_of_row(ap.appeal_rows.first)
-    ap.open_review_modal(appeal_id)
-    expect(ap.review_modal).to_be_visible()
-    return appeal_id
+def _audit_entries_for_appeal(page, appeal_id: int, max_pages: int = 5) -> list[str]:
+    """Texts of the last 30 days' audit entries on table agency_appeals for this appeal ('ID #<id>')."""
+    audit = AdminAuditLogPage(page)
+    found = []
+    for n in range(1, max_pages + 1):
+        audit.open(date_f="month", page=n)
+        items = audit.log_entries
+        if items.count() == 0:
+            break
+        found += [t for t in items.all_inner_texts()
+                  if O.AUDIT_TABLE in t and re.search(rf"\bID #{appeal_id}\b", t)]
+    return found
 
 
 # ---------------------------------------------------------------------------
-# TC-360  All submitted first appeals visible with the correct per-row fields
+# TC-360  First Appeals list
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-360")
-@allure.story("First Appeal Management")
-@allure.title("TC-360: All submitted first appeals are listed with the correct per-row fields")
-def test_tc360_first_appeals_listed_with_fields(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-):
+@allure.story(STORY)
+@allure.title("TC-360: First Appeals — Division lists every first appeal with its agency, area, dates, hearing and status")
+def test_tc360_first_appeals_listed_with_fields(logged_in_admin_appeals_page: AdminAppealsPage, pending_first_appeal: dict):
     """
-    Given I am logged in as Admin on the Appeals module
-    When  I view the 1st Appeal (FORM-III) list
-    Then  the list loads without error and shows only FORM-III submissions
-    And   every row carries Agency Name, Reg ID, Date Filed and Outcome status
+    Given at least one first appeal awaits a decision
+    When  I open Appeals › First Appeals — Division
+    Then  the table has the columns #, Agency, District, Appeal, Filed, Decision due, Hearing, Status
+    And   every row shows the appeal number, agency name and 13-digit Application ID, district and division,
+          'First · Division', the filing date, the days left to decide, the hearing and the status
+    And   the pending appeal's row matches what was filed, with 'Pending' and 'Review & decide'
+    And   the tab count equals the number of rows
 
-    AIO: KAN-TC-360 | data: live appeals list
+    AIO: KAN-TC-360 | data: pending_first_appeal
     """
-    ap = logged_in_admin_appeals_page
-    rows = _first_appeals_or_skip(ap)
+    ap, appeal = logged_in_admin_appeals_page, pending_first_appeal
 
-    with allure.step("Verify the list loaded without server errors"):
-        expect(ap.page.get_by_text("Fatal error")).to_have_count(0)
-        expect(ap.page.get_by_text("Warning:")).to_have_count(0)
+    with allure.step("Verify the table columns"):
+        headers = ap.table_headers.evaluate_all("hs => hs.map(h => h.textContent.trim())")
+        assert [h.lower() for h in headers] == [c.lower() for c in ap.APPEAL_COLUMNS], headers
 
-    with allure.step("Verify every listed row is a FORM-III appeal"):
-        for i in range(rows.count()):
-            appeal_id = ap.get_appeal_id_of_row(rows.nth(i))
-            expect(ap.form_type_badge(appeal_id)).to_contain_text(
-                re.compile("FORM-III", re.IGNORECASE)
-            )
+    rows = ap.appeal_rows_data()
+    allure.attach("\n".join(map(str, rows)), name="first appeal rows")
+    with allure.step("Verify the tab count equals the rows listed"):
+        assert ap.view_count("first") == len(rows), (ap.view_count("first"), len(rows))
 
-    with allure.step("Verify the required per-row fields render on the first row"):
-        appeal_id = ap.get_appeal_id_of_row(rows.first)
-        assert ap.agency_name_cell(appeal_id).text_content().strip(), "Agency Name is blank."
-        assert ap.reg_id_cell(appeal_id).text_content().strip(), "Reg ID is blank."
-        expect(ap.filed_on_cell(appeal_id)).to_be_visible()
-        expect(ap.status_badge(appeal_id)).to_be_visible()
+    with allure.step("Verify every row's fields"):
+        for r in rows:
+            assert r["id"].isdigit(), r
+            assert r["agency"] and re.fullmatch(r"\d{13}", r["application_id"]), r
+            assert r["district"] and r["division"].endswith("Division"), r
+            assert r["type"] == "First · Division", r
+            assert re.fullmatch(r"\d{2} [A-Z][a-z]{2} \d{4}", r["filed"]), r
+            assert r["status"] and r["hearing"], r
+            assert re.fullmatch(r"\d+ days left|\d+ days overdue", r["due"]) or r["status"] != "Pending", r
 
-    with allure.step("Attach the column headers (grounds column reviewed manually)"):
-        headers = [
-            ap.table_headers.nth(i).text_content().strip()
-            for i in range(ap.table_headers.count())
-        ]
-        allure.attach(", ".join(headers), name="appeal list columns")
+    with allure.step(f"Verify the row of appeal #{appeal['id']}"):
+        row = next(r for r in rows if r["id"] == str(appeal["id"]))
+        filed = datetime.strptime(appeal["filed"][:10], "%Y-%m-%d").strftime("%d %b %Y")
+        assert (row["agency"], row["application_id"], row["district"], row["filed"]) == \
+               (appeal["agency"], appeal["reg_id"], appeal["district"], filed), row
+        assert row["division"] == f"{appeal['division']} Division", row
+        assert row["due"] == f"{appeal['days_left']} days left", row
+        assert (row["status"], row["button"]) == ("Pending", "Review & decide"), row
 
 
 # ---------------------------------------------------------------------------
-# TC-362  Documents appear as labelled download links in the detail view
+# TC-361  The filed FORM-III, read-only
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-361")
+@allure.story(STORY)
+@allure.title("TC-361: Review & decide shows every FORM-III field as filed, read-only")
+def test_tc361_form_iii_fields_read_only(logged_in_admin_appeals_page: AdminAppealsPage, pending_first_appeal: dict):
+    """
+    Given a first appeal awaits a decision
+    When  I click 'Review & decide' on it
+    Then  the pop-up is titled 'First Appeal (FORM-III) #N — <agency>' with the division and filing date
+    And   it shows the Appellant, Order appealed against, Grounds / facts / relief, Limitation, Documents and
+          Hearing sections with exactly the values the agency filed
+    And   none of the filed values can be edited (no inputs inside the FORM-III sections)
+
+    AIO: KAN-TC-361 | data: pending_first_appeal
+    """
+    ap, a = logged_in_admin_appeals_page, pending_first_appeal
+    g, lim = a["grounds"], a["limitation"]
+    ap.open_appeal(a["id"])
+
+    with allure.step("Verify the title, subtitle and chips"):
+        expect(ap.modal_title).to_have_text(f"First Appeal (FORM-III) #{a['id']} — {a['agency']}")
+        expect(ap.modal_subtitle).to_have_text(
+            f"Divisional Appellate Authority, {a['division']} Division · filed {a['filed'][:10]}")
+        expect(ap.modal_chips).to_have_text(["First · Division", a["reg_id"], f"{a['days_left']} days left to decide"])
+
+    with allure.step("Verify every section is shown"):
+        for title in ap.SECTIONS:
+            expect(ap.modal_section(title)).to_have_count(1)
+
+    expected = {
+        "Agency": a["agency"], "Registration ID": a["reg_id"], "District": a["district"],
+        "Contact": f"{a['email']} · {a['mobile']}", "Address": a["address"],
+        "Order No.": a["order_no"], "Order date": a["order_date"], "Passed by": g["order_authority"],
+        "Grounds": _grounds_text(a), "Brief facts": g["brief_facts"],
+        "Relief sought": f"{g['relief_type']} — {g['relief_sought']}",
+        "Order communicated on": lim["comm_date"], "Filed within time": "Yes" if lim["within_time"] == "yes" else None,
+    }
+    seeded = a.get("seeded")
+    with allure.step("Verify every field shows the filed value"):
+        shown = {label: ap.modal_value(label) for label in expected}
+        allure.attach("\n".join(f"{k}: {v}" for k, v in shown.items()), name="FORM-III as shown")
+        for label, value in expected.items():
+            if value is not None:
+                assert shown[label] == value, f"{label}: shown {shown[label]!r}, filed {value!r}"
+        if seeded:
+            assert (shown["Registration ID"], shown["Order No."]) == (seeded["reg_id"], seeded["order_number"])
+
+    with allure.step("Verify the filed sections have no editable fields"):
+        assert ap.editable_fields_in_body() == 0, "The filed FORM-III can be edited in the pop-up"
+
+
+# ---------------------------------------------------------------------------
+# TC-362  Documents as labelled links
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-362")
-@allure.story("First Appeal Management")
-@allure.title("TC-362: Each uploaded document appears as a labelled download link in the detail view")
-def test_tc362_documents_are_labelled_download_links(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-    filed_first_appeal_with_documents: dict,
-):
+@allure.story(STORY)
+@allure.title("TC-362: Each uploaded document is a labelled link that opens the PDF")
+def test_tc362_documents_are_labelled_download_links(logged_in_admin_appeals_page: AdminAppealsPage,
+                                                     pending_first_appeal: dict):
     """
-    Given an agency filed a FORM-III appeal with supporting documents
-    When  I open the appeal's detail view
-    Then  the Documents section lists each enclosure as a labelled link
-    And   every link carries a target (href) and a non-empty label
+    Given a first appeal was filed with all five documents
+    When  I open it with 'Review & decide'
+    Then  10 · Documents lists 'Registering Authority order', 'Original application', 'Acknowledgement',
+          'Fee receipt' and 'Other document', each opening in a new tab
+    And   every link serves its PDF
 
-    AIO: KAN-TC-362 | data: filed_first_appeal_with_documents
+    AIO: KAN-TC-362 | data: pending_first_appeal (valid_with_documents)
     """
-    ap = logged_in_admin_appeals_page
-    _open_seeded_appeal_or_skip(ap, filed_first_appeal_with_documents)
+    ap, a = logged_in_admin_appeals_page, pending_first_appeal
+    ap.open_appeal(a["id"])
 
-    with allure.step("Verify the Documents section lists labelled download links"):
-        chips = ap.document_chips
-        expect(chips.first).to_be_visible()
-        count = chips.count()
-        assert count > 0, "No document links shown for an appeal filed with enclosures."
+    with allure.step("Verify the five labelled links"):
+        expect(ap.document_links).to_have_text(DOC_LABELS)
+        links = ap.document_links.evaluate_all("ls => ls.map(l => ({href: l.getAttribute('href'), target: l.target}))")
+        for link in links:
+            assert re.fullmatch(r"/serve_enclosure\.php\?t=[0-9a-f]{40}", link["href"]), link
+            assert link["target"] == "_blank", link
 
-    with allure.step("Verify each link is labelled and points somewhere"):
-        has_target = False
-        for i in range(count):
-            chip = chips.nth(i)
-            assert chip.text_content().strip(), f"Document link #{i} has no label."
-            href = chip.get_attribute("href")
-            if href and href.strip():
-                has_target = True
-        assert has_target, "No document link exposes a downloadable target (href)."
+    with allure.step("Verify each link serves a PDF"):
+        base = ap.page.url.split("/module/")[0]
+        for label, link in zip(DOC_LABELS, links):
+            res = ap.page.request.get(base + link["href"])
+            assert res.ok, f"{label}: HTTP {res.status}"
+            assert res.body()[:5] == b"%PDF-", f"{label}: not a PDF ({res.headers.get('content-type')})"
 
 
 # ---------------------------------------------------------------------------
-# TC-363  Recording an outcome persists it with admin identity and timestamp
+# TC-363  Passing the appellate order (opt-in)
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-363")
-@allure.story("First Appeal Management")
-@allure.title("TC-363: Selecting an outcome and saving updates the appeal with admin identity and timestamp")
-def test_tc363_record_outcome_persists(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-    allowed_outcome_data: AppealOutcomeData,
-):
+@allure.story(STORY)
+@allure.title("TC-363: Passing an appellate order records the result, order number, officer and time")
+def test_tc363_record_outcome_persists(appeal_decisions_allowed, logged_in_admin_appeals_page: AdminAppealsPage,
+                                       pending_first_appeal: dict, dismissed_upheld_data: AppealOutcomeData):
     """
-    Given a pending FORM-III appeal is open in the review modal
-    When  I select the 'Allow' outcome, enter remarks and save
-    Then  the appeal's status updates to Allowed
-    And   the reviewed column is populated (admin identity + decision timestamp)
+    Given a first appeal awaits a decision
+    When  I choose 'Appeal Dismissed — Refusal Upheld', write the reasons and save, accepting
+          'Pass this order? … <disposal> … <effect>'
+    Then  the appeal leaves Awaiting decision and its status is no longer Pending
+    And   the pop-up shows a Decision section with the result, an order number, the date and officer, and the
+          reasons, and no decision form
 
-    The decision is not reversible from the UI — the dev data keeps the outcome.
+    Irreversible — runs only with RUN_APPEAL_DECISION_TESTS=true.
 
-    AIO: KAN-TC-363 | data: allowed_with_remarks
+    AIO: KAN-TC-363 | data: dismissed_upheld
     """
-    ap = logged_in_admin_appeals_page
-    appeal_id = _submitted_first_appeal_or_skip(ap)
+    ap, a, d = logged_in_admin_appeals_page, pending_first_appeal, dismissed_upheld_data
+    label = ap.FIRST_DISPOSALS[d.disposal]
+    ap.open_appeal(a["id"])
 
-    with allure.step("Record the outcome: allow + remarks"):
-        ap.review_appeal(appeal_id, allowed_outcome_data.decision, allowed_outcome_data.remarks)
+    with allure.step("Choose the disposal and verify its effect is shown"):
+        ap.choose_disposal(d.disposal)
+        expect(ap.disposal_impact).to_have_text(O.IMPACT[d.disposal])
+        ap.fill_reasons(d.reasons)
+        expect(ap.decision_remarks_count).to_have_text(f"{len(d.reasons.strip())} / 50 characters")
 
-    with allure.step("Verify the appeal status updated to Allowed"):
-        ap.open()
-        expect(ap.status_badge(appeal_id)).to_contain_text(re.compile("allow", re.IGNORECASE))
+    with allure.step("Save and accept the confirmation"):
+        before = datetime.now(IST).replace(tzinfo=None, second=0, microsecond=0)
+        message = ap.save_order("accept")
+        assert message == O.CONFIRM.format(label=label, desc=O.IMPACT[d.disposal]), message
 
-    with allure.step("Verify the reviewed column now carries the admin decision metadata"):
-        reviewed = ap.reviewed_cell(appeal_id).text_content().strip()
-        allure.attach(reviewed, name="reviewed cell")
-        assert reviewed and reviewed != "—", "Reviewed column was not populated after saving."
+    with allure.step("Verify the appeal left Awaiting decision"):
+        ap.open_view("queue")
+        expect(ap.appeal_row(a["id"])).to_have_count(0)
+
+    with allure.step("Verify the status in First Appeals"):
+        ap.open_view("first")
+        row = next(r for r in ap.appeal_rows_data() if r["id"] == str(a["id"]))
+        allure.attach(str(row), name="row after the order")
+        assert row["status"] != "Pending", row
+
+    with allure.step("Verify the Decision section and that the form is gone"):
+        ap.open_appeal(a["id"])
+        expect(ap.modal_section("Decision")).to_have_count(1)
+        expect(ap.decide_box).to_be_hidden()
+        decided = ap.modal_value("Decided")
+        allure.attach("\n".join(f"{k}: {ap.modal_value(k)}" for k in ("Result", "Order No.", "Decided", "Remarks")),
+                      name="decision as shown")
+        assert ap.modal_value("Result"), "No result shown"
+        assert ap.modal_value("Order No."), "No order number shown"
+        when = datetime.strptime(decided[:16], "%Y-%m-%d %H:%M")
+        assert before - timedelta(minutes=2) <= when <= before + timedelta(minutes=5), decided
+        assert " by " in decided, f"The officer is not named: {decided!r}"
+        assert ap.modal_value("Remarks") == d.reasons
 
 
 # ---------------------------------------------------------------------------
-# TC-364  Saving without remarks is blocked by a required-field tooltip
+# TC-364  The order needs a disposal and 50 characters of reasons
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-364")
-@allure.story("First Appeal Management")
-@allure.title("TC-364: Saving an appeal outcome without remarks is blocked by a required-field tooltip")
-def test_tc364_blank_remarks_blocked(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-    rejected_blank_remarks_data: AppealOutcomeData,
-):
+@allure.story(STORY)
+@allure.title("TC-364: Saving an appellate order without a disposal or 50 characters of reasons is refused")
+def test_tc364_blank_remarks_blocked(logged_in_admin_appeals_page: AdminAppealsPage, pending_first_appeal: dict,
+                                     invalid_outcome_cases: list[AppealOutcomeData]):
     """
-    Given a pending FORM-III appeal is open in the review modal
-    When  I select an outcome (which enables Save) but leave remarks blank and click Save
-    Then  a required-field validation tooltip is shown on the remarks field
-    And   the outcome is not saved (the appeal's status is unchanged)
+    Given a first appeal awaits a decision and is open in 'Review & decide'
+    When  I click 'Save appellate order' with no disposal, then with blank reasons, then with 49 characters
+    Then  each time an error toast explains what is missing and no confirmation is asked
+    And   the appeal still awaits a decision
 
-    AIO: KAN-TC-364 | data: rejected_blank_remarks
+    AIO: KAN-TC-364 | data: no_disposal, blank_reasons, short_reasons
     """
-    ap = logged_in_admin_appeals_page
-    appeal_id = _submitted_first_appeal_or_skip(ap)
-    original_status = ap.get_row_status(appeal_id)
+    ap, a = logged_in_admin_appeals_page, pending_first_appeal
+    for case in invalid_outcome_cases:
+        with allure.step(f"Save with {case.scenario_label}"):
+            ap.open_view("first")
+            ap.open_appeal(a["id"])
+            if case.disposal:
+                ap.choose_disposal(case.disposal)
+            ap.fill_reasons(case.reasons)
+            prompt = ap.save_order(action="dismiss")
+            assert prompt == "", f"A confirmation was asked: {prompt!r}"
+            expect(ap.toast).to_contain_text(case.expected_error)
+            expect(ap.decide_box).to_be_visible()
 
-    with allure.step("Open the review modal and select an outcome"):
-        ap.open_review_modal(appeal_id)
-        ap.select_decision(rejected_blank_remarks_data.decision)
-
-    with allure.step("Verify 'Confirm & Save' is enabled once an outcome is selected"):
-        expect(ap.confirm_decision_button).to_be_enabled()
-
-    with allure.step("Attempt to save with the remarks field left blank"):
-        ap.fill_decision_remarks("")
-        ap.confirm_decision_button.click()
-
-    with allure.step("Verify the required-remarks tooltip is shown"):
-        message = ap.get_remarks_validation_message()
-        allure.attach(
-            f"tooltip='{message}' | expected≈'{rejected_blank_remarks_data.expected_error}'",
-            name="remarks validation tooltip",
-        )
-        assert message, "No validation tooltip was shown for the empty remarks field."
-        value_missing = ap.decision_remarks_textarea.evaluate("el => el.validity.valueMissing")
-        assert value_missing, "Remarks field was not flagged as a missing required value."
-
-    with allure.step("Verify the appeal's status is unchanged (outcome not saved)"):
-        ap.open()
-        assert ap.get_row_status(appeal_id) == original_status, (
-            "Appeal status changed despite the empty-remarks tooltip block."
-        )
+    with allure.step("Verify the appeal still awaits a decision"):
+        ap.open_view("queue")
+        expect(ap.appeal_row(a["id"])).to_have_count(1)
+        assert ap.appeals_data()[str(a["id"])]["decided"] is None
 
 
 # ---------------------------------------------------------------------------
-# TC-365  Audit log captures the appeal-outcome event with full metadata
+# TC-365  Audit log
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-365")
-@allure.story("First Appeal Management")
-@allure.title("TC-365: Saving an appeal outcome writes an audit log entry with full metadata")
-def test_tc365_audit_log_captures_outcome(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-    allowed_for_audit_data: AppealOutcomeData,
-):
+@allure.story(STORY)
+@allure.title("TC-365: The audit log records the appellate order")
+def test_tc365_audit_log_captures_outcome(logged_in_admin_appeals_page: AdminAppealsPage, decided_first_appeal: dict):
     """
-    Given a pending FORM-III appeal is open in the review modal
-    When  I record an outcome with remarks
-    Then  the Audit Log's newest entry carries an action pill and timestamp
-    And   the full record references the appeal (its reg id or the remarks)
+    Given a first appeal has been decided
+    When  I look at the audit log's entries for that appeal (table agency_appeals, ID #N)
+    Then  besides the filing ('1st Appeal') there is an entry for the appellate order
 
-    AIO: KAN-TC-365 | data: allowed_for_audit
+    AIO: KAN-TC-365 | data: decided_first_appeal
     """
-    ap = logged_in_admin_appeals_page
-    appeal_id = _submitted_first_appeal_or_skip(ap)
-    reg_id = ap.reg_id_cell(appeal_id).text_content().strip()
-
-    with allure.step("Record the outcome: allow + remarks"):
-        ap.review_appeal(appeal_id, allowed_for_audit_data.decision, allowed_for_audit_data.remarks)
-
-    with allure.step("Open the Audit Log and inspect the newest entry"):
-        audit = AdminAuditLogPage(ap.page)
-        audit.open()
-        if audit.get_entry_count() == 0:
-            pytest.skip("Audit Log is empty — cannot verify the outcome event.")
-        entry = audit.log_entry(0)
-        expect(audit.entry_action_pill(entry)).to_be_visible()
-        expect(audit.entry_timestamp(entry)).to_be_visible()
-
-    with allure.step("Verify the full record references the appeal"):
-        audit.expand_entry(0)
-        raw = audit.get_expanded_json_text()
-        allure.attach(raw, name="audit raw record")
-        remarks_fragment = allowed_for_audit_data.remarks.rstrip(".")
-        assert reg_id in raw or remarks_fragment in raw or "appeal" in raw.lower(), (
-            "Newest audit entry does not reference the appeal outcome."
-        )
+    ap, a = logged_in_admin_appeals_page, decided_first_appeal
+    entries = _audit_entries_for_appeal(ap.page, a["id"])
+    allure.attach("\n\n".join(entries), name=f"audit entries for appeal #{a['id']}")
+    with allure.step("Verify the filing and the order are both logged"):
+        assert any(O.AUDIT_FILED in e for e in entries), "The filing is not in the audit log"
+        assert any(O.AUDIT_FILED not in e for e in entries), \
+            f"No audit entry for the appellate order on appeal #{a['id']} ({a['status']}, {a['decided']})"
 
 
 # ---------------------------------------------------------------------------
-# TC-366  Limitation section flags a late-filed appeal with the stated reason
+# TC-366  E-mail to the agency
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-366")
-@allure.story("First Appeal Management")
-@allure.title("TC-366: Late-filed appeal shows the Limitation details and the stated reason for delay")
-def test_tc366_late_filed_limitation_section(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-    filed_late_first_appeal: dict,
-):
+@allure.story(STORY)
+@allure.title("TC-366: The agency is e-mailed the appellate order")
+def test_tc366_email_on_outcome(decided_first_appeal: dict):
     """
-    Given an agency filed a FORM-III appeal beyond the 30-day limitation
-    When  I open the appeal's detail view
-    Then  the Limitation section is shown
-    And   it carries the agency's stated reason for the delay
+    Given a first appeal has been decided
+    When  I read the agency's inbox from the time of the decision
+    Then  an e-mail about the appeal's order has arrived
 
-    (The associated email notification to the agency is verified out-of-band.)
-
-    AIO: KAN-TC-366 | data: filed_late_first_appeal
+    AIO: KAN-TC-366 | data: decided_first_appeal
     """
-    ap = logged_in_admin_appeals_page
-    _open_seeded_appeal_or_skip(ap, filed_late_first_appeal)
-
-    with allure.step("Verify the Limitation section is rendered"):
-        expect(ap.form_section_title("Limitation")).to_be_visible()
-
-    with allure.step("Verify the stated reason for delay is shown"):
-        doc_text = ap.form_document.text_content()
-        reason_fragment = filed_late_first_appeal["delay_reason"][:25]
-        assert reason_fragment and reason_fragment in doc_text, (
-            "Late-filing reason for delay is not shown in the Limitation section."
-        )
+    a = decided_first_appeal
+    decided = datetime.strptime(a["decided"][:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+    since = int((decided - timedelta(minutes=1)).timestamp() * 1000)
+    emails = get_emails_to(a["email"], since_ms=since, wait_s=60)
+    allure.attach("\n".join(f"{e['timestamp']} | {e['subject']}" for e in emails) or "(none)", name="inbox")
+    if not emails and not a["email"].endswith("@inbox.testmail.app"):
+        pytest.skip(f"The agency's address {a['email']} is not a testmail inbox.")
+    with allure.step("Verify an e-mail about the appeal's order arrived"):
+        assert any(re.search(r"appeal", (e.get("subject") or "") + (e.get("text") or ""), re.IGNORECASE) for e in emails), \
+            f"No e-mail about appeal #{a['id']} reached {a['email']} since {decided:%d %b %Y %H:%M}"
 
 
 # ---------------------------------------------------------------------------
-# TC-367  Each appeal from the same agency is an independent row
+# TC-367  One first appeal per agency
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-367")
-@allure.story("First Appeal Management")
-@allure.title("TC-367: Multiple first appeals from the same agency appear as independent rows")
-def test_tc367_multiple_appeals_independent_rows(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-):
+@allure.story(STORY)
+@allure.title("TC-367: An agency's first appeal is listed once and cannot be filed again")
+def test_tc367_multiple_appeals_independent_rows(logged_in_admin_appeals_page: AdminAppealsPage, appealed_agency_page):
     """
-    Given one agency has filed more than one FORM-III appeal
-    When  I view the 1st Appeals list
-    Then  each appeal appears as its own row with a distinct appeal id
-    And   the rows are not merged — each keeps its own date filed and status
+    Given an agency has filed its first appeal
+    When  it opens First Appeal (FORM-III) again
+    Then  the form is not offered; its appeal '#N' is shown with its status, and 'Appeals remaining: 1 of 2'
+    And   First Appeals — Division lists that agency's application exactly once, under the same appeal number
+    And   no application has more than one first appeal
 
-    AIO: KAN-TC-367 | data: live appeals list (agency with multiple appeals)
+    AIO: KAN-TC-367 | data: appealed_agency_page
     """
     ap = logged_in_admin_appeals_page
-    rows = _first_appeals_or_skip(ap)
+    fa, agency = appealed_agency_page
 
-    with allure.step("Group the listed appeals by agency Reg ID"):
-        by_reg: dict[str, list[int]] = {}
-        for i in range(rows.count()):
-            appeal_id = ap.get_appeal_id_of_row(rows.nth(i))
-            reg_id = ap.reg_id_cell(appeal_id).text_content().strip()
-            by_reg.setdefault(reg_id, []).append(appeal_id)
+    with allure.step("Verify FORM-III shows the appeal on file instead of the form"):
+        expect(fa.appeal_form).to_have_count(0)
+        expect(fa.filed_appeal_card).to_have_count(1)
+        expect(fa.appeals_remaining).to_have_text(FirstAppealFactory.APPEALS_REMAINING.format(n=1))
+        expect(fa.journey_status("First Appeal · Division")).not_to_have_text(re.compile("Not filed"))
+        number = fa.filed_appeal_number.inner_text().strip().lstrip("#")
 
-    reg_with_many = next((reg for reg, ids in by_reg.items() if len(ids) >= 2), None)
-    if reg_with_many is None:
-        pytest.skip("No agency in the dev data has two or more first appeals.")
-
-    appeal_ids = by_reg[reg_with_many]
-    with allure.step(f"Verify '{reg_with_many}' shows {len(appeal_ids)} independent rows"):
-        assert len(set(appeal_ids)) == len(appeal_ids), "Appeal ids are not distinct."
-        for appeal_id in appeal_ids:
-            expect(ap.appeal_row(appeal_id)).to_be_visible()
-            expect(ap.filed_on_cell(appeal_id)).to_be_visible()
-            expect(ap.status_badge(appeal_id)).to_be_visible()
+    with allure.step("Verify the officer's list has the agency once, under that number"):
+        rows = ap.appeal_rows_data()
+        mine = [r for r in rows if r["application_id"] == agency.application_id]
+        assert [r["id"] for r in mine] == [number], mine
+        ids = [r["application_id"] for r in rows]
+        assert len(ids) == len(set(ids)), f"An application has more than one first appeal: {ids}"
 
 
 # ---------------------------------------------------------------------------
-# TC-368  Documents section shows a placeholder when no documents were uploaded
+# TC-368  The Order document is required
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-368")
-@allure.story("First Appeal Management")
-@allure.title("TC-368: Documents section shows 'No documents uploaded' when none were attached")
-def test_tc368_no_documents_placeholder(
-    logged_in_admin_appeals_page: AdminAppealsPage,
-    filed_first_appeal_without_documents: dict,
-):
+@allure.story(STORY)
+@allure.title("TC-368: A first appeal cannot be submitted without the Order of the Registering Authority")
+def test_tc368_no_documents_placeholder(first_appeal_page, first_appeal_valid_data):
     """
-    Given an agency filed a FORM-III appeal without any attachments
-    When  I open the appeal's detail view
-    Then  the Documents section shows the 'No documents uploaded' placeholder
-    And   no document links are rendered
+    Given a refused agency is on First Appeal (FORM-III)
+    When  it fills every section and attaches other documents but not '(d) Order of the Registering Authority'
+          and clicks Submit
+    Then  the browser stops the form at the Order document (marked REQUIRED); nothing is asked or filed
+    And   the appeal is still not filed
 
-    AIO: KAN-TC-368 | data: filed_first_appeal_without_documents
+    AIO: KAN-TC-368 | data: valid_order_only without the order document
     """
-    ap = logged_in_admin_appeals_page
-    _open_seeded_appeal_or_skip(ap, filed_first_appeal_without_documents)
+    fa, _agency = first_appeal_page
+    data = first_appeal_valid_data
+    path = data.documents.pop("order")
+    data.documents["original"] = path
 
-    with allure.step("Verify the 'No documents uploaded' placeholder is shown"):
-        expect(ap.no_documents_note).to_be_visible()
+    with allure.step("Verify the Order document is marked REQUIRED"):
+        expect(fa.document_box("order")).to_contain_text("REQUIRED")
+        expect(fa.document_input("order")).to_have_attribute("required", "")
 
-    with allure.step("Verify no document links are rendered"):
-        expect(ap.document_chips).to_have_count(0)
+    with allure.step("Fill everything except the Order document and submit"):
+        fa.fill_appeal(data)
+        assert fa.invalid_fields() == ["doc_order"], fa.invalid_fields()
+        prompt = fa.submit_and_handle_alert(action="dismiss")
+        assert prompt == "", f"The page asked {prompt!r} instead of stopping at the missing document"
+
+    with allure.step("Verify nothing was filed"):
+        fa.open()
+        expect(fa.appeal_form).to_have_count(1)
+        expect(fa.journey_status("First Appeal · Division")).to_have_text(re.compile("Not filed"))

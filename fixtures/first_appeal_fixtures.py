@@ -1,19 +1,19 @@
 """
 Fixtures — First Appeal Management (FORM-III)
 =============================================
-Covers KAN-TC-360 through KAN-TC-368 (Admin Console · Appeals module).
-
 Two halves:
 
 * Admin-side — ``logged_in_admin_appeals_page`` logs in as super admin and opens
   the Appeals module; the ``*_outcome_data`` fixtures supply decision payloads.
 
-* Agency-side seeding — ``filed_first_appeal_*`` fixtures file a FORM-III appeal
-  in a *separate* agency browser (so the shared admin session is untouched) to
-  guarantee a precondition the admin assertions need: an appeal WITH documents,
-  WITHOUT documents, or filed LATE. They yield the order number / reg id the
-  admin test searches for. Each skips gracefully when it cannot seed (no agency
-  in the state store, or the agency already has an appeal on file).
+* Agency-side — ``first_appeal_page`` opens FORM-III for a refused agency without
+  filing anything; the ``filed_first_appeal_*`` fixtures FILE a FORM-III appeal in
+  a separate agency browser and yield what the officer side searches for.
+
+Filing uses up a refused agency: each can file only one first appeal. Only agencies
+the state store records as ``rejected`` are used (prepare them by refusing their
+applications on the Officer Console, then run ``python -m utils.agency_status_sync``);
+a filed agency is recorded as ``first_appeal``. Fixtures skip when none is left.
 """
 
 import os
@@ -33,6 +33,8 @@ from test_data.first_appeal_factory import (
 from utils import file_manager
 from utils.state_store import TestStateStore, UserRecord
 from config import ADMIN_LOGOUT_URL
+from fixtures.sessions_fixtures import AGENCY_LOGOUT_URL
+from pages.admin.dashboard_page import ADMIN_DASHBOARD_URL
 
 
 
@@ -54,11 +56,9 @@ def _super_admin_or_skip() -> UserRecord:
     )
 
 
-def _agency_user_or_skip() -> UserRecord:
-    user = TestStateStore().get_any_agency_user()
-    if user is None:
-        pytest.skip("No agency user in state store — run pre-registration tests first.")
-    return user
+def _refused_agencies() -> list[UserRecord]:
+    """Agencies whose application is refused and not yet appealed, oldest first."""
+    return TestStateStore().get_agency_users_in_status("rejected")
 
 
 # ── Admin page-object fixtures ─────────────────────────────────────────────────
@@ -70,19 +70,16 @@ def admin_appeals_page(page) -> AdminAppealsPage:
 
 @pytest.fixture
 def logged_in_admin_appeals_page(page) -> AdminAppealsPage:
-    """Logs in as super admin then opens the Appeals module.
-
-    Logs the admin out on teardown: the browser context is shared across the
-    whole session, so the admin session cookie would otherwise persist and the
-    next test's ``login.open()`` would redirect straight to the dashboard,
-    breaking its login flow.
-    """
+    """Logs in as the Super Administrator and opens Appeals › First Appeals — Division; logs out on teardown."""
     admin = _super_admin_or_skip()
     login = AdminLoginPage(page)
     login.open()
-    login.login(admin.username, admin.password)
+    error = login.login_past_captcha(admin.username, admin.password)
+    if error:
+        pytest.fail(f"Admin login as {admin.username} failed: {error}")
+    page.wait_for_url(ADMIN_DASHBOARD_URL)
     appeals = AdminAppealsPage(page)
-    appeals.open()
+    appeals.open_view("first")
     yield appeals
     try:
         page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
@@ -90,99 +87,184 @@ def logged_in_admin_appeals_page(page) -> AdminAppealsPage:
         pass
 
 
-# ── Agency-side First Appeal page object + seeding ─────────────────────────────
+def _pending_first_appeal(ap: AdminAppealsPage, documents: int = None) -> dict | None:
+    """The oldest first appeal still awaiting a decision (optionally with exactly ``documents`` documents),
+    as the page's APPEALS data, or None."""
+    ap.open_view("first")
+    pending = [a for a in ap.appeals_data().values()
+               if a["type"] == "first" and a["can_decide"] and not a["decided"]
+               and (documents is None or len(a["docs"]) == documents)]
+    return min(pending, key=lambda a: a["id"]) if pending else None
+
 
 @pytest.fixture
-def first_appeal_page(page) -> FirstAppealPage:
-    """A FirstAppealPage on the primary browser, logged in as an agency user and
-    parked on the FORM-III form. Use this to drive the agency filing flow
-    directly (it shares the primary ``page``, so don't combine it with an admin
-    fixture in the same test)."""
-    agency = _agency_user_or_skip()
-    login = LoginPage(page)
-    login.open()
-    login.login(agency.username, agency.password)
-    fa = FirstAppealPage(page)
-    fa.open()
-    return fa
+def pending_first_appeal(logged_in_admin_appeals_page, second_browser) -> dict:
+    """A first appeal awaiting decision that carries all five documents (APPEALS data, plus the
+    ``seeded`` dict when it had to be filed). Reuses one already on the portal; files one — using up a
+    refused agency — only when none is pending. Leaves the First Appeals view open."""
+    ap = logged_in_admin_appeals_page
+    appeal = _pending_first_appeal(ap, documents=5)
+    if appeal is None:
+        seeded = _seed_first_appeal(second_browser, FirstAppealFactory.valid_with_documents(file_manager.VALID_CERTIFICATE))
+        appeal = next((a for a in [_pending_first_appeal(ap, documents=5)] if a and a["reg_id"] == seeded["reg_id"]), None)
+        if appeal is None:
+            pytest.skip(f"The appeal filed for {seeded['reg_id']} is not listed under First Appeals.")
+        appeal["seeded"] = seeded
+    ap.open_view("first")
+    return appeal
+
+
+@pytest.fixture
+def decided_first_appeal(logged_in_admin_appeals_page) -> dict:
+    """The newest first appeal with an appellate order (APPEALS data), or skip — the decision tests
+    (RUN_APPEAL_DECISION_TESTS) create one."""
+    ap = logged_in_admin_appeals_page
+    ap.open_view("first")
+    decided = [a for a in ap.appeals_data().values() if a["type"] == "first" and a["decided"]]
+    if not decided:
+        pytest.skip("No decided first appeal on the portal — run TC-363 with RUN_APPEAL_DECISION_TESTS=true first.")
+    return max(decided, key=lambda a: a["decided"])
+
+
+@pytest.fixture
+def appeal_decisions_allowed():
+    """Skips unless RUN_APPEAL_DECISION_TESTS=true. Passing an appellate order cannot be undone and uses up a
+    pending appeal (and the refused agency that filed it), so these tests run only on purpose."""
+    if os.getenv("RUN_APPEAL_DECISION_TESTS", "false").lower() != "true":
+        pytest.skip("Passes an appellate order (irreversible) — set RUN_APPEAL_DECISION_TESTS=true to run.")
+
+
+# ── Agency-side First Appeal page object + seeding ─────────────────────────────
+
+def _open_form_for_refused_agency(page) -> tuple[FirstAppealPage, UserRecord]:
+    """Logs ``page`` in as the first refused agency that can still file a first appeal and opens FORM-III."""
+    agencies = _refused_agencies()
+    if not agencies:
+        pytest.skip("No refused agency in the state store — refuse some applications and run "
+                    "'python -m utils.agency_status_sync' first.")
+    store = TestStateStore()
+    for agency in agencies:
+        login = LoginPage(page)
+        login.open()
+        login.login(agency.username, agency.password)
+        page.wait_for_load_state("networkidle")
+        if "login" in page.url:
+            continue
+        fa = FirstAppealPage(page)
+        fa.open()
+        if not fa.has_existing_appeal():
+            return fa, agency
+        store.record_agency_status(username=agency.username, status="first_appeal")   # filed elsewhere
+        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+    pytest.skip("Every refused agency in the state store has already filed its first appeal.")
+
+
+@pytest.fixture
+def first_appeal_page(page):
+    """FORM-III open for a refused agency on the primary browser — nothing is filed. Yields
+    (FirstAppealPage, the agency's UserRecord); logs the agency out on teardown."""
+    fa, agency = _open_form_for_refused_agency(page)
+    yield fa, agency
+    try:
+        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+    except Exception:
+        pass
 
 
 def _seed_first_appeal(second_browser, data: FirstAppealData) -> dict:
-    """Files ``data`` as a FORM-III appeal in an independent agency browser and
-    returns a locator dict for the admin side. Skips the requesting test if the
-    appeal cannot be filed (no agency, already-filed banner, or no success
-    confirmation)."""
-    agency = _agency_user_or_skip()
+    """FILES ``data`` as a FORM-III appeal for a refused agency in a separate browser, records the agency
+    as ``first_appeal`` and returns what the officer side looks for. Skips when no refused agency is left
+    or the page does not confirm the filing."""
     browser = second_browser()
     context = browser.new_context(accept_downloads=True)
     page = context.new_page()
     try:
-        login = LoginPage(page)
-        login.open()
-        login.login(agency.username, agency.password)
-
-        fa = FirstAppealPage(page)
-        fa.open()
-        if fa.has_existing_appeal():
-            pytest.skip(
-                f"Agency '{agency.username}' already has a first appeal on file — "
-                f"cannot seed the '{data.scenario_label}' precondition."
-            )
-        reg_id = fa.get_registration_no()
+        fa, agency = _open_form_for_refused_agency(page)
+        seeded = {"username": agency.username, "reg_id": fa.get_registration_no(),
+                  "agency_name": fa.get_agency_name(), "order_number": fa.get_order_number(),
+                  "scenario_label": data.scenario_label, "documents": dict(data.documents)}
         fa.file_appeal(data)
-
-        if fa.success_alert.count() == 0:
-            pytest.skip(
-                f"Filing the '{data.scenario_label}' appeal did not confirm "
-                f"(no success banner) — the dev environment may block this agency "
-                f"from filing right now."
-            )
-        return {
-            "order_number": data.order_number,
-            "reg_id": reg_id,
-            "delay_reason": data.delay_reason,
-            "scenario_label": data.scenario_label,
-        }
+        fa.open()
+        if not fa.has_existing_appeal():
+            pytest.skip(f"Filing the '{data.scenario_label}' appeal for '{agency.username}' was not confirmed — "
+                        f"FORM-III still offers the form.")
+        TestStateStore().record_agency_status(username=agency.username, status="first_appeal",
+                                              data={"appeal_status": "filed"})
+        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+        return seeded
     finally:
         context.close()
 
 
 @pytest.fixture
 def filed_first_appeal_with_documents(second_browser) -> dict:
-    """KAN-TC-362 — a filed FORM-III appeal carrying all five enclosures."""
-    data = FirstAppealFactory.valid_with_documents(file_manager.VALID_PDF)
-    return _seed_first_appeal(second_browser, data)
+    """A FORM-III appeal filed with all five documents (uses up one refused agency)."""
+    return _seed_first_appeal(second_browser, FirstAppealFactory.valid_with_documents(file_manager.VALID_CERTIFICATE))
 
 
 @pytest.fixture
-def filed_first_appeal_without_documents(second_browser) -> dict:
-    """KAN-TC-368 — a filed FORM-III appeal with no enclosures."""
-    data = FirstAppealFactory.valid_without_documents()
-    return _seed_first_appeal(second_browser, data)
+def filed_first_appeal_order_only(second_browser) -> dict:
+    """A FORM-III appeal filed with only the required Order document (uses up one refused agency)."""
+    return _seed_first_appeal(second_browser, FirstAppealFactory.valid_order_only(file_manager.VALID_CERTIFICATE))
 
 
 @pytest.fixture
-def filed_late_first_appeal(second_browser) -> dict:
-    """KAN-TC-366 — a FORM-III appeal filed beyond the 30-day limitation."""
-    data = FirstAppealFactory.late_filed()
-    return _seed_first_appeal(second_browser, data)
+def appealed_agency_page(second_browser):
+    """FORM-III in a separate browser for an agency that has already filed its first appeal (recorded as
+    ``first_appeal`` in the state store). Yields (FirstAppealPage, the agency's UserRecord); nothing is filed."""
+    agencies = TestStateStore().get_agency_users_in_status("first_appeal")
+    if not agencies:
+        pytest.skip("No agency with a filed first appeal in the state store.")
+    agency = agencies[0]
+    browser = second_browser()
+    context = browser.new_context()
+    page = context.new_page()
+    login = LoginPage(page)
+    login.open()
+    login.login(agency.username, agency.password)
+    page.wait_for_load_state("networkidle")
+    if "login" in page.url:
+        context.close()
+        pytest.skip(f"Agency '{agency.username}' could not log in.")
+    fa = FirstAppealPage(page)
+    fa.open()
+    yield fa, agency
+    try:
+        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+    finally:
+        context.close()
 
 
-# ── Admin outcome data fixtures ────────────────────────────────────────────────
+# ── Agency-side data fixtures ──────────────────────────────────────────────────
 
 @pytest.fixture
-def allowed_outcome_data() -> AppealOutcomeData:
-    """KAN-TC-363 — allow the appeal with mandatory remarks."""
-    return AppealOutcomeFactory.allowed_with_remarks()
+def first_appeal_valid_data() -> FirstAppealData:
+    return FirstAppealFactory.valid_order_only(file_manager.VALID_CERTIFICATE)
 
 
 @pytest.fixture
-def rejected_blank_remarks_data() -> AppealOutcomeData:
-    """KAN-TC-364 — attempt to save an outcome with blank remarks (blocked)."""
-    return AppealOutcomeFactory.rejected_blank_remarks()
+def first_appeal_other_ground_data() -> FirstAppealData:
+    return FirstAppealFactory.other_ground(file_manager.VALID_CERTIFICATE)
 
 
 @pytest.fixture
-def allowed_for_audit_data() -> AppealOutcomeData:
-    """KAN-TC-365 — allow the appeal with remarks for the audit-trail check."""
-    return AppealOutcomeFactory.allowed_for_audit()
+def first_appeal_no_ground_data() -> FirstAppealData:
+    return FirstAppealFactory.no_ground(file_manager.VALID_CERTIFICATE)
+
+
+@pytest.fixture
+def first_appeal_oversized_data() -> FirstAppealData:
+    return FirstAppealFactory.oversized_document(file_manager.VALID_CERTIFICATE, file_manager.OVERSIZED_FILE)
+
+
+# ── Officer outcome data fixtures ──────────────────────────────────────────────
+
+@pytest.fixture
+def dismissed_upheld_data() -> AppealOutcomeData:
+    return AppealOutcomeFactory.dismissed_upheld()
+
+
+@pytest.fixture
+def invalid_outcome_cases() -> list[AppealOutcomeData]:
+    """No disposal, blank reasons, 49-character reasons — each refused before the confirmation."""
+    return [AppealOutcomeFactory.no_disposal(), AppealOutcomeFactory.blank_reasons(), AppealOutcomeFactory.short_reasons()]

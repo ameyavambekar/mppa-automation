@@ -1,42 +1,42 @@
+import re
+
 import allure
 
 from pages.base_page import BasePage
 from config import AGENCY_BASE
 
+FIRST_APPEAL_URL = f"{AGENCY_BASE}/appeals/first.php"
+
 
 class FirstAppealPage(BasePage):
-    """Agency — Application for First Appeal, FORM-III (/module/agency/appeals/first.php).
+    """Agency — First Appeal, FORM-III (/module/agency/appeals/first.php, "First Appeal — FORM-III").
 
-    The form an agency files to appeal a Registering Authority order under
-    Section 7(1) of the MPPA (Regulation) Act, 2025 (See Rule 8). It posts back
-    to itself as ``multipart/form-data`` (file uploads) and is laid out in the
-    numbered sections seen on screen:
+    Open to an agency whose application was refused. The page shows the two-appeals note ("Appeals
+    remaining: N of 2"), a four-step journey (``.ap-track .ap-step``: Application · First Appeal ·
+    Division · Second Appeal · Commissionerate · Result) and, while no first appeal is on file, the form
+    ``#apForm`` (``multipart/form-data``, posts back to itself) in numbered cards (``.ap-card``):
 
-    * 5  — Details of Order Appealed Against (order number / date / authority)
-    * 6  — Grounds of Appeal (``grounds[]`` checkboxes; 'Other' reveals a text box)
-    * 7  — Brief Facts (``brief_facts`` textarea)
-    * 8  — Relief Sought (``relief_type`` radios + ``relief_sought`` textarea)
-    * 9  — Limitation (``comm_date`` + ``within_time`` radios; 'No' reveals the
-           ``delay_reason`` box for condonation)
-    * 10 — Index of Documents (five optional file inputs, accept pdf/jpg/png)
-    * Verification & Declaration (place / signatory / required declaration tick)
+    * 1–4 Appellant and 5 Details of Order Appealed Against — read-only boxes (``.ap-ro``: a ``small``
+      label, then the value) taken from the agency and the refusal order; they cannot be changed
+    * 6  Grounds of Appeal — ``grounds[]`` checkboxes (at least one; "Other" reveals ``grounds_other``)
+    * 7  Brief Facts — ``brief_facts`` (required, at least 20 characters)
+    * 8  Relief Sought — ``relief_type`` radios + ``relief_sought`` (required, at least 10 characters)
+    * 9  Limitation — read-only: date of communication and "Filed within 60 days?"
+    * 10 Documents — PDF only, max 2 MB each; (d) Order of the Registering Authority is required
+    * Verification — signatory / designation / place (pre-filled from the application), the date, and
+      the required ``declare`` tick
 
-    A reference strip at the top is auto-filled from the logged-in agency
-    (Agency Name, Registration No., Address, Email, Mobile). When the agency
-    already has a first appeal on file the page renders the ``.existing-notice``
-    banner instead of an empty form.
+    Submitting asks for confirmation (browser confirm()); with no ground ticked or a file over 2 MB it
+    shows an alert() instead.
 
-    Locators are ``@property`` methods, actions are ``@allure.step`` decorated,
-    and all assertions stay in the tests (use ``expect()`` against these
-    locators).
+    Locators are ``@property`` methods, actions are ``@allure.step`` decorated, and all assertions stay in
+    the tests (use ``expect()`` against these locators).
     """
 
-    # grounds[] checkbox values (Section 6)
     GROUNDS = (
         "error_of_law", "procedural_irregularity", "jurisdictional_error",
         "non_consideration", "natural_justice", "other",
     )
-    # relief_type radio values (Section 8)
     RELIEFS = (
         "Setting Aside the Order",
         "Modification of Order",
@@ -44,95 +44,100 @@ class FirstAppealPage(BasePage):
     )
     # logical document slot → file input name (Section 10)
     DOC_SLOTS = {
-        "original": "doc_original",   # (a) Photocopy of Original Application
-        "ack":      "doc_ack",        # (b) Acknowledgement issued by Registering Authority
-        "fees":     "doc_fees",       # (c) Fee Receipt
-        "order":    "doc_order",      # (d) Order of Registering Authority (marked Required)
-        "other":    "doc_other",      # (e) Any Other Documents
+        "order":    "doc_order",      # (d) Order of the Registering Authority (self-attested) — REQUIRED
+        "original": "doc_original",   # (a) Original application (self-attested)
+        "ack":      "doc_ack",        # (b) Acknowledgement issued by the Registering Authority
+        "fees":     "doc_fees",       # (c) Fee receipt
+        "other":    "doc_other",      # (e) Any other document
     }
+    # read-only box labels (Sections 1–5, 9)
+    APPELLANT_FIELDS = ("1. Name of Agency", "2. Registration No.", "3. Registered Address", "4. Email", "4. Mobile")
+    ORDER_FIELDS = ("(a) Order Number", "(b) Date of Order", "(c) Authority Passing the Order", "Reason given in the order")
+    LIMITATION_FIELDS = ("(a) Date of communication of the order", "(b) Filed within 60 days?")
 
-    # ── Page header & reference strip ─────────────────────────────────────────
+    # ── Page header, note and journey ─────────────────────────────────────────
 
     @property
     def form_badge(self):
-        # "FORM-III" pill next to the page title
-        return self.page.locator("//span[normalize-space(text())='FORM-III']")
+        return self.page.get_by_text("FORM-III · See Rule 8", exact=True)
 
     @property
     def page_heading(self):
-        return self.page.locator("//h2[normalize-space(text())='Application for First Appeal']")
+        return self.page.locator(".ap-wrap h2")
 
     @property
     def my_application_link(self):
-        return self.page.locator("//a[contains(normalize-space(.),'My Application')]")
+        return self.page.locator(".ap-wrap").get_by_role("link", name="← My Application")
 
     @property
-    def second_appeal_link(self):
-        return self.page.locator("//a[contains(normalize-space(.),'Second Appeal')]")
-
-    def ref_item(self, label: str):
-        """A reference-strip value cell by its label, e.g. 'Agency Name',
-        'Registration No.', 'Reg. Address', 'Email', 'Mobile'."""
-        return self.page.locator(
-            f"//div[@class='form-ref-item'][div[@class='label' and "
-            f"normalize-space(text())='{label}']]/div[@class='value']"
-        )
+    def two_appeals_note(self):
+        return self.page.locator(".ap-note").filter(has_text="You can file only TWO appeals")
 
     @property
-    def existing_appeal_notice(self):
-        """Amber banner shown when the agency already has a first appeal filed."""
-        return self.page.locator(".existing-notice")
-
-    # ── Messages ──────────────────────────────────────────────────────────────
+    def appeals_remaining(self):
+        """"Appeals remaining: N of 2"."""
+        return self.two_appeals_note.get_by_text(re.compile(r"^Appeals remaining:"))
 
     @property
-    def success_alert(self):
-        return self.page.locator(".alert-success")
+    def journey_steps(self):
+        return self.page.locator(".ap-track .ap-step")
+
+    def journey_step(self, title: str):
+        """'Application', 'First Appeal · Division', 'Second Appeal · Commissionerate' or 'Result'."""
+        return self.journey_steps.filter(has=self.page.locator("b", has_text=re.compile(rf"^{re.escape(title)}$")))
+
+    def journey_status(self, title: str):
+        return self.journey_step(title).locator("span")
 
     @property
-    def error_alert(self):
-        return self.page.locator(".alert-error")
+    def notes(self):
+        """Every note box on the page (``.ap-note``) — e.g. the two-appeals note, or the appeal on file."""
+        return self.page.locator(".ap-note")
+
+    # ── Form ──────────────────────────────────────────────────────────────────
 
     @property
-    def info_alert(self):
-        return self.page.locator(".alert-info")
-
-    # ── Section 5 — Details of Order Appealed Against ─────────────────────────
+    def appeal_form(self):
+        return self.page.locator("#apForm")
 
     @property
-    def order_number_input(self):
-        return self.page.locator("input[name='order_number']")
+    def addressee(self):
+        """The 'To, The First Appellate Authority, …' card."""
+        return self.appeal_form.locator(".ap-card").first
+
+    def card(self, number: str):
+        """A numbered card by its ``.ap-num`` label: '1–4', '5', '6' … '10', or '✓' (Verification)."""
+        return self.appeal_form.locator(".ap-card").filter(
+            has=self.page.locator(".ap-num", has_text=re.compile(rf"^{re.escape(number)}$")))
+
+    def read_only_field(self, label: str):
+        """A read-only box (``.ap-ro``) by its label, e.g. '2. Registration No.' or '(a) Order Number'."""
+        return self.page.locator(".ap-ro").filter(
+            has=self.page.locator("small", has_text=re.compile(rf"^{re.escape(label)}$")))
 
     @property
-    def order_date_input(self):
-        return self.page.locator("input[name='order_date']")
-
-    @property
-    def order_authority_input(self):
-        return self.page.locator("input[name='order_authority']")
-
-    # ── Section 6 — Grounds of Appeal ─────────────────────────────────────────
+    def order_locked_note(self):
+        return self.page.locator(".ap-lock")
 
     def ground_checkbox(self, value: str):
         """A grounds-of-appeal checkbox by its value (one of GROUNDS)."""
         return self.page.locator(f"input[name='grounds[]'][value='{value}']")
 
+    def ground_box(self, value: str):
+        """The clickable box (``label.ap-chk``) around a ground checkbox."""
+        return self.page.locator("label.ap-chk").filter(has=self.ground_checkbox(value))
+
+    @property
+    def other_ground_box(self):
+        return self.page.locator("#otherBox")
+
     @property
     def grounds_other_input(self):
-        # Revealed when the 'Other' ground is ticked
         return self.page.locator("input[name='grounds_other']")
-
-    @property
-    def other_specify_box(self):
-        return self.page.locator("#other_specify")
-
-    # ── Section 7 — Brief Facts ───────────────────────────────────────────────
 
     @property
     def brief_facts_textarea(self):
         return self.page.locator("textarea[name='brief_facts']")
-
-    # ── Section 8 — Relief Sought ─────────────────────────────────────────────
 
     def relief_radio(self, value: str):
         """A relief-type radio by its value (one of RELIEFS)."""
@@ -142,35 +147,12 @@ class FirstAppealPage(BasePage):
     def relief_sought_textarea(self):
         return self.page.locator("textarea[name='relief_sought']")
 
-    # ── Section 9 — Limitation ────────────────────────────────────────────────
-
-    @property
-    def communication_date_input(self):
-        return self.page.locator("input[name='comm_date']")
-
-    def within_time_radio(self, value: str):
-        """The 'Appeal Filed Within Prescribed Time' radio — value 'yes' or 'no'."""
-        return self.page.locator(f"input[name='within_time'][value='{value}']")
-
-    @property
-    def delay_box(self):
-        return self.page.locator("#delay_box")
-
-    @property
-    def delay_reason_textarea(self):
-        return self.page.locator("textarea[name='delay_reason']")
-
-    # ── Section 10 — Index of Documents ───────────────────────────────────────
-
     def document_input(self, slot: str):
         """A file input by logical slot (one of DOC_SLOTS keys)."""
         return self.page.locator(f"input[name='{self.DOC_SLOTS[slot]}']")
 
-    # ── Verification & Declaration ────────────────────────────────────────────
-
-    @property
-    def place_input(self):
-        return self.page.locator("input[name='place']")
+    def document_box(self, slot: str):
+        return self.page.locator(".ap-up").filter(has=self.document_input(slot))
 
     @property
     def signatory_name_input(self):
@@ -181,28 +163,63 @@ class FirstAppealPage(BasePage):
         return self.page.locator("input[name='signatory_designation']")
 
     @property
+    def place_input(self):
+        return self.page.locator("input[name='place']")
+
+    @property
     def declaration_checkbox(self):
-        # The only required checkbox on the form (grounds checkboxes are optional)
-        return self.page.locator("input[type='checkbox'][required]")
+        return self.page.locator("input[name='declare']")
 
     @property
     def submit_button(self):
-        return self.page.locator("//button[@type='submit'][contains(., 'Submit First Appeal')]")
+        return self.page.locator("#apForm button.ap-btn")
+
+    @property
+    def submit_note(self):
+        """'The authority will decide your appeal within 60 days. A confirmation e-mail … <email>.'"""
+        return self.submit_button.locator("xpath=following-sibling::p[1]")
+
+    # ── Messages ──────────────────────────────────────────────────────────────
+
+    @property
+    def success_alert(self):
+        """'Your First Appeal (FORM-III) #N has been submitted to the reviewing authority. …' (after filing)."""
+        return self.page.locator(".alert-success")
+
+    @property
+    def error_alert(self):
+        return self.page.locator(".alert-error, .ui-alert-error")
+
+    # ── The appeal on file (shown instead of the form) ────────────────────────
+
+    @property
+    def filed_appeal_card(self):
+        """'#N · Your First Appeal — Pending decision' with its Filed on / Sent to / Order appealed against /
+        Grounds / Relief sought / Decision expected by rows (``.ap-row``: ``.k`` label, then the value)."""
+        return self.page.locator(".ap-card").filter(has=self.page.locator(".ap-title", has_text="Your First Appeal"))
+
+    @property
+    def filed_appeal_number(self):
+        """'#N'."""
+        return self.filed_appeal_card.locator(".ap-num")
+
+    @property
+    def filed_appeal_title(self):
+        return self.filed_appeal_card.locator(".ap-title")
+
+    def filed_appeal_row(self, label: str):
+        """A row of the appeal on file by its label, e.g. 'Grounds' or 'Decision expected by'."""
+        return self.filed_appeal_card.locator(".ap-row").filter(
+            has=self.page.locator(".k", has_text=re.compile(rf"^{re.escape(label)}$")))
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open the First Appeal (FORM-III) form")
+    @allure.step("Open the First Appeal (FORM-III) page")
     def open(self):
-        self.navigate(f"{AGENCY_BASE}/appeals/first.php")
+        self.navigate(FIRST_APPEAL_URL)
+        self.wait_for_load()
 
-    @allure.step("Fill order details: number={order_number}, date={order_date}")
-    def fill_order_details(self, order_number: str, order_date: str, order_authority: str):
-        """``order_date`` in yyyy-mm-dd format for the native date input."""
-        self.order_number_input.fill(order_number)
-        self.order_date_input.fill(order_date)
-        self.order_authority_input.fill(order_authority)
-
-    @allure.step("Select grounds of appeal: {grounds}")
+    @allure.step("Tick grounds of appeal: {grounds}")
     def select_grounds(self, grounds):
         """grounds: an iterable of GROUNDS values to tick."""
         for value in grounds:
@@ -220,30 +237,14 @@ class FirstAppealPage(BasePage):
 
     @allure.step("Select relief type: {relief_type}")
     def select_relief_type(self, relief_type: str):
-        """relief_type: one of RELIEFS."""
         self.relief_radio(relief_type).check()
 
-    @allure.step("Fill specific relief sought")
+    @allure.step("Fill the specific relief sought")
     def fill_relief_sought(self, text: str):
         self.relief_sought_textarea.fill(text)
 
-    @allure.step("Fill date of communication of impugned order: {date}")
-    def fill_communication_date(self, date: str):
-        """``date`` in yyyy-mm-dd format."""
-        self.communication_date_input.fill(date)
-
-    @allure.step("Set 'filed within prescribed time' = {value}")
-    def set_within_time(self, value: str):
-        """value: 'yes' or 'no'. Selecting 'no' reveals the delay-reason box."""
-        self.within_time_radio(value).check()
-
-    @allure.step("Fill reasons for delay & prayer for condonation")
-    def fill_delay_reason(self, text: str):
-        self.delay_reason_textarea.fill(text)
-
-    @allure.step("Upload document in slot '{slot}': {path}")
+    @allure.step("Upload document '{slot}': {path}")
     def upload_document(self, slot: str, path: str):
-        """slot: one of DOC_SLOTS keys."""
         self.document_input(slot).set_input_files(path)
 
     @allure.step("Upload supporting documents")
@@ -252,64 +253,86 @@ class FirstAppealPage(BasePage):
         for slot, path in documents.items():
             self.upload_document(slot, path)
 
-    @allure.step("Fill verification: place={place}, signatory={signatory_name}")
-    def fill_verification(self, place: str, signatory_name: str, signatory_designation: str):
-        self.place_input.fill(place)
-        self.signatory_name_input.fill(signatory_name)
-        self.signatory_designation_input.fill(signatory_designation)
+    @allure.step("Fill verification: place={place}, signatory={signatory_name}, designation={signatory_designation}")
+    def fill_verification(self, place: str = None, signatory_name: str = None, signatory_designation: str = None):
+        """Only the values given are typed; the pre-filled ones are kept otherwise."""
+        if signatory_name is not None:
+            self.signatory_name_input.fill(signatory_name)
+        if signatory_designation is not None:
+            self.signatory_designation_input.fill(signatory_designation)
+        if place is not None:
+            self.place_input.fill(place)
 
-    @allure.step("Tick the declaration checkbox")
+    @allure.step("Tick the verification declaration")
     def accept_declaration(self):
         self.declaration_checkbox.check()
 
-    @allure.step("Click 'Submit First Appeal (FORM-III)'")
-    def submit(self):
-        self.submit_button.click()
-        self.wait_for_load()
-
-    @allure.step("Click 'Submit First Appeal' and handle any alert dialog")
+    @allure.step("Click 'Submit First Appeal' and answer the prompt ({action})")
     def submit_and_handle_alert(self, action: str = "accept") -> str:
-        """Submits and returns the alert message (for blocked / confirm flows)."""
+        """Clicks Submit and returns the confirm() / alert() text ('' if none). Accepting the confirm
+        posts the form; the page reloads."""
         return self.click_and_handle_alert(self.submit_button, action=action)
+
+    @allure.step("Submit the First Appeal (accept the confirmation)")
+    def submit(self) -> str:
+        """Clicks Submit, accepts the confirmation and waits for the page to reload; returns the prompt text."""
+        with self.page.expect_navigation():
+            message = self.click_and_handle_alert(self.submit_button, action="accept")
+        self.wait_for_load()
+        return message
 
     # ── Composite actions ─────────────────────────────────────────────────────
 
-    @allure.step("Fill the entire First Appeal form from: {data.scenario_label}")
+    @allure.step("Fill the First Appeal form")
     def fill_appeal(self, data):
-        """Fills every section from a ``FirstAppealData`` value object — but does
-        not submit. Conditional sections (Other ground, delay reason) are filled
-        only when the data calls for them."""
-        self.fill_order_details(data.order_number, data.order_date, data.order_authority)
-        self.select_grounds(data.grounds)
-        if "other" in data.grounds and data.grounds_other:
+        """Fills every editable section from a ``FirstAppealData`` value object — but does not submit."""
+        self.select_grounds([g for g in data.grounds if g != "other"])
+        if "other" in data.grounds:
             self.specify_other_ground(data.grounds_other)
         self.fill_brief_facts(data.brief_facts)
         if data.relief_type:
             self.select_relief_type(data.relief_type)
         self.fill_relief_sought(data.relief_sought)
-        self.fill_communication_date(data.comm_date)
-        self.set_within_time(data.within_time)
-        if data.within_time == "no" and data.delay_reason:
-            self.fill_delay_reason(data.delay_reason)
         if data.documents:
             self.upload_documents(data.documents)
         self.fill_verification(data.place, data.signatory_name, data.signatory_designation)
-        self.accept_declaration()
+        if data.declare:
+            self.accept_declaration()
 
-    @allure.step("File the First Appeal end-to-end from: {data.scenario_label}")
-    def file_appeal(self, data):
-        """Fills the whole form and submits it."""
+    @allure.step("File the First Appeal")
+    def file_appeal(self, data) -> str:
+        """Fills the whole form and submits it (accepting the confirmation); returns the prompt text."""
         self.fill_appeal(data)
-        self.submit()
+        return self.submit()
 
     # ── Read helpers (queries, not assertions) ────────────────────────────────
 
+    def read_only_value(self, label: str) -> str:
+        """The value of a read-only box, without its label."""
+        box = self.read_only_field(label)
+        return box.evaluate("e => [...e.childNodes].filter(n => n.nodeName !== 'SMALL')"
+                            ".map(n => n.textContent).join('').replace(/\\s+/g, ' ').trim()")
+
     def get_agency_name(self) -> str:
-        return self.ref_item("Agency Name").text_content().strip()
+        return self.read_only_value("1. Name of Agency")
 
     def get_registration_no(self) -> str:
-        return self.ref_item("Registration No.").text_content().strip()
+        return self.read_only_value("2. Registration No.")
+
+    def get_order_number(self) -> str:
+        return self.read_only_value("(a) Order Number")
+
+    def filed_appeal_value(self, label: str) -> str:
+        return self.filed_appeal_row(label).locator("span:not(.k)").inner_text().strip()
+
+    def form_is_valid(self) -> bool:
+        """Whether the browser's built-in checks accept the form as filled (required / minlength)."""
+        return self.appeal_form.evaluate("f => f.checkValidity()")
+
+    def invalid_fields(self) -> list[str]:
+        """Names of the fields the browser's built-in checks reject."""
+        return self.appeal_form.evaluate("f => [...f.elements].filter(e => e.name && !e.checkValidity()).map(e => e.name)")
 
     def has_existing_appeal(self) -> bool:
-        """Whether the page is showing the 'appeal already on file' banner."""
-        return self.existing_appeal_notice.count() > 0
+        """Whether a first appeal is already on file (the form is no longer offered)."""
+        return self.appeal_form.count() == 0 or "Not filed" not in self.journey_status("First Appeal · Division").inner_text()
