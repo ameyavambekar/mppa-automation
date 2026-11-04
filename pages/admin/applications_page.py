@@ -48,6 +48,27 @@ class AdminApplicationsPage(BasePage):
     def step_link(self, view: str, step: str):
         return self.page.locator(f"#adm-main a.al-step[href='?view={view}&s={step}']")
 
+    def view_count(self, view: str) -> int:
+        """The count on a stage card (``.al-q-c``) or tab (its ``span``)."""
+        link = self.view_link(view)
+        count = link.locator(".al-q-c") if view in self.STAGE_VIEWS else link.locator("span")
+        return int(count.inner_text().strip())
+
+    @property
+    def district_select(self):
+        """District filter ("All districts", the 36 districts and "Other"); option values are district IDs."""
+        return self.page.locator("#adm-main select[name='district']")
+
+    def district_ids(self) -> dict[str, str]:
+        """District filter option label → value (district ID), without "All districts"."""
+        return {o["label"]: o["value"] for o in self.district_select.locator("option").evaluate_all(
+            "os => os.map(o => ({label: o.textContent.trim(), value: o.value}))") if o["value"]}
+
+    @property
+    def load_error(self):
+        """"The list could not be loaded (Ref …)." shown above the table when the list query fails."""
+        return self.page.locator("#adm-main .ui-alert-error")
+
     # ── Table ─────────────────────────────────────────────────────────────────
 
     @property
@@ -76,6 +97,8 @@ class AdminApplicationsPage(BasePage):
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open Applications '{view}' (step '{step}')")
-    def open(self, view: str = "all", step: str = None):
-        self.navigate(f"{ADMIN_APPLICATIONS_URL}?view={view}" + (f"&s={step}" if step else ""))
+    @allure.step("Open Applications '{view}' (step '{step}', district '{district}')")
+    def open(self, view: str = "all", step: str = None, district: str = None):
+        """district: a district ID (see ``district_ids``)."""
+        self.navigate(f"{ADMIN_APPLICATIONS_URL}?view={view}" + (f"&s={step}" if step else "")
+                      + (f"&district={district}" if district else ""))
