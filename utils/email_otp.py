@@ -66,3 +66,21 @@ def get_otp_from_testmail(retries: int = 10, delay: int = 6) -> str:
         f"OTP not received after {retries} attempts. "
         f"Check inbox at: https://testmail.app/console"
     )
+
+def get_emails_to(address: str, since_ms: int = 0, wait_s: int = 0) -> list[dict]:
+    """Emails testmail.app received for ``address`` (``<namespace>.<tag>@inbox.testmail.app``) since
+    ``since_ms`` (epoch ms), newest first; each has subject / text / html / timestamp. With ``wait_s``,
+    polls until at least one arrives or the time is up. Returns [] for an address outside the namespace."""
+    m = re.fullmatch(r"([^.@]+)\.([^@]+)@inbox\.testmail\.app", address or "")
+    if not m or m.group(1) != TESTMAIL_NAMESPACE:
+        return []
+    deadline = time.time() + wait_s
+    while True:
+        response = requests.get(TESTMAIL_API_URL, params={"apikey": TESTMAIL_API_KEY, "namespace": TESTMAIL_NAMESPACE,
+                                                          "tag": m.group(2), "timestamp_from": since_ms, "limit": 50},
+                                timeout=60)
+        response.raise_for_status()
+        emails = sorted(response.json().get("emails", []), key=lambda e: e["timestamp"], reverse=True)
+        if emails or time.time() >= deadline:
+            return emails
+        time.sleep(6)
