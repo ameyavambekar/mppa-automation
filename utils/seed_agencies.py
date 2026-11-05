@@ -16,6 +16,7 @@ import os
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
+from utils import portal_popup
 from utils.agency_builder import COMPANY, STAGES, AgencyBuilder, available
 
 
@@ -28,6 +29,7 @@ def main() -> None:
     args = parser.parse_args()
 
     load_dotenv()
+    portal_popup.install()
     ready = len(available(args.stage, args.legal_constitution))
     missing = max(args.count - ready, 0)
     print(f"{ready} agencies already waiting at {args.stage}; building {missing}.")

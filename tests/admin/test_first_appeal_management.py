@@ -49,8 +49,10 @@ def _grounds_text(appeal: dict) -> str:
     return ", ".join(GROUND_LABELS.get(k, k) for k in g["checkboxes"]) + (f" — {g['other']}" if g.get("other") else "")
 
 
-def _audit_entries_for_appeal(page, appeal_id: int, max_pages: int = 5) -> list[str]:
-    """Texts of the last 30 days' audit entries on table agency_appeals for this appeal ('ID #<id>')."""
+def _audit_entries_for_appeal(page, appeal_id: int, max_pages: int = 40) -> list[str]:
+    """Texts of the last 30 days' audit entries on table agency_appeals for this appeal ('ID #<id>'). Pages back
+    (newest first) until the filing ('1st Appeal'), the appeal's oldest entry, is found — a busy day of seeding
+    can push it several pages down."""
     audit = AdminAuditLogPage(page)
     found = []
     for n in range(1, max_pages + 1):
@@ -60,6 +62,8 @@ def _audit_entries_for_appeal(page, appeal_id: int, max_pages: int = 5) -> list[
             break
         found += [t for t in items.all_inner_texts()
                   if O.AUDIT_TABLE in t and re.search(rf"\bID #{appeal_id}\b", t)]
+        if any(O.AUDIT_FILED in t for t in found):
+            break
     return found
 
 

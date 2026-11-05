@@ -12,7 +12,13 @@ one that has filed is ``first_appeal``.
   First Appeal?" the test answers Cancel.
 * TC-321, 322, 327, 333 submit the form and may use up a refused agency for good: opt-in with
   RUN_APPEAL_FILING_TESTS=true.
-* TC-328, 329, 331, 743 reuse an agency that has already filed; TC-744 needs a decided appeal (skips).
+* TC-328, 329, 331, 743 reuse an agency whose appeal awaits a decision; TC-744 needs a decided one.
+
+Prepare the data first (only the shortfall is built; refusing, filing and deciding cannot be undone)::
+
+    python -m utils.seed_appeals --dry-run
+    python -m utils.seed_appeals                 # 5 refused, 1 pending, 1 decided — enough for the filing tests
+    python -m utils.seed_appeals --refused 1     # without RUN_APPEAL_FILING_TESTS
 
 Known defects ("I & II Appeal" tab): #64 no confirmation e-mail (TC-743), #65 blank "Specify other
 ground" accepted (TC-310), #66 My Application still invites an appeal after filing (TC-328), #67 Email and
@@ -846,14 +852,16 @@ def test_tc744_decision_shown(decided_appeal_agency_page):
         home.open()
         expect(home.appeal_level_badge("First Appeal")).not_to_have_text(re.compile(r"^Pending"))
 
-    with allure.step("Verify the e-mail"):
-        emails = get_emails_to(agency.email or "")
-        assert any("order" in f"{e.get('subject')} {e.get('text')}".lower() for e in emails), "No e-mail about the order"
-
     if re.search(r"dismiss|reject", title, re.IGNORECASE):
         with allure.step("Dismissed: the Second Appeal form is offered"):
             fa.open_second_appeal()
             expect(fa.page.locator(MULTIPART_FORM)).to_have_count(1)
+
+    with allure.step("Verify the e-mail"):
+        emails = get_emails_to(agency.email or "")
+        assert any("order" in f"{e.get('subject')} {e.get('text')}".lower() for e in emails), (
+            f"No e-mail about the order on '{_squash(title)}' reached {agency.email} "
+            f"({len(emails)} e-mail(s) in the inbox)")
 
 
 # ---------------------------------------------------------------------------

@@ -362,6 +362,7 @@ class AgencyHomePage(BasePage):
     def open(self):
         """Navigates to Home (requires a logged-in agency session whose application is submitted)."""
         self.navigate(AGENCY_HOME_URL)
+        self.wait_for_load()
 
     @allure.step("Click 'Mark all read'")
     def mark_all_read(self):

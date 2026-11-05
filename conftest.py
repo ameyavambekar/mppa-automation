@@ -18,6 +18,10 @@ from pages.login_page import LoginPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
 from utils import aio_client
+from utils import portal_popup
+
+# Dev's 'Portal Under Testing' pop-up covers every page — start each browser context with it marked seen.
+portal_popup.install()
 
 
 # ── Allure output dir ─────────────────────────────────────────────────────────
