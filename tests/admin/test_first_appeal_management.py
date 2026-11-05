@@ -334,6 +334,8 @@ def test_tc366_email_on_outcome(decided_first_appeal: dict):
     When  I read the agency's inbox from the time of the decision
     Then  an e-mail about the appeal's order has arrived
 
+    Known defect "I & II Appeal" #68: no e-mail arrives (appeal #10, decided 05-Nov-2026).
+
     AIO: KAN-TC-366 | data: decided_first_appeal
     """
     a = decided_first_appeal

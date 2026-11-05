@@ -22,7 +22,7 @@ Prepare the data first (only the shortfall is built; refusing, filing and decidi
 
 Known defects ("I & II Appeal" tab): #64 no confirmation e-mail (TC-743), #65 blank "Specify other
 ground" accepted (TC-310), #66 My Application still invites an appeal after filing (TC-328), #67 Email and
-Mobile both numbered "4." (TC-304).
+Mobile both numbered "4." (TC-304), #68 no e-mail when the appeal is decided (TC-744).
 """
 
 import re
@@ -839,7 +839,10 @@ def test_tc744_decision_shown(decided_appeal_agency_page):
     Then  FORM-III and Home no longer show it as pending, and the agency has an e-mail about the order
     And   if the appeal was dismissed, the Second Appeal page offers its form
 
-    AIO: KAN-TC-744 (Under Review — behaviour not yet observed) | data: a decided first appeal
+    Known defect "I & II Appeal" #68: no e-mail about the order arrives (on dev a dismissed appeal shows
+    'Your First Appeal — Rejected' and the Second Appeal form opens; the e-mail step fails).
+
+    AIO: KAN-TC-744 (Under Review) | data: a decided first appeal (python -m utils.seed_appeals)
     """
     fa, agency = decided_appeal_agency_page
     title = fa.filed_appeal_title.text_content()
