@@ -11,9 +11,9 @@ Two halves:
   a separate agency browser and yield what the officer side searches for.
 
 Filing uses up a refused agency: each can file only one first appeal. Only agencies
-the state store records as ``rejected`` are used (prepare them by refusing their
-applications on the Officer Console, then run ``python -m utils.agency_status_sync``);
-a filed agency is recorded as ``first_appeal``. Fixtures skip when none is left.
+the state store records as ``rejected`` are used; a filed agency is recorded as
+``first_appeal``. Fixtures skip when none is left — prepare refused agencies, pending
+and decided appeals with ``python -m utils.seed_appeals`` (see ``utils.appeal_seeder``).
 """
 
 import os
@@ -122,7 +122,8 @@ def decided_first_appeal(logged_in_admin_appeals_page) -> dict:
     ap.open_view("first")
     decided = [a for a in ap.appeals_data().values() if a["type"] == "first" and a["decided"]]
     if not decided:
-        pytest.skip("No decided first appeal on the portal — run TC-363 with RUN_APPEAL_DECISION_TESTS=true first.")
+        pytest.skip("No decided first appeal on the portal — run 'python -m utils.seed_appeals' (or TC-363 with "
+                    "RUN_APPEAL_DECISION_TESTS=true) first.")
     return max(decided, key=lambda a: a["decided"])
 
 
@@ -140,8 +141,7 @@ def _open_form_for_refused_agency(page) -> tuple[FirstAppealPage, UserRecord]:
     """Logs ``page`` in as the first refused agency that can still file a first appeal and opens FORM-III."""
     agencies = _refused_agencies()
     if not agencies:
-        pytest.skip("No refused agency in the state store — refuse some applications and run "
-                    "'python -m utils.agency_status_sync' first.")
+        pytest.skip("No refused agency in the state store — run 'python -m utils.seed_appeals' first.")
     store = TestStateStore()
     for agency in agencies:
         login = LoginPage(page)
@@ -156,7 +156,8 @@ def _open_form_for_refused_agency(page) -> tuple[FirstAppealPage, UserRecord]:
             return fa, agency
         store.record_agency_status(username=agency.username, status="first_appeal")   # filed elsewhere
         page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
-    pytest.skip("Every refused agency in the state store has already filed its first appeal.")
+    pytest.skip("Every refused agency in the state store has already filed its first appeal — run "
+                "'python -m utils.seed_appeals' first.")
 
 
 @pytest.fixture
@@ -208,31 +209,41 @@ def filed_first_appeal_order_only(second_browser) -> dict:
     return _seed_first_appeal(second_browser, FirstAppealFactory.valid_order_only(file_manager.VALID_CERTIFICATE))
 
 
-@pytest.fixture
-def appealed_agency_page(second_browser):
-    """FORM-III in a separate browser for an agency that has already filed its first appeal (recorded as
-    ``first_appeal`` in the state store). Yields (FirstAppealPage, the agency's UserRecord); nothing is filed."""
-    agencies = TestStateStore().get_agency_users_in_status("first_appeal")
-    if not agencies:
-        pytest.skip("No agency with a filed first appeal in the state store.")
-    agency = agencies[0]
+def _filed_agency_page(second_browser, want_pending: bool):
+    """Generator behind the filed-appeal fixtures: logs a separate browser in as each ``first_appeal`` agency
+    in turn and yields (FirstAppealPage, UserRecord) for the first whose appeal card is pending
+    (``want_pending``) or decided. Skips when none matches."""
     browser = second_browser()
     context = browser.new_context()
     page = context.new_page()
-    login = LoginPage(page)
-    login.open()
-    login.login(agency.username, agency.password)
-    page.wait_for_load_state("networkidle")
-    if "login" in page.url:
-        context.close()
-        pytest.skip(f"Agency '{agency.username}' could not log in.")
-    fa = FirstAppealPage(page)
-    fa.open()
-    yield fa, agency
     try:
-        page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+        for agency in TestStateStore().get_agency_users_in_status("first_appeal"):
+            lp = LoginPage(page)
+            lp.open()
+            lp.login(agency.username, agency.password)
+            page.wait_for_load_state("networkidle")
+            if "login" in page.url:
+                continue
+            fa = FirstAppealPage(page)
+            fa.open()
+            if fa.filed_appeal_card.count():
+                pending = "Pending decision" in fa.filed_appeal_title.text_content()
+                if pending == want_pending:
+                    yield fa, agency
+                    page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+                    return
+            page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
+        state = "awaiting a decision" if want_pending else "decided"
+        pytest.skip(f"No agency in the state store has a First Appeal {state} — run 'python -m utils.seed_appeals' first.")
     finally:
         context.close()
+
+
+@pytest.fixture
+def appealed_agency_page(second_browser):
+    """FORM-III in a separate browser for an agency whose First Appeal awaits a decision (recorded as
+    ``first_appeal`` in the state store). Yields (FirstAppealPage, the agency's UserRecord); nothing is filed."""
+    yield from _filed_agency_page(second_browser, want_pending=True)
 
 
 @pytest.fixture
@@ -272,26 +283,7 @@ def appeal_filing_allowed():
 def decided_appeal_agency_page(second_browser):
     """FORM-III in a separate browser for an agency whose First Appeal has been decided (its card no longer
     says 'Pending decision'). Yields (FirstAppealPage, UserRecord); skips when no appeal has been decided."""
-    browser = second_browser()
-    context = browser.new_context()
-    page = context.new_page()
-    try:
-        for agency in TestStateStore().get_agency_users_in_status("first_appeal"):
-            lp = LoginPage(page)
-            lp.open()
-            lp.login(agency.username, agency.password)
-            page.wait_for_load_state("networkidle")
-            if "login" in page.url:
-                continue
-            fa = FirstAppealPage(page)
-            fa.open()
-            if fa.filed_appeal_card.count() and "Pending decision" not in fa.filed_appeal_title.text_content():
-                yield fa, agency
-                return
-            page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
-        pytest.skip("No First Appeal has been decided yet (KAN-29 / KAN-TC-363 passes one).")
-    finally:
-        context.close()
+    yield from _filed_agency_page(second_browser, want_pending=False)
 
 
 # ── Agency-side data fixtures ──────────────────────────────────────────────────

@@ -12,11 +12,17 @@ one that has filed is ``first_appeal``.
   First Appeal?" the test answers Cancel.
 * TC-321, 322, 327, 333 submit the form and may use up a refused agency for good: opt-in with
   RUN_APPEAL_FILING_TESTS=true.
-* TC-328, 329, 331, 743 reuse an agency that has already filed; TC-744 needs a decided appeal (skips).
+* TC-328, 329, 331, 743 reuse an agency whose appeal awaits a decision; TC-744 needs a decided one.
+
+Prepare the data first (only the shortfall is built; refusing, filing and deciding cannot be undone)::
+
+    python -m utils.seed_appeals --dry-run
+    python -m utils.seed_appeals                 # 5 refused, 1 pending, 1 decided — enough for the filing tests
+    python -m utils.seed_appeals --refused 1     # without RUN_APPEAL_FILING_TESTS
 
 Known defects ("I & II Appeal" tab): #64 no confirmation e-mail (TC-743), #65 blank "Specify other
 ground" accepted (TC-310), #66 My Application still invites an appeal after filing (TC-328), #67 Email and
-Mobile both numbered "4." (TC-304).
+Mobile both numbered "4." (TC-304), #68 no e-mail when the appeal is decided (TC-744).
 """
 
 import re
@@ -833,7 +839,10 @@ def test_tc744_decision_shown(decided_appeal_agency_page):
     Then  FORM-III and Home no longer show it as pending, and the agency has an e-mail about the order
     And   if the appeal was dismissed, the Second Appeal page offers its form
 
-    AIO: KAN-TC-744 (Under Review — behaviour not yet observed) | data: a decided first appeal
+    Known defect "I & II Appeal" #68: no e-mail about the order arrives (on dev a dismissed appeal shows
+    'Your First Appeal — Rejected' and the Second Appeal form opens; the e-mail step fails).
+
+    AIO: KAN-TC-744 (Under Review) | data: a decided first appeal (python -m utils.seed_appeals)
     """
     fa, agency = decided_appeal_agency_page
     title = fa.filed_appeal_title.text_content()
@@ -846,14 +855,16 @@ def test_tc744_decision_shown(decided_appeal_agency_page):
         home.open()
         expect(home.appeal_level_badge("First Appeal")).not_to_have_text(re.compile(r"^Pending"))
 
-    with allure.step("Verify the e-mail"):
-        emails = get_emails_to(agency.email or "")
-        assert any("order" in f"{e.get('subject')} {e.get('text')}".lower() for e in emails), "No e-mail about the order"
-
     if re.search(r"dismiss|reject", title, re.IGNORECASE):
         with allure.step("Dismissed: the Second Appeal form is offered"):
             fa.open_second_appeal()
             expect(fa.page.locator(MULTIPART_FORM)).to_have_count(1)
+
+    with allure.step("Verify the e-mail"):
+        emails = get_emails_to(agency.email or "")
+        assert any("order" in f"{e.get('subject')} {e.get('text')}".lower() for e in emails), (
+            f"No e-mail about the order on '{_squash(title)}' reached {agency.email} "
+            f"({len(emails)} e-mail(s) in the inbox)")
 
 
 # ---------------------------------------------------------------------------
