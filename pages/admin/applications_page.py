@@ -95,6 +95,15 @@ class AdminApplicationsPage(BasePage):
                     badge: t(r.querySelector('.ui-badge')), period: t(r.querySelector('td.sla'))};
         })""")
 
+    def review_view_ids(self) -> dict[str, int]:
+        """Application ID → the ``id`` of its review page (agency_view.php), from each row's Review / View link."""
+        return {r["application_id"]: int(r["view_id"]) for r in self.rows.evaluate_all("""rows => rows.map(r => {
+            const a = r.querySelector('a[href*="agency_view.php"]');
+            const m = a ? a.getAttribute('href').match(/[?&]id=(\\d+)/) : null;
+            return {application_id: (r.querySelector('.al-mono') || {textContent: ''}).textContent.trim(),
+                    view_id: m ? m[1] : null};
+        })""") if r["view_id"]}
+
     # ── Actions ───────────────────────────────────────────────────────────────
 
     @allure.step("Open Applications '{view}' (step '{step}', district '{district}')")
