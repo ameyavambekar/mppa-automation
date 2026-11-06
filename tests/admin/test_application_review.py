@@ -15,7 +15,14 @@ The loop chain TC-752…768 runs only with RUN_REVIEW_WORKFLOW_TESTS=true. Each 
 one step on and cannot be undone; the tests find their application by the stage its review page shows
 (``ReviewStage``), so run them in file order — a full run takes one untouched submission to a refusal
 order (recorded as ``rejected``, ready for the First Appeal tests). The negative tests in the chain are
-refused on the client and change nothing.
+refused on the client and change nothing. TC-755…758 need an item still to correct; when TC-758 has used the
+last one, ``agency_with_corrections`` sends Compliance 1 on an untouched submission first, so they can run on
+their own.
+
+The approval path (the reply to Compliance 1 cures the deficiency → Approve Desktop Scrutiny → Physical
+Verification → final approval) is the last test in the file, behind the same flag. It corrects and replies as
+the agency itself, so it takes an application with an item still to correct — after a full chain run that is
+an untouched submission, which it sends to Compliance 1 first.
 """
 
 import re
@@ -27,8 +34,10 @@ from playwright.sync_api import expect
 from fixtures.application_review_fixtures import record_loop_stage
 from pages.admin.application_review_page import AdminApplicationReviewPage, ReviewStage
 from pages.admin.applications_page import AdminApplicationsPage
+from pages.admin.licenses_page import AdminLicensesPage
 from test_data.application_review_factory import ReviewLoopFactory as F
 from utils.aio import aio_case
+from utils.state_store import TestStateStore
 
 STORY = "Application review — desktop scrutiny loop"
 HOLD = F.HOLD_ITEM_LABEL
@@ -365,7 +374,7 @@ def test_tc755_agency_home_action_required(review_workflow_allowed, agency_with_
 
     AIO: KAN-TC-755 | KAN-12 C3/C4
     """
-    _, home, _, _ = agency_with_corrections(after_hearing=False)
+    _, home, _, _ = agency_with_corrections(after_hearing=False, open_items=True)
 
     with allure.step("Open Home"):
         home.open()
@@ -392,7 +401,7 @@ def test_tc756_corrections_lists_items(review_workflow_allowed, agency_with_corr
 
     AIO: KAN-TC-756 | KAN-12 C4
     """
-    corrections, _, _, _ = agency_with_corrections(after_hearing=False)
+    corrections, _, _, _ = agency_with_corrections(after_hearing=False, open_items=True)
     d = review_loop_data
 
     with allure.step("Open Corrections"):
@@ -424,7 +433,7 @@ def test_tc757_unchanged_correction_needs_note(review_workflow_allowed, agency_w
 
     AIO: KAN-TC-757 | KAN-12 C4 (negative)
     """
-    corrections, _, agency, _ = agency_with_corrections(after_hearing=False)
+    corrections, _, agency, _ = agency_with_corrections(after_hearing=False, open_items=True)
 
     with allure.step("Open Part A for correction"):
         corrections.open()
@@ -453,7 +462,7 @@ def test_tc758_correction_saved_with_note(review_workflow_allowed, agency_with_c
 
     AIO: KAN-TC-758 | KAN-12 C4
     """
-    corrections, _, agency, _ = agency_with_corrections(after_hearing=False)
+    corrections, _, agency, _ = agency_with_corrections(after_hearing=False, open_items=True)
     d = review_loop_data
 
     with allure.step("Save Part A with a note"):
@@ -482,7 +491,7 @@ def test_tc759_short_reply_not_sent(review_workflow_allowed, agency_with_correct
 
     AIO: KAN-TC-759 | KAN-12 C4 (negative)
     """
-    corrections, _, _, _ = agency_with_corrections(after_hearing=False)
+    corrections, _, _, _ = agency_with_corrections(after_hearing=False, open_items=False)
     check = F.short_reply()
 
     with allure.step("Open Corrections"):
@@ -511,7 +520,7 @@ def test_tc760_agency_reply_reaches_officer(review_workflow_allowed, agency_with
 
     AIO: KAN-TC-760 | KAN-12 C4
     """
-    corrections, _, agency, review = agency_with_corrections(after_hearing=False)
+    corrections, _, agency, review = agency_with_corrections(after_hearing=False, open_items=False)
     d = review_loop_data
 
     with allure.step("Send the reply"):
@@ -668,7 +677,7 @@ def test_tc765_agency_replies_again(review_workflow_allowed, agency_with_correct
 
     AIO: KAN-TC-765 | KAN-12 C8
     """
-    corrections, _, agency, review = agency_with_corrections(after_hearing=True)
+    corrections, _, agency, review = agency_with_corrections(after_hearing=True, open_items=True)
     d = review_loop_data
 
     with allure.step("Correct Part A and reply"):
@@ -775,3 +784,100 @@ def test_tc768_refusal_order(review_workflow_allowed, application_at, review_loo
         expect(review.history_entry("Refuse")).to_contain_text(d.speaking_order)
         expect(review.history_entry("Division Report")).to_contain_text(d.division_note)
         expect(review.history_entry("Division Report")).to_contain_text(HOLD)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Approval path — RUN_REVIEW_WORKFLOW_TESTS=true
+# ═══════════════════════════════════════════════════════════════════════════
+
+# AIO key not assigned yet (KAN-TC-769…772 belong to KAN-48) — add @aio_case once the case exists.
+@allure.story(STORY)
+@allure.title("A reply to Compliance 1 that cures the deficiency leads to approval and a certificate")
+def test_approval_after_compliance_1_reply(review_workflow_allowed, application_at, agency_with_corrections,
+                                          review_loop_data):
+    """
+    Given the agency's application has a Compliance 1 notice with Part A On Hold
+    When  the agency corrects Part A and replies
+    And   I take the reply into review, approve every item and save
+    Then  "Approve Desktop Scrutiny" is offered
+    When  I approve Desktop Scrutiny
+    Then  the application moves to Stage 2 — Physical Verification
+    When  I approve the premises photographs, mark every office verified and give final approval
+    Then  the application is listed under Applications › Approved
+
+    An application left with "Approve Desktop Scrutiny" offered (a run stopped after the review was saved) is
+    taken up from there instead of using up another submission.
+
+    Note (dev, 06-Nov-2026): with every item approved, the show cause form ("Compliance 1 did not resolve the
+    items") is still shown beside "Approve Desktop Scrutiny" — attached, not asserted, until the expected
+    behaviour is confirmed.
+
+    Irreversible: it approves a real application on dev and issues its certificate.
+    """
+    d = review_loop_data
+    found = application_at(ReviewStage.DESKTOP_APPROVAL_DUE, after_hearing=False, required=False)
+    if found:
+        review, agency = found
+        allure.attach(f"{agency.username} ({agency.application_id})", name="Taken up at Approve Desktop Scrutiny",
+                      attachment_type=allure.attachment_type.TEXT)
+    else:
+        corrections, _, agency, review = agency_with_corrections(after_hearing=False, open_items=True)
+
+        with allure.step("The agency corrects Part A and replies"):
+            _agency_corrects_and_replies(corrections, agency, d)
+            record_loop_stage(agency, ReviewStage.REPLY_RECEIVED)
+            expect(corrections.subtitle).to_have_text(F.REPLY_SENT)
+
+        with allure.step("Take the reply into review"):
+            review.page.reload()
+            review.wait_for_load()
+            review.run_flow("accept_reply")
+            record_loop_stage(agency, ReviewStage.IN_REVIEW)
+            expect(review.history_entry("Accept Reply")).to_contain_text(F.ACCEPT_REPLY_1)
+
+        with allure.step("Approve every item and save"):
+            review.save_review_all_approved()
+            record_loop_stage(agency, review.stage())
+
+    with allure.step("Verify Approve Desktop Scrutiny is offered"):
+        expect(review.approve_desktop_button).to_be_visible()
+        assert review.stage() == ReviewStage.DESKTOP_APPROVAL_DUE
+        allure.attach(f"show cause form visible: {review.issue_scn_button.is_visible()}",
+                      name="Show cause form beside the approval", attachment_type=allure.attachment_type.TEXT)
+
+    with allure.step("Approve Desktop Scrutiny — the application moves to Physical Verification"):
+        prompt = review.approve_desktop_scrutiny()
+        assert prompt == F.APPROVE_DESKTOP_CONFIRM, prompt
+        assert review.stage() == ReviewStage.PHYSICAL, review.stage_subtitle.inner_text()
+        record_loop_stage(agency, ReviewStage.PHYSICAL)
+        expect(review.stage_subtitle).to_contain_text(review.STAGE_2)
+        expect(review.main).to_contain_text(F.DESKTOP_CLEARED)
+
+    with allure.step("Approve the premises photographs and mark every office verified"):
+        if any(b["orig"] != "approved" for b in review.review_data()):
+            review.save_review_all_approved()
+        prompts = review.mark_offices_verified()
+        assert prompts and prompts[0] == F.HEAD_OFFICE_VERIFIED_CONFIRM, prompts
+        expect(review.history_entry("Unit Clear")).to_contain_text(F.HEAD_OFFICE_VERIFIED)
+        expect(review.final_approval_button).to_be_visible()
+
+    with allure.step("Give final approval — issue the certificate"):
+        prompt = review.final_approval()
+        record_loop_stage(agency, ReviewStage.APPROVED)
+        assert prompt == F.FINAL_APPROVAL_CONFIRM, prompt
+
+    with allure.step("Verify the application is approved and the certificate issued"):
+        expect(review.stage_subtitle).to_have_text(F.APPROVED_STAGE)
+        expect(review.history_entry("Clear")).to_contain_text(F.certificate_issued(agency.application_id))
+        expect(review.flow_buttons).to_have_count(0)
+
+    with allure.step("Verify Licences & certificates lists the agency as Active"):
+        # Applications › Approved (and All applications) list nothing on dev, 06-Nov-2026
+        licences = AdminLicensesPage(review.page)
+        licences.open()
+        licences.search(agency.application_id)
+        rows = [r for r in licences.table_data() if r["registration_no"] == agency.application_id]
+        assert len(rows) == 1, licences.table_data()
+        assert rows[0]["status"].lower() == "active", rows[0]
+        # The registration number is the Application ID
+        TestStateStore().record_certificate_no(username=agency.username, certificate_no=agency.application_id)

@@ -94,6 +94,22 @@ class ReviewLoopFactory:
     LOOP_HISTORY = ["Submitted", "Deficiency", "Agency Reply", "Accept Reply", "Scn Hearing", "Grant Window",
                     "Agency Reply", "Accept Reply", "Division Report", "Refuse"]
 
+    # ── Approval after the reply to Compliance 1 ──────────────────────────────
+    # Texts as seen on dev, 06-Nov-2026
+    APPROVE_DESKTOP_CONFIRM = ("All items are approved. Clear Desktop Scrutiny and move the application to Physical "
+                               "Verification?")
+    DESKTOP_CLEARED = "Desktop scrutiny cleared — application moved to Physical Verification."
+    HEAD_OFFICE_VERIFIED_CONFIRM = "Mark Head office as physically verified?"
+    HEAD_OFFICE_VERIFIED = "physically verified."          # "Head office (<district>) physically verified."
+    FINAL_APPROVAL_CONFIRM = "Give FINAL APPROVAL and issue the Form-II registration certificate?"
+    APPROVED_STAGE = "Approved — Certificate Issued · Closed"
+
+    @staticmethod
+    def certificate_issued(application_id: str) -> str:
+        """The final "Clear" history entry — the registration number is the Application ID."""
+        return (f"Physical verification cleared — Form-II registration certificate issued (Registration No. "
+                f"{application_id}).")
+
     @staticmethod
     def loop() -> RefusalData:
         """Part A On Hold through the whole loop, refused at the end (also used to seed appeal data)."""

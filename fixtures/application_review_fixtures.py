@@ -14,6 +14,7 @@ store knows are touched.
 
 import os
 
+import allure
 import pytest
 
 from fixtures.drafts_fixtures import _admin_login, _admin_logout
@@ -37,6 +38,14 @@ def record_loop_stage(agency: UserRecord, stage: str) -> None:
     if stage == ReviewStage.REFUSED:
         store.record_agency_status(username=agency.username, status="rejected",
                                    data={"seeded": "review_loop_tests", "reason": ReviewLoopFactory.loop().refusal_reason})
+        return
+    if stage == ReviewStage.APPROVED:
+        store.record_agency_status(username=agency.username, status="approved",
+                                   data={"seeded": "review_loop_tests", "path": "approved_after_compliance_1_reply"})
+        return
+    if stage == ReviewStage.PHYSICAL:
+        store.record_agency_status(username=agency.username, status="physical_verification",
+                                   data={"review": "under_review", "loop": stage})
         return
     store.record_agency_status(username=agency.username, status="desktop_scrutiny",
                                data={"review": _CONSOLE_STEP.get(stage, "under_review"), "loop": stage})
@@ -64,13 +73,15 @@ def admin_review(page) -> AdminApplicationReviewPage:
 
 @pytest.fixture
 def application_at(admin_review):
-    """``find(*stages, after_hearing=None) -> (AdminApplicationReviewPage, UserRecord)``: opens the review page
-    of a state-store agency's application standing at one of ``stages`` (``ReviewStage`` values) — in the
-    second round of the loop (after the show cause notice) when ``after_hearing`` is True, the first when
-    False. Skips when none is found."""
+    """``find(*stages, after_hearing=None, accept=None, wanted="", required=True)
+    -> (AdminApplicationReviewPage, UserRecord)``: opens the review page of a state-store agency's application
+    standing at one of ``stages`` (``ReviewStage`` values) — in the second round of the loop (after the show
+    cause notice) when ``after_hearing`` is True, the first when False. ``accept(agency) -> bool``, when given,
+    is asked about each match and can pass it over (``wanted`` describes what it looks for, for the skip
+    message). Skips when none is found — or returns None when ``required`` is False."""
     review = admin_review
 
-    def find(*stages, after_hearing=None):
+    def find(*stages, after_hearing=None, accept=None, wanted="", required=True):
         ids = _review_view_ids(review.page, "desktop", AdminApplicationsPage.REVIEW_STEPS)
         agencies = [u for u in TestStateStore().get_agency_users_in_status("desktop_scrutiny")
                     if u.application_id in ids]
@@ -79,11 +90,16 @@ def application_at(admin_review):
             review.open(ids[agency.application_id])
             stage = review.stage()
             if stage in stages and (after_hearing is None or review.after_hearing() == after_hearing):
-                return review, agency
+                if accept is None or accept(agency):
+                    return review, agency
+                continue
             if (agency.status_data or {}).get("loop") not in (None, stage):
                 record_loop_stage(agency, stage)
-        where = " / ".join(stages) + ("" if after_hearing is None else
+        if not required:
+            return None
+        where =" / ".join(stages) + ("" if after_hearing is None else
                                       " after the hearing" if after_hearing else " before the hearing")
+        where += f", {wanted}" if wanted else ""
         pytest.skip(f"No state-store application at '{where}' in Desktop scrutiny — run the earlier review-loop "
                     f"tests (RUN_REVIEW_WORKFLOW_TESTS=true) or submit a new application.")
 
@@ -158,16 +174,66 @@ def agency_session(second_browser):
         context.close()
 
 
-@pytest.fixture
-def agency_with_corrections(application_at, agency_session):
-    """``open(after_hearing) -> (AgencyCorrectionsPage, AgencyHomePage, UserRecord, AdminApplicationReviewPage)``
-    for an application awaiting the agency's corrections — after Compliance 1 (``after_hearing`` False) or in
-    the window after the hearing (True). The agency is logged in on a second browser, on Home."""
+def _send_compliance_1(application_at, data: RefusalData) -> tuple[AdminApplicationReviewPage, UserRecord]:
+    """Takes an untouched submission to Compliance 1 with ``data.hold_item`` On Hold — what TC-752 and TC-754
+    do. Skips when there is no untouched submission."""
+    review, agency = application_at(ReviewStage.NEW)
+    with allure.step(f"Prepare: send Compliance 1 on {agency.username}'s application ({data.hold_item} On Hold)"):
+        review.save_review_with_hold(data.hold_item, data.hold_reason, data.hold_remark)
+        record_loop_stage(agency, ReviewStage.HELD)
+        review.run_flow("deficiency")
+        stage = review.stage()
+        record_loop_stage(agency, stage)
+        if stage != ReviewStage.WITH_AGENCY:
+            pytest.fail(f"Sending Compliance 1 on {agency.username}'s application left it at '{stage}', "
+                        f"not '{ReviewStage.WITH_AGENCY}'.")
+    return review, agency
 
-    def open_(after_hearing: bool):
-        review, agency = application_at(ReviewStage.WITH_AGENCY, after_hearing=after_hearing)
-        page = agency_session(agency)
+
+@pytest.fixture
+def agency_with_corrections(application_at, agency_session, review_loop_data):
+    """``open(after_hearing, open_items) -> (AgencyCorrectionsPage, AgencyHomePage, UserRecord,
+    AdminApplicationReviewPage)`` for an application awaiting the agency — after Compliance 1 (``after_hearing``
+    False) or in the window after the hearing (True). The agency is logged in on a second browser, on Home.
+
+    The officer's page reads the same ("awaiting the agency") before and after the agency corrects its items,
+    so the agency's Corrections page decides: ``open_items`` True wants an application with an item still to
+    correct, False one whose items are all corrected and whose reply is not sent yet.
+
+    Each run of the chain leaves one application with an item still to correct, and TC-758 corrects it. When
+    none is left before the hearing, an untouched submission is taken to Compliance 1 here (irreversible, like
+    the chain itself). The window after the hearing cannot be prepared that way, so that case skips."""
+
+    def open_(after_hearing: bool, open_items: bool):
+        sessions, passed_over = {}, []
+
+        def accept(agency: UserRecord) -> bool:
+            page = agency_session(agency)
+            sessions[agency.username] = page
+            corrections = AgencyCorrectionsPage(page)
+            corrections.open()
+            still_open = corrections.open_items()
+            ok = bool(still_open) if open_items else (not still_open and corrections.reply_section.is_visible())
+            if not ok:
+                passed_over.append(f"{agency.username}: \"{corrections.subtitle.inner_text().strip()}\"")
+            return ok
+
+        wanted = "with an item still to correct" if open_items else "corrected, reply not sent"
+        found = application_at(ReviewStage.WITH_AGENCY, after_hearing=after_hearing, accept=accept, wanted=wanted,
+                               required=False)
+        if found:
+            review, agency = found
+            page = sessions[agency.username]
+        elif open_items and not after_hearing:
+            review, agency = _send_compliance_1(application_at, review_loop_data)
+            page = agency_session(agency)
+        else:
+            where = f"with_agency {'after' if after_hearing else 'before'} the hearing, {wanted}"
+            seen = f" Passed over — {'; '.join(passed_over)}." if passed_over else ""
+            pytest.skip(f"No state-store application at '{where}' in Desktop scrutiny.{seen} Run the earlier "
+                        f"review-loop tests (RUN_REVIEW_WORKFLOW_TESTS=true) first.")
         home = AgencyHomePage(page)
+        home.open()
         return AgencyCorrectionsPage(page), home, agency, review
 
     return open_

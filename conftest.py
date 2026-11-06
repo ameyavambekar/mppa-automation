@@ -54,6 +54,9 @@ pytest_plugins = [
     "fixtures.contact_fixtures",
     "fixtures.forgot_password_fixtures",
     "fixtures.admin_fixtures",
+    # Registered before the fixture files that import its helpers (licenses, audit log, compliance …) —
+    # a plugin already imported cannot be assert-rewritten (PytestAssertRewriteWarning).
+    "fixtures.drafts_fixtures",
     "fixtures.notices_fixtures",
     "fixtures.licenses_fixtures",
     "fixtures.agencies_fixtures",
@@ -61,7 +64,6 @@ pytest_plugins = [
     "fixtures.admin_users_fixtures",
     "fixtures.first_appeal_fixtures",
     "fixtures.notifications_fixtures",
-    "fixtures.drafts_fixtures",
     "fixtures.audit_log_fixtures",
     "fixtures.compliance_fixtures",
     "fixtures.district_breakup_fixtures",
