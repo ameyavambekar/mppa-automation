@@ -5,6 +5,7 @@ from config import FORMS_BASE
 from pages.login_page import LoginPage
 from pages.partA_page import PartAPage
 from test_data.partA_factory import PartAData, PartAFactory, TypedInput
+from utils.agency_builder import AgencyBuilder
 from utils.state_store import TestStateStore
 
 
@@ -34,8 +35,8 @@ def _login_fresh_user(page, listed_district_only: bool = False):
 
     A user whose Part A was saved in the portal but never recorded (the test
     failed between saving and its state-store write) opens read-only; that user
-    is recorded as Part A completed and the next one is tried. Returns None when
-    the store runs out of users."""
+    is recorded as Part A completed and the next one is tried. When the store
+    runs out of users, a new agency is registered (always in a listed district)."""
     store = TestStateStore()
     while (user := store.get_agency_user_with_no_form(listed_district_only=listed_district_only)) is not None:
         part_a = _login_and_open_step1(page, user)
@@ -43,7 +44,10 @@ def _login_fresh_user(page, listed_district_only: bool = False):
             return user
         store.mark_form_step_status(username=user.username, step="part_a", status="completed")
         page.context.clear_cookies()
-    return None
+    # None left — register a new agency.
+    user = AgencyBuilder(page, store).build("registered")
+    _login_and_open_step1(page, user)
+    return user
 
 
 # ── Page object fixture ───────────────────────────────────────────────────────
@@ -70,13 +74,9 @@ def logged_in_part_a_fresh_page(page):
     """Yields (page, user) for an agency user who has NOT started the wizard, logged in and on Step 1.
 
     Use for tests that require all Step 1 fields to be empty but don't fill the
-    head office address. The user may be registered with any district, including "Other"."""
+    head office address. The user may be registered with any district, including "Other".
+    When the state store has no such user left, a new agency is registered."""
     user = _login_fresh_user(page)
-    if user is None:
-        pytest.skip(
-            "No agency user without form applications found in state store — "
-            "run pre-registration tests first."
-        )
     yield page, user
 
 
@@ -99,13 +99,9 @@ def logged_in_part_a_fresh_mh_page(page):
     """Like ``logged_in_part_a_fresh_page`` but the user is registered in one of the listed
     Maharashtra districts. Use for tests that fill a Maharashtra head office and/or save
     Part A (they mark Step 1 completed, using the user up) — with
-    ``PartAFactory.for_user(data, user)``."""
+    ``PartAFactory.for_user(data, user)``. When the state store has no such user left,
+    a new agency is registered."""
     user = _login_fresh_user(page, listed_district_only=True)
-    if user is None:
-        pytest.skip(
-            "No agency user registered in a listed Maharashtra district without form applications "
-            "in state store — run pre-registration tests first."
-        )
     yield page, user
 
 
