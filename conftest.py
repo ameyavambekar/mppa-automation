@@ -1,6 +1,7 @@
 import allure
 import base64
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from pages.login_page import LoginPage
 from pages.registration_page import RegistrationPage
 from test_data.agency_registration_factory import AgencyRegistrationFactory
 from utils import aio_client
+from utils import failure_pages
 from utils import portal_popup
 
 # Dev's 'Portal Under Testing' pop-up covers every page — start each browser context with it marked seen.
@@ -68,6 +70,7 @@ pytest_plugins = [
     "fixtures.compliance_fixtures",
     "fixtures.district_breakup_fixtures",
     "fixtures.application_review_fixtures",
+    "fixtures.compliance_map_fixtures",
 ]
 
 
@@ -144,18 +147,20 @@ def browser_context(playwright_instance):
     browser.close()
 
 @pytest.fixture
-def second_browser(playwright_instance):
+def second_browser(playwright_instance, request):
     """Factory for an independent second browser (separate cookies/session).
-    Used by TC-26 to simulate the same user logging in from another machine,
+    Used by Login TC-25 to simulate the same user logging in from another machine,
     and by the Notices dual-role tests to open an agency session alongside the
     admin one. Honours the project HEADLESS / SLOW_MO settings so the second
     window is visible and its interactions are paced just like the primary
-    browser. Cleans up every browser it hands out."""
+    browser. Every page open in these browsers is screenshotted if the test
+    fails (utils.failure_pages). Cleans up every browser it hands out."""
     browsers = []
 
     def _launch():
         browser = playwright_instance.chromium.launch(headless=HEADLESS, slow_mo=SLOW_MO)
         browsers.append(browser)
+        failure_pages.register_browser(request.node, browser, "second browser")
         return browser
 
     yield _launch
@@ -164,10 +169,19 @@ def second_browser(playwright_instance):
         b.close()
 
 @pytest.fixture(scope="function")
-def page(browser_context):
-    """Fresh page for each test function."""
+def page(browser_context, request):
+    """Fresh page for each test function. If the test fails, this page is screenshotted, along with any tab or
+    pop-up opened beside it during the test (utils.failure_pages). That holds even when the page is reached
+    through request.getfixturevalue."""
     page = browser_context.new_page()
+    failure_pages.register(request.node, page)
+
+    def on_new_page(new_page):
+        failure_pages.register(request.node, new_page, "new tab")
+
+    browser_context.on("page", on_new_page)
     yield page
+    browser_context.remove_listener("page", on_new_page)
     page.close()
 
 @pytest.fixture(autouse=True)
@@ -254,16 +268,19 @@ def pytest_runtest_makereport(item, call):
                 effort_ms=int(report.duration * 1000),
             )
 
-    # ── On failure: capture screenshot, attach to Allure + HTML + AIO ───────
+    # ── On failure: screenshot each open page, attach to Allure + HTML + AIO ──
     if report.failed:
-        page = item.funcargs.get("page")
-        if page and not page.is_closed():
-            png_bytes = page.screenshot()
+        for label, page in failure_pages.pages(item):
+            try:
+                png_bytes = page.screenshot()
+            except Exception:
+                continue    # a page that broke mid-test must not hide the failure itself
+            suffix = f" ({label})" if label else ""
 
             # Allure attachment
             allure.attach(
                 png_bytes,
-                name=f"FAILED — {item.name}",
+                name=f"FAILED — {item.name}{suffix}",
                 attachment_type=allure.attachment_type.PNG,
             )
 
@@ -272,17 +289,18 @@ def pytest_runtest_makereport(item, call):
             html_img = (
                 f'<div><img src="data:image/png;base64,{encoded}" '
                 f'style="max-width:900px;border:1px solid #ccc;" '
-                f'alt="Screenshot on failure"/></div>'
+                f'alt="Screenshot on failure{suffix}"/></div>'
             )
             report.extra = getattr(report, "extra", [])
             report.extra.append(pytest_html.extras.html(html_img))
 
             # AIO attachment — only if the status POST above gave us a run ID
             if aio_run_id is not None:
+                slug = re.sub(r"[^\w-]+", "-", label).strip("-")
                 aio_client.post_attachment(
                     aio_run_id,
                     png_bytes,
-                    filename=f"{item.name}.png",
+                    filename=f"{item.name}{'-' + slug if slug else ''}.png",
                 )
 
 

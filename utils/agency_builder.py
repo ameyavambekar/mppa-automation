@@ -66,6 +66,15 @@ def available(stage: str, legal_constitution: str = COMPANY, store: TestStateSto
     return [u for u in users if u.steps.get(NEXT_STEP[stage]) in (None, "not_started")]
 
 
+def fresh_agency(page, listed_district_only: bool = False, store: TestStateStore = None) -> UserRecord:
+    """An agency that has not started Form-I at all, so login lands on Part A. Takes one the state store
+    knows; when none is left, registers a new one on ``page`` (always in a listed district) instead of
+    skipping. Registering leaves ``page`` logged out; callers log in as the returned user."""
+    store = store or TestStateStore()
+    user = store.get_agency_user_with_no_form(listed_district_only=listed_district_only)
+    return user or AgencyBuilder(page, store).build("registered")
+
+
 class AgencyBuilder:
 
     def __init__(self, page, store: TestStateStore = None):
@@ -73,13 +82,18 @@ class AgencyBuilder:
         self.store = store or TestStateStore()
 
     @allure.step("Build a new agency up to '{stage}'")
-    def build(self, stage: str, legal_constitution: str = COMPANY, offline: bool = False) -> UserRecord:
+    def build(self, stage: str, legal_constitution: str = COMPANY, offline: bool = False,
+              branches: int = 0) -> UserRecord:
         """Registers a new agency and saves every step up to and including ``stage``.
 
         ``legal_constitution`` is the Part A agency type. Only a Private Limited
         Company can be built past Part A (the Part B data is for Directors).
         ``offline`` saves Part C with Service Mode "Offline Only" (only up to "part_c":
-        the Part F the builder saves has no office premises document)."""
+        the Part F the builder saves has no office premises document).
+        ``branches`` (1 or 2) adds that many branch offices in Part A; Premises then gets the three
+        required photos for every office (the officer verifies each one in Physical Verification)."""
+        if branches not in (0, 1, 2):
+            raise ValueError("branches must be 0, 1 or 2 (PartAFactory.with_branch_offices has two)")
         if stage not in STAGES:
             raise ValueError(f"Unknown stage '{stage}' — expected one of {STAGES}")
         if STAGES.index(stage) > STAGES.index("part_a") and legal_constitution != COMPANY:
@@ -87,7 +101,7 @@ class AgencyBuilder:
         if offline and STAGES.index(stage) > STAGES.index("part_c"):
             raise ValueError("An offline agency can only be built up to 'part_c'")
         user = self.register()
-        steps = {"part_a": lambda u: self.save_part_a(u, legal_constitution),
+        steps = {"part_a": lambda u: self.save_part_a(u, legal_constitution, branches),
                  "part_b": self.save_part_b, "part_c": lambda u: self.save_part_c(u, offline),
                  "part_f": self.save_part_f,
                  "enclosures": self.upload_documents, "premises": self.save_premises,
@@ -140,9 +154,13 @@ class AgencyBuilder:
     # ── Form-I steps ──────────────────────────────────────────────────────────
 
     @allure.step("Save Part A as '{legal_constitution}'")
-    def save_part_a(self, user: UserRecord, legal_constitution: str = COMPANY) -> None:
-        data = (PartAFactory.valid_mandatory_fields() if legal_constitution == COMPANY
-                else PartAFactory.proprietorship_without_incorporation())
+    def save_part_a(self, user: UserRecord, legal_constitution: str = COMPANY, branches: int = 0) -> None:
+        if branches:
+            data = PartAFactory.with_branch_offices()
+            data.branches = data.branches[:branches]
+        else:
+            data = (PartAFactory.valid_mandatory_fields() if legal_constitution == COMPANY
+                    else PartAFactory.proprietorship_without_incorporation())
         data.legal_constitution = legal_constitution
         data = PartAFactory.for_user(data, user)
         part_a = PartAPage(self.page)
@@ -164,6 +182,9 @@ class AgencyBuilder:
         part_a.fill_pincode(data.pincode)
         part_a.fill_authorised_signatory(data.authorised_signatory)
         part_a.fill_designation(data.designation)
+        for branch in data.branches:
+            part_a.add_branch(branch.address, branch.district, branch.taluka, branch.city, branch.pincode,
+                              branch.premise_type, branch.premise_other)
         part_a.click_save_next()
         self.page.wait_for_load_state("networkidle")
         # Part A is saved once Part B opens instead of redirecting back to Part A.
@@ -219,7 +240,9 @@ class AgencyBuilder:
 
     @allure.step("Save Premises Photos with the three required photos")
     def save_premises(self, user: UserRecord) -> None:
-        """Saves the required photos at Pune, answers No to both questions and continues to Declaration."""
+        """Saves the required photos at Pune, answers No to both questions and continues to Declaration.
+        With branch offices the page has one set of signboard / exterior / interior cards per branch
+        (``data-branch="n"``, same keys, no questions), filled with the same photos."""
         context = self.page.context
         origin = "{0.scheme}://{0.netloc}".format(urlparse(FORMS_BASE))
         lat, lng = PremisesFactory.LOCATION
@@ -230,9 +253,12 @@ class AgencyBuilder:
             premises = PremisesPage(self.page)
             premises.open()
             self.page.wait_for_load_state("networkidle")
-            for key, path in data.photos.items():
-                premises.choose_photo(key, path)
-                expect(premises.photo(key)).to_be_visible(timeout=30000)
+            for branch in (0, *premises.branch_numbers()):
+                for key, path in data.photos.items():
+                    if premises.card(key, branch).count() == 0:
+                        continue
+                    premises.choose_photo(key, path, branch)
+                    expect(premises.photo(key, branch)).to_be_visible(timeout=30000)
             for key, yes in data.answers.items():
                 premises.answer(key, yes)
             premises.click_finish()

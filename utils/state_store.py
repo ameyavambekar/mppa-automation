@@ -95,6 +95,20 @@ A status of ``None`` means it has not been recorded yet. Agencies whose draft
 was deleted on the portal are kept as ``deleted`` and left out of every other
 agency query, so tests are never handed an account that no longer exists.
 
+Compliance & Appeals Map
+------------------------
+``map_state`` parks an agency at one state of the map (compliance states: KAN-48 /
+KAN-12; appeal states: KAN-49 / KAN-50; ``test_data.compliance_map_factory.MAP_STATES``)
+so the map-state tests find it there
+every run: JSON ``{"state": key, "view_id": <review page id>, "path": [...],
+"appeal_id": …, "second_appeal_id": …}``. Parked agencies are left out of
+``get_agency_users_in_status`` (unless ``include_parked=True``), so no other
+test moves them on::
+
+    store.park_map_state(username="omannan", state="hearing_scheduled", view_id=97, path=[...])
+    store.get_map_users("hearing_scheduled")
+    store.unpark_map_state(username="omannan")      # it no longer stands there
+
 The DB persists between test runs by design — it mirrors users actually
 registered in the dev environment.  Delete ``state/test_state.db`` only if you
 also reset the dev environment.
@@ -172,6 +186,9 @@ class UserRecord:
     step_data: dict[str, dict] = field(default_factory=dict)
     agency_status: Optional[str] = None     # one of AGENCY_STATUSES; None until recorded
     status_data: dict = field(default_factory=dict)
+    # {"state": <MapState key>, "view_id": …, "appeal_id": …, …} while parked for the Compliance & Appeals
+    # Map tests; empty otherwise. Survives status writes and the console sync.
+    map_state: dict = field(default_factory=dict)
 
 
 class TestStateStore:
@@ -228,6 +245,8 @@ class TestStateStore:
             "agency_status": "TEXT",
             "status_data": "TEXT",
             "status_updated_at": "TIMESTAMP",
+            # Parked at a Compliance & Appeals Map state (Nov 2026) — see park_map_state.
+            "map_state": "TEXT",
         }
         EXPECTED_FORM_COLS = {"user_id", "step", "status", "updated_at"}
 
@@ -302,7 +321,8 @@ class TestStateStore:
                      certificate_no  TEXT,
                      agency_status   TEXT,
                      status_data     TEXT,
-                     status_updated_at TIMESTAMP
+                     status_updated_at TIMESTAMP,
+                     map_state       TEXT
                  );
 
                  CREATE TABLE IF NOT EXISTS form_applications (
@@ -372,6 +392,7 @@ class TestStateStore:
             step_data=step_data,
             agency_status=row["agency_status"],
             status_data=json.loads(row["status_data"]) if row["status_data"] else {},
+            map_state=json.loads(row["map_state"]) if row["map_state"] else {},
         )
 
     # ── Writers ───────────────────────────────────────────────────────────────
@@ -633,21 +654,55 @@ class TestStateStore:
             ).fetchone()
             return self._row_to_record(row, conn) if row else None
 
-    def get_agency_users_in_status(self, statuses, **data) -> list[UserRecord]:
+    def get_agency_users_in_status(self, statuses, include_parked: bool = False, **data) -> list[UserRecord]:
         """Every agency user whose recorded status is ``statuses`` (one of ``AGENCY_STATUSES``, or a
         list of them), oldest first. Keyword arguments also match ``status_data`` facts, e.g.
-        ``review="show_cause"`` or ``appeal_status="rejected"``."""
+        ``review="show_cause"`` or ``appeal_status="rejected"``.
+
+        Agencies parked at a Compliance & Appeals Map state (``park_map_state``) are left out unless
+        ``include_parked`` — they are kept where they are for the map tests, so no other test moves them."""
         statuses = [statuses] if isinstance(statuses, str) else list(statuses)
         unknown = set(statuses) - set(AGENCY_STATUSES)
         if unknown:
             raise ValueError(f"Unknown agency status(es) {sorted(unknown)} — expected {AGENCY_STATUSES}")
         data_sql = "".join(f" AND json_extract(status_data, '$.{key}') = ?" for key in data)
+        parked_sql = "" if include_parked else " AND map_state IS NULL"
         with self._connect() as conn:
             rows = conn.execute(
                 f"""SELECT * FROM users WHERE role = 'agency'
-                    AND agency_status IN ({",".join("?" * len(statuses))}){data_sql} ORDER BY id""",
+                    AND agency_status IN ({",".join("?" * len(statuses))}){data_sql}{parked_sql} ORDER BY id""",
                 (*statuses, *data.values()),
             ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
+
+    # ── Compliance & Appeals Map ──────────────────────────────────────────────
+
+    def park_map_state(self, *, username: str, state: str, **facts) -> None:
+        """Parks the agency at a Compliance & Appeals Map state (``utils.map_states.MAP_STATES`` key), with
+        the facts the map tests need to find it again (``view_id``, ``appeal_id`` …). A parked agency is left
+        out of ``get_agency_users_in_status`` so other tests never move it on."""
+        with self._connect() as conn:
+            updated = conn.execute(
+                "UPDATE users SET map_state = ? WHERE username = ? AND role = 'agency'",
+                (json.dumps({"state": state, **facts}), username),
+            ).rowcount
+            if not updated:
+                raise ValueError(f"No agency user found with username '{username}'")
+
+    def unpark_map_state(self, *, username: str) -> None:
+        """Releases a parked agency (e.g. found somewhere else on the portal than where it was parked)."""
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET map_state = NULL WHERE username = ? AND role = 'agency'", (username,))
+
+    def get_map_users(self, state: Optional[str] = None) -> list[UserRecord]:
+        """Agencies parked at ``state`` (or at any map state), oldest first."""
+        sql = "SELECT * FROM users WHERE role = 'agency' AND map_state IS NOT NULL"
+        args = ()
+        if state:
+            sql += " AND json_extract(map_state, '$.state') = ?"
+            args = (state,)
+        with self._connect() as conn:
+            rows = conn.execute(sql + " ORDER BY id", args).fetchall()
             return [self._row_to_record(row, conn) for row in rows]
 
     def get_agency_user_in_status(self, statuses, **data) -> Optional[UserRecord]:

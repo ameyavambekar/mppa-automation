@@ -159,6 +159,17 @@ class AgencyHomePage(BasePage):
         return self.page.locator(".hd-next p")
 
     @property
+    def next_step_banner(self):
+        """The whole next-step banner (``.hd-next``: heading, text and button)."""
+        return self.page.locator(".hd-next")
+
+    @property
+    def appeal_hearing_card(self):
+        """'Appeal hearing' card (``#appealHearing``) once an appeal hearing is scheduled — the next-step banner
+        then reads 'Appeal hearing on <dd Mon yyyy, hh:mm AM> — in person' / 'Appear at: <venue>'."""
+        return self.page.locator("#appealHearing")
+
+    @property
     def next_step_button(self):
         return self.page.locator(".hd-next").get_by_role("link", name=self.VIEW_MY_APPLICATION_LABEL)
 

@@ -2,7 +2,7 @@
 Fixtures — desktop scrutiny review loop (KAN-12)
 ================================================
 The officer side runs on the primary page, logged in as the Super Admin (``admin_review``); the agency side
-on a second browser (``agency_session``).
+on a second browser (``review_agency_session``).
 
 Applications are found by where they stand in the loop. ``application_at(stage)`` takes the state-store
 agencies in Desktop scrutiny, opens each review page and reads the stage from it (``ReviewStage``) — those
@@ -26,37 +26,26 @@ from pages.corrections_page import AgencyCorrectionsPage
 from pages.login_page import LoginPage
 from test_data.application_review_factory import ReviewLoopFactory
 from test_data.refusal_factory import RefusalData
+from utils import failure_pages
+from utils.review_loop import record_loop_stage
 from utils.state_store import TestStateStore, UserRecord
 
-# Loop stage → the console's review step (Applications › Desktop scrutiny), for the state store
-_CONSOLE_STEP = {ReviewStage.WITH_AGENCY: "with_agency", ReviewStage.HEARING_DUE: "show_cause"}
 
-
-def record_loop_stage(agency: UserRecord, stage: str) -> None:
-    """Records where ``agency``'s application now stands in the loop (``status_data.loop``)."""
-    store = TestStateStore()
-    if stage == ReviewStage.REFUSED:
-        store.record_agency_status(username=agency.username, status="rejected",
-                                   data={"seeded": "review_loop_tests", "reason": ReviewLoopFactory.loop().refusal_reason})
-        return
-    if stage == ReviewStage.APPROVED:
-        store.record_agency_status(username=agency.username, status="approved",
-                                   data={"seeded": "review_loop_tests", "path": "approved_after_compliance_1_reply"})
-        return
-    if stage == ReviewStage.PHYSICAL:
-        store.record_agency_status(username=agency.username, status="physical_verification",
-                                   data={"review": "under_review", "loop": stage})
-        return
-    store.record_agency_status(username=agency.username, status="desktop_scrutiny",
-                               data={"review": _CONSOLE_STEP.get(stage, "under_review"), "loop": stage})
-
-
-def _review_view_ids(page, view: str, steps=()) -> dict[str, int]:
+def _review_view_ids(page, view: str, steps=(), application_ids=()) -> dict[str, int]:
+    """Application ID → review page id for the applications listed in ``view`` (and its ``steps``). When a list
+    fails to load — on dev any list holding an application given a post-hearing window does (06-Nov-2026) —
+    each of ``application_ids`` is searched for by its ID instead."""
     applications = AdminApplicationsPage(page)
-    ids = {}
+    ids, failed = {}, False
     for step in (None, *steps):
         applications.open(view, step)
+        failed = failed or applications.load_error.count() > 0
         ids.update(applications.review_view_ids())
+    if failed:
+        for application_id in application_ids:
+            if application_id and application_id not in ids:
+                applications.open(view, query=application_id)
+                ids.update(applications.review_view_ids())
     return ids
 
 
@@ -82,9 +71,10 @@ def application_at(admin_review):
     review = admin_review
 
     def find(*stages, after_hearing=None, accept=None, wanted="", required=True):
-        ids = _review_view_ids(review.page, "desktop", AdminApplicationsPage.REVIEW_STEPS)
-        agencies = [u for u in TestStateStore().get_agency_users_in_status("desktop_scrutiny")
-                    if u.application_id in ids]
+        candidates = TestStateStore().get_agency_users_in_status("desktop_scrutiny")
+        ids = _review_view_ids(review.page, "desktop", AdminApplicationsPage.REVIEW_STEPS,
+                               application_ids=[u.application_id for u in candidates])
+        agencies = [u for u in candidates if u.application_id in ids]
         agencies.sort(key=lambda u: 0 if (u.status_data or {}).get("loop") in stages else 1)
         for agency in agencies:
             review.open(ids[agency.application_id])
@@ -146,9 +136,9 @@ def review_loop_data() -> RefusalData:
 # ── Agency side ────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def agency_session(second_browser):
+def review_agency_session(second_browser, request):
     """``login(agency) -> page``: a second browser logged in as ``agency`` (on Home). Logs out and closes on
-    teardown."""
+    teardown. (Session Management has its own ``agency_session``; this one takes the agency to log in.)"""
     opened = []
 
     def login(agency: UserRecord):
@@ -156,6 +146,7 @@ def agency_session(second_browser):
         context = browser.new_context(viewport={"width": 1280, "height": 800})
         context.set_default_timeout(30000)
         page = context.new_page()
+        failure_pages.register(request.node, page, f"agency {agency.username}")
         opened.append((context, page))
         lp = LoginPage(page)
         lp.open()
@@ -191,7 +182,7 @@ def _send_compliance_1(application_at, data: RefusalData) -> tuple[AdminApplicat
 
 
 @pytest.fixture
-def agency_with_corrections(application_at, agency_session, review_loop_data):
+def agency_with_corrections(application_at, review_agency_session, review_loop_data):
     """``open(after_hearing, open_items) -> (AgencyCorrectionsPage, AgencyHomePage, UserRecord,
     AdminApplicationReviewPage)`` for an application awaiting the agency — after Compliance 1 (``after_hearing``
     False) or in the window after the hearing (True). The agency is logged in on a second browser, on Home.
@@ -208,7 +199,7 @@ def agency_with_corrections(application_at, agency_session, review_loop_data):
         sessions, passed_over = {}, []
 
         def accept(agency: UserRecord) -> bool:
-            page = agency_session(agency)
+            page = review_agency_session(agency)
             sessions[agency.username] = page
             corrections = AgencyCorrectionsPage(page)
             corrections.open()
@@ -226,7 +217,7 @@ def agency_with_corrections(application_at, agency_session, review_loop_data):
             page = sessions[agency.username]
         elif open_items and not after_hearing:
             review, agency = _send_compliance_1(application_at, review_loop_data)
-            page = agency_session(agency)
+            page = review_agency_session(agency)
         else:
             where = f"with_agency {'after' if after_hearing else 'before'} the hearing, {wanted}"
             seen = f" Passed over — {'; '.join(passed_over)}." if passed_over else ""

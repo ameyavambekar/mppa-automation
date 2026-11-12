@@ -81,6 +81,7 @@ class ReviewLoopFactory:
     SCN_CONFIRM = "Issue the show cause notice and schedule a personal hearing?"
     SCN_HISTORY = "Compliance 2 — pre-refusal show cause notice (Sec 4(3) proviso). You must appear IN PERSON"
     SCN_GROUND_LABEL = "Inadequate / Unsatisfactory Rectification"
+    STAGE_C2_HEARING = "Stage 1 — Desktop Scrutiny · Compliance 2 — show cause notice & hearing scheduled"
     WINDOW_CONFIRM = "Give the agency access to correct the items on hold again?"
     WINDOW_DAYS = ["3", "4", "5", "6", "7"]
 

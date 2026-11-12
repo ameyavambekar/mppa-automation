@@ -48,7 +48,8 @@ class AdminApplicationReviewPage(BasePage):
     asks a confirm() and reloads; the client checks are reported in a toast (``#uiToasts .ui-toast``).
 
     **Approval** (read-only probe on dev, 06-Nov-2026) — once every item is approved and saved, Stage 1 offers
-    "Approve Desktop Scrutiny" (``data-act="clear"``; the show cause form stays visible beside it), which moves the
+    "Approve Desktop Scrutiny" (``data-act="clear"``; after the first reply the show cause form stays visible beside
+    it — defect "Super admin" #90), which moves the
     application to Stage 2 — Physical Verification: review bars ``ph_signboard`` / ``ph_exterior`` /
     ``ph_interior`` per office (``ph_b<n>_…`` for branch offices), "Mark Head office verified"
     (``data-act="0|unit_clear"``, one per office) and "Final approval — issue certificate" (``data-act="clear"``).
@@ -447,7 +448,8 @@ class AdminApplicationReviewPage(BasePage):
             return ReviewStage.REFUSAL_DUE
         if visible(self.grant_window_button):
             return ReviewStage.HEARING_DUE
-        # Checked before the show cause form: with every item approved after the reply, dev shows both
+        # Checked before the show cause form: with every item approved after the first reply, dev shows both
+        # (defect "Super admin" #90)
         if visible(self.approve_desktop_button):
             return ReviewStage.DESKTOP_APPROVAL_DUE
         if visible(self.issue_scn_button):
