@@ -8,6 +8,7 @@ from pages.admin.login_page import AdminLoginPage
 from pages.admin.sessions_page import AdminSessionsPage
 from pages.login_page import LoginPage
 from test_data.sessions_factory import SessionData, SessionsFactory
+from utils import failure_pages
 from utils.state_store import TestStateStore, UserRecord
 from config import ADMIN_LOGOUT_URL, AUTH_BASE
 
@@ -79,7 +80,7 @@ def logged_in_admin_sessions_page(page) -> AdminSessionsPage:
 
 
 @pytest.fixture
-def agency_session(second_browser):
+def agency_session(second_browser, request):
     """Factory that logs an agency user into a fresh (visible) second browser,
     creating a brand-new Live session, and returns an ``AgencySessionHandle``.
 
@@ -103,6 +104,7 @@ def agency_session(second_browser):
         for agency in agencies[:3]:
             ctx = browser.new_context(viewport={"width": 1280, "height": 800})
             p = ctx.new_page()
+            failure_pages.register(request.node, p, f"agency {agency.username}")
             login = LoginPage(p)
             login.open()
             login.login(agency.username, agency.password)
