@@ -146,7 +146,8 @@ def unknown_username_data() -> ForgotPasswordData:
 
 
 @pytest.fixture
-def wrong_captcha_data() -> ForgotPasswordData:
+def forgot_wrong_captcha_data() -> ForgotPasswordData:
+    """Not ``wrong_captcha_data``: the Login tests own that name (fixture names are global)."""
     return ForgotPasswordFactory.wrong_captcha()
 
 

@@ -1,3 +1,5 @@
+import re
+
 import allure
 
 from pages.base_page import BasePage
@@ -35,3 +37,9 @@ class MyApplicationPage(BasePage):
     def admin_remarks_text(self) -> str:
         """The refusal reason without the 'Admin Remarks:' label."""
         return self.admin_remarks.inner_text().split(":", 1)[-1].strip()
+
+    def status(self) -> str:
+        """The status word of the banner's "Application Status: <STATUS>" line — 'SUBMITTED', 'REJECTED',
+        'APPROVED' … (dev, 06-Nov-2026)."""
+        match = re.search(r"Application Status:\s*([A-Z_ ]+?)\s*(?:\n|$)", self.status_banner.inner_text())
+        return match.group(1).strip() if match else ""

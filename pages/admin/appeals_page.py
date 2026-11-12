@@ -47,6 +47,17 @@ class AdminAppealsPage(BasePage):
         "dismissed_default": "Dismissed for Default of Appearance",
         "delay_rejected": "Delay Condonation Rejected",
     }
+    # appellate order of a second appeal (the page's DISPOSAL.second, dev 06-Nov-2026): value → label.
+    # No "refusal upheld" here — the Commissionerate's dismissal is final (Sec 7(3)).
+    SECOND_DISPOSALS = {
+        "allowed": "Appeal Allowed — Order Set Aside",
+        "allowed_conditions": "Appeal Allowed with Conditions",
+        "remanded": "Remanded Back for Re-Scrutiny",
+        "dismissed_default": "Dismissed for Default of Appearance",
+        "delay_rejected": "Delay Condonation Rejected",
+        "final_dismissal": "Final Second Appeal Dismissal",
+    }
+    HEARING_MODES = ("personal", "virtual")
     SECTIONS = ("1–4 · Appellant", "5 · Order appealed against", "6–8 · Grounds, facts and relief",
                 "9 · Limitation", "10 · Documents", "Hearing (one hearing at this level)")
 
@@ -86,6 +97,13 @@ class AdminAppealsPage(BasePage):
     @property
     def empty_row(self):
         return self.page.locator("#adm-main table tbody td[colspan]")
+
+    @property
+    def main(self):
+        """The page body (``#adm-main``). Hearings & appointments has no table: "Upcoming hearings" lists one
+        entry per hearing (date, time, mode, "First Appeal #N", agency + Application ID + district + mobile,
+        venue, "Open appeal"), then "Past hearings" (dev, 06-Nov-2026)."""
+        return self.page.locator("#adm-main")
 
     def appeal_row(self, appeal_id: int):
         """An appeal view row by its appeal id (the first cell)."""
@@ -260,6 +278,41 @@ class AdminAppealsPage(BasePage):
         self.choose_disposal(disposal)
         self.fill_reasons(reasons)
         return self.save_order("accept")
+
+    @allure.step("Schedule the hearing of appeal #{appeal_id} ({mode}) at {venue}")
+    def schedule_hearing(self, appeal_id: int, venue: str, mode: str = "personal") -> str:
+        """Opens the appeal and schedules its one hearing on the first date the page offers (the next working
+        day) at the first free time slot. Returns the prompt or the page's hearing error ('' when neither
+        showed). The caller checks the hearing in ``appeals_data()`` after reopening the view."""
+        self.open_appeal(appeal_id)
+        date = self.hearing_date_input.input_value()
+        self.hearing_date_input.fill(date)
+        self.hearing_date_input.dispatch_event("change")
+        self.page.wait_for_function(
+            "() => { const s = document.getElementById('hTime'); return s && !s.disabled && s.options.length > 1; }")
+        slot = self.hearing_time_select.evaluate("s => [...s.options].map(o => o.value).filter(Boolean)[0]")
+        self.hearing_time_select.select_option(slot)
+        self.hearing_mode_select.select_option(mode)
+        self.hearing_venue_input.fill(venue)
+        msgs = []
+        self.page.once("dialog", lambda d: (msgs.append(d.message), d.accept()))
+        try:
+            with self.page.expect_navigation(timeout=10000):
+                self.schedule_hearing_button.click()
+        except Exception:
+            pass          # saved in place (no reload) or refused — the caller reads the result
+        self.wait_for_load()
+        if msgs:
+            return msgs[0]
+        return self.hearing_error.inner_text().strip() if self.hearing_error.is_visible() else ""
+
+    def appeal_for(self, application_id: str, kind: str = "first") -> dict | None:
+        """The ``APPEALS`` entry of ``application_id``'s ``kind`` ("first" / "second") appeal on the open
+        view, or None."""
+        for appeal in self.appeals_data().values():
+            if appeal.get("reg_id") == application_id and appeal.get("type") == kind:
+                return appeal
+        return None
 
     # ── Reading (no assertions) ───────────────────────────────────────────────
 

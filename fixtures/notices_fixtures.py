@@ -9,6 +9,7 @@ from pages.login_page import LoginPage
 from pages.home_page import HomePage
 from pages.notice_board_page import NoticeBoardPage
 from test_data.notices_factory import NoticeData, NoticesFactory
+from utils import failure_pages
 from utils.state_store import TestStateStore, UserRecord
 from config import ADMIN_LOGOUT_URL
 
@@ -86,12 +87,14 @@ def cleanup_notices(logged_in_admin_notices_page: AdminNoticesPage):
 
 
 @pytest.fixture
-def open_public_board(second_browser):
+def open_public_board(second_browser, request):
     """Factory that opens the public Notice Board (/module/notices.php) in a second browser with no session —
     the board needs no login — and returns its NoticeBoardPage. Call it again, or reload, to see later changes."""
     def _open() -> NoticeBoardPage:
         context = second_browser().new_context(viewport={"width": 1280, "height": 800})
-        board = NoticeBoardPage(context.new_page())
+        page = context.new_page()
+        failure_pages.register(request.node, page, "public Notice Board")
+        board = NoticeBoardPage(page)
         board.open()
         return board
     return _open

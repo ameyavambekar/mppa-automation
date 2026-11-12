@@ -21,7 +21,10 @@ class ReviewStage:
     HEARING_DUE = "hearing_due"          # show cause notice issued — hearing record / window form
     REFUSAL_DUE = "refusal_due"          # still On Hold after the post-hearing reply — refusal form
     REFUSED = "refused"
-    OTHER = "other"                      # approved paths, or anything not modelled here
+    DESKTOP_APPROVAL_DUE = "desktop_approval_due"    # every item approved — "Approve Desktop Scrutiny" offered
+    PHYSICAL = "physical_verification"   # Stage 2 — premises photos per office, then final approval
+    APPROVED = "approved"                # final approval given — recorded by the tests, not read by stage()
+    OTHER = "other"                      # anything not modelled here
 
 
 class AdminApplicationReviewPage(BasePage):
@@ -43,6 +46,13 @@ class AdminApplicationReviewPage(BasePage):
     blocked (``is-blocked``, title "Save your review first") while a review change is unsaved; then the show
     cause form (``#cp…``), the hearing record / window form and finally the refusal form (``#wf…``). Each step
     asks a confirm() and reloads; the client checks are reported in a toast (``#uiToasts .ui-toast``).
+
+    **Approval** (read-only probe on dev, 06-Nov-2026) — once every item is approved and saved, Stage 1 offers
+    "Approve Desktop Scrutiny" (``data-act="clear"``; after the first reply the show cause form stays visible beside
+    it — defect "Super admin" #90), which moves the
+    application to Stage 2 — Physical Verification: review bars ``ph_signboard`` / ``ph_exterior`` /
+    ``ph_interior`` per office (``ph_b<n>_…`` for branch offices), "Mark Head office verified"
+    (``data-act="0|unit_clear"``, one per office) and "Final approval — issue certificate" (``data-act="clear"``).
     """
 
     REVIEW_DATA_JS = """() => [...document.querySelectorAll('.rv[data-key]')].map(b => ({
@@ -205,6 +215,27 @@ class AdminApplicationReviewPage(BasePage):
     def refuse_button(self):
         return self.page.locator("#wfRejectBtn")
 
+    # ── Approval ──────────────────────────────────────────────────────────────
+
+    APPROVE_DESKTOP = "Approve Desktop Scrutiny"
+    STAGE_2 = "Stage 2 — Physical Verification"
+
+    @property
+    def approve_desktop_button(self):
+        """Stage 1's approval step (``data-act="clear"``, like Stage 2's final approval), offered once every item
+        is approved and saved."""
+        return self.page.locator(".rv-btn-flow[data-act='clear']", has_text=self.APPROVE_DESKTOP).first
+
+    @property
+    def office_verified_buttons(self):
+        """Stage 2: "Mark Head office verified" (``0|unit_clear``) and one per branch office."""
+        return self.page.locator("[data-act$='|unit_clear']")
+
+    @property
+    def final_approval_button(self):
+        """Stage 2: "Final approval — issue certificate"."""
+        return self.page.locator("[data-act='clear']").first
+
     # ── Actions ───────────────────────────────────────────────────────────────
 
     @allure.step("Open the application review (view id {view_id})")
@@ -309,6 +340,36 @@ class AdminApplicationReviewPage(BasePage):
             self.save_review_button.click()
         self.wait_for_load()
 
+    @allure.step("Review: approve every item, save")
+    def save_review_all_approved(self):
+        self.page.evaluate("""() => document.querySelectorAll('.rv[data-key]').forEach(bar => {
+            const r = bar.querySelector('input[type=radio][value="approved"]');
+            r.checked = true; r.dispatchEvent(new Event('change', {bubbles: true}));
+        })""")
+        with self.page.expect_navigation():
+            self.save_review_button.click()
+        self.wait_for_load()
+
+    @allure.step("Approve Desktop Scrutiny")
+    def approve_desktop_scrutiny(self) -> str:
+        return self._click_confirm_and_reload(self.approve_desktop_button)
+
+    @allure.step("Mark every office verified")
+    def mark_offices_verified(self, limit: int = 10) -> list[str]:
+        """Clicks each visible office "verified" button in turn (the page reloads after each); returns the
+        confirm texts."""
+        prompts = []
+        for _ in range(limit):
+            visible = [b for b in self.office_verified_buttons.all() if b.is_visible()]
+            if not visible:
+                break
+            prompts.append(self._click_confirm_and_reload(visible[0]))
+        return prompts
+
+    @allure.step("Final approval — issue certificate")
+    def final_approval(self) -> str:
+        return self._click_confirm_and_reload(self.final_approval_button)
+
     @allure.step("Next step '{act}'")
     def run_flow(self, act: str) -> str:
         return self._click_confirm_and_reload(self.flow_button(act))
@@ -387,12 +448,19 @@ class AdminApplicationReviewPage(BasePage):
             return ReviewStage.REFUSAL_DUE
         if visible(self.grant_window_button):
             return ReviewStage.HEARING_DUE
+        # Checked before the show cause form: with every item approved after the first reply, dev shows both
+        # (defect "Super admin" #90)
+        if visible(self.approve_desktop_button):
+            return ReviewStage.DESKTOP_APPROVAL_DUE
         if visible(self.issue_scn_button):
             return ReviewStage.SHOW_CAUSE_DUE
         if visible(self.flow_button("accept_reply")):
             return ReviewStage.REPLY_RECEIVED
         if visible(self.flow_button("deficiency")):
             return ReviewStage.HELD
+        # The subtitle only: Stage 1 pages also say "Reviewed in Stage 2 — Physical Verification" on some items
+        if visible(self.stage_subtitle) and self.stage_subtitle.inner_text().strip().startswith(self.STAGE_2):
+            return ReviewStage.PHYSICAL
         if "awaiting the agency" in text:
             return ReviewStage.WITH_AGENCY
         bars = self.review_data()

@@ -169,7 +169,8 @@ class AppealSeeder:
 
     def _review_view_id(self, application_id: str) -> int:
         applications = AdminApplicationsPage(self.admin)
-        applications.open("desktop")
+        # searched by ID: on dev the unfiltered list fails to load once any application had a post-hearing window
+        applications.open("desktop", query=application_id)
         link = applications.row_by_application_id(application_id).get_by_role("link", name="Review")
         return int(link.get_attribute("href").split("id=")[1].split("&")[0])
 

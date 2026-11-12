@@ -7,6 +7,7 @@ from config import FORMS_BASE
 from pages.login_page import LoginPage
 from pages.premises_page import PremisesPage
 from test_data.premises_factory import PremisesData, PremisesFactory
+from utils import failure_pages
 from utils.agency_builder import AgencyBuilder
 from utils.state_store import TestStateStore
 
@@ -96,9 +97,11 @@ def logged_in_premises_page(page, location_access):
 
 
 @pytest.fixture
-def logged_in_premises_camera_page(playwright_instance):
+def logged_in_premises_camera_page(playwright_instance, request):
     """Like ``logged_in_premises_page`` but in a separate browser with Chromium's fake camera,
-    so "Take photo" opens a working camera view. Camera and location (Pune) are allowed."""
+    so "Take photo" opens a working camera view. Camera and location (Pune) are allowed. Launched here
+    rather than by ``second_browser`` (it needs the fake-camera flags), so it registers its page for the
+    failure screenshot itself."""
     browser = playwright_instance.chromium.launch(
         headless=os.getenv("HEADLESS", "false").lower() == "true",
         slow_mo=int(os.getenv("SLOW_MO", "100")),
@@ -108,6 +111,7 @@ def logged_in_premises_camera_page(playwright_instance):
                                   permissions=["geolocation", "camera"])
     context.set_default_timeout(30000)
     page = context.new_page()
+    failure_pages.register(request.node, page, "camera browser")
     yield page, _open_untouched_premises(page)
     browser.close()
 

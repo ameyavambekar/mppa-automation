@@ -113,6 +113,13 @@ class FirstAppealPage(BasePage):
         return self.journey_step(title).locator("span")
 
     @property
+    def appeal_hearing_card(self):
+        """'Appeal hearing' card (``#appealHearing``) once the appellate authority scheduled the hearing: the
+        mode ('In-person hearing'), 'Venue — appear in person at' + the venue, and what to bring (dev,
+        06-Nov-2026; Home shows the same card)."""
+        return self.page.locator("#appealHearing")
+
+    @property
     def notes(self):
         """Every note box on the page (``.ap-note``) — e.g. the two-appeals note, or the appeal on file."""
         return self.page.locator(".ap-note")

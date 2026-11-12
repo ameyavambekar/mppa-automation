@@ -74,17 +74,19 @@ def _pay(page, user: UserRecord) -> bool:
     return True
 
 
-def submit_application(page) -> UserRecord:
+def submit_application(page, branches: int = 0) -> UserRecord:
     """Pays for an agency whose Declaration step is complete, which submits its application and raises a
-    "New application" notification for the officers. Uses an unpaid agency from the state store, or builds
-    one (see ``utils.agency_builder``). Leaves the browser logged out; returns the agency, with its
-    Application ID."""
+    "New application" notification for the officers. Uses an unpaid agency from the state store with
+    ``branches`` branch offices, or builds one (see ``utils.agency_builder``). Leaves the browser logged out;
+    returns the agency, with its Application ID."""
     store = TestStateStore()
-    for user in available("declaration", store=store):
+    pool = [u for u in available("declaration", store=store)
+            if (u.step_data.get("part_a") or {}).get("branches", 0) == branches]
+    for user in pool:
         if _pay(page, user):
             break
     else:
-        user = AgencyBuilder(page, store).build("declaration")
+        user = AgencyBuilder(page, store).build("declaration", branches=branches)
         assert _pay(page, user), f"Preview was not offered to the newly built agency {user.username}"
     page.context.clear_cookies()
     return store.get_user_by_username(user.username)

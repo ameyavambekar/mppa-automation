@@ -112,9 +112,13 @@ class PremisesPage(BasePage):
 
     # ── Photo cards ───────────────────────────────────────────────────────────
 
-    def card(self, key: str):
-        """Has the class ``is-done`` once the photo is saved or the card is not applicable."""
-        return self.page.locator(f".pp-card[data-key='{key}']")
+    def card(self, key: str, branch: int = 0):
+        """Has the class ``is-done`` once the photo is saved or the card is not applicable. ``branch`` 0 is the
+        head office; branch office n has its own signboard / exterior / interior cards (``data-branch="n"``,
+        no Yes / No questions — dev, 06-Nov-2026)."""
+        if branch:
+            return self.page.locator(f".pp-card[data-key='{key}'][data-branch='{branch}']")
+        return self.page.locator(f".pp-card[data-key='{key}']:not([data-branch])")
 
     def card_title(self, key: str):
         return self.card(key).locator(".pp-title")
@@ -130,12 +134,12 @@ class PremisesPage(BasePage):
         """Thumbnail, location and buttons — hidden when a conditional question is answered No."""
         return self.card(key).locator("[data-body]")
 
-    def thumbnail(self, key: str):
+    def thumbnail(self, key: str, branch: int = 0):
         """'No photo yet', 'Getting location…', 'Uploading…' or the saved photo."""
-        return self.card(key).locator("[data-thumb]")
+        return self.card(key, branch).locator("[data-thumb]")
 
-    def photo(self, key: str):
-        return self.thumbnail(key).locator("img")
+    def photo(self, key: str, branch: int = 0):
+        return self.thumbnail(key, branch).locator("img")
 
     def location(self, key: str):
         """'Location: <lat>, <lng> (±<N> m) · Map' once saved."""
@@ -152,8 +156,8 @@ class PremisesPage(BasePage):
         """'Choose from device' — wraps the file input."""
         return self.card(key).locator("label.ui-btn")
 
-    def file_input(self, key: str):
-        return self.card(key).locator("[data-file]")
+    def file_input(self, key: str, branch: int = 0):
+        return self.card(key, branch).locator("[data-file]")
 
     def help_text(self, key: str):
         return self.card(key).locator(".ui-help")
@@ -165,8 +169,8 @@ class PremisesPage(BasePage):
     def answer_radio(self, key: str, yes: bool):
         return self.page.locator(f"input[name='q_{key}'][value='{'1' if yes else '0'}']")
 
-    def is_done(self, key: str) -> bool:
-        return "is-done" in (self.card(key).get_attribute("class") or "").split()
+    def is_done(self, key: str, branch: int = 0) -> bool:
+        return "is-done" in (self.card(key, branch).get_attribute("class") or "").split()
 
     # ── Camera & navigation ───────────────────────────────────────────────────
 
@@ -200,10 +204,15 @@ class PremisesPage(BasePage):
         """Navigates to Premises Photos (requires a logged-in agency session with all six documents uploaded)."""
         self.navigate(PREMISES_URL)
 
-    @allure.step("Photo '{key}': choose {path}")
-    def choose_photo(self, key: str, path: str):
-        """Picks a file with 'Choose from device'; the page saves it straight away."""
-        self.file_input(key).set_input_files(path)
+    @allure.step("Photo '{key}' (office {branch}): choose {path}")
+    def choose_photo(self, key: str, path: str, branch: int = 0):
+        """Picks a file with 'Choose from device'; the page saves it straight away. ``branch`` 0 = head office."""
+        self.file_input(key, branch).set_input_files(path)
+
+    def branch_numbers(self) -> list[int]:
+        """The branch offices that have photo cards (1, 2 …)."""
+        return sorted({int(b) for b in self.page.locator(".pp-card[data-branch]").evaluate_all(
+            "cs => cs.map(c => c.getAttribute('data-branch'))")})
 
     @allure.step("Photo '{key}': click 'Take photo'")
     def click_take_photo(self, key: str):

@@ -1,9 +1,8 @@
-import os
-
 import pytest
 
 from config import FORMS_BASE
 from pages.login_page import LoginPage
+from utils.agency_builder import fresh_agency
 from utils.state_store import TestStateStore
 
 
@@ -37,19 +36,9 @@ def agency_user_with_part_a_page(page):
 
 
 @pytest.fixture
-def agency_user_with_submitted_form(page):
-    username = os.getenv("submitted_form_username")
-    password = os.getenv("submitted_form_password")
-    login = LoginPage(page)
-    login.open()
-    login.login(username,password)
-    yield page
-
-@pytest.fixture
 def fresh_agency_user_page(page):
-    """Yields (page, user) for an agency user who has NOT started the 8-step wizard."""
-    user = TestStateStore().get_agency_user_with_no_form()
-    if user is None:
-        pytest.skip("No agency user without form applications found in state store.")
+    """Yields (page, user) for an agency user who has NOT started the 8-step wizard. When the state
+    store has none left, a new agency is registered."""
+    user = fresh_agency(page)
     _login_and_wait(page, user)
     yield page, user

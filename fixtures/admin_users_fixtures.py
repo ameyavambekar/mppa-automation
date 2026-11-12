@@ -6,6 +6,7 @@ from pages.admin.dashboard_page import ADMIN_DASHBOARD_URL
 from pages.admin.login_page import AdminLoginPage
 from pages.admin.users_page import OFFICERS_URL, OfficersPage
 from test_data.admin_users_factory import OfficerData, OfficersFactory
+from utils import failure_pages
 
 
 def _logout(page):
@@ -85,7 +86,7 @@ def new_officers(logged_in_officers_page: OfficersPage):
 
 
 @pytest.fixture
-def officer_login(second_browser):
+def officer_login(second_browser, request):
     """Factory: logs ``data`` in to the Officer Console in a separate browser; returns (page, error shown).
     Every page opened is logged out on teardown."""
     browser = {}
@@ -96,6 +97,7 @@ def officer_login(second_browser):
             browser["b"] = second_browser()
         ctx = browser["b"].new_context(viewport={"width": 1280, "height": 800})
         p = ctx.new_page()
+        failure_pages.register(request.node, p, f"officer {data.username}")
         pages.append(p)
         lp = AdminLoginPage(p)
         lp.open()

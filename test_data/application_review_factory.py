@@ -81,6 +81,7 @@ class ReviewLoopFactory:
     SCN_CONFIRM = "Issue the show cause notice and schedule a personal hearing?"
     SCN_HISTORY = "Compliance 2 — pre-refusal show cause notice (Sec 4(3) proviso). You must appear IN PERSON"
     SCN_GROUND_LABEL = "Inadequate / Unsatisfactory Rectification"
+    STAGE_C2_HEARING = "Stage 1 — Desktop Scrutiny · Compliance 2 — show cause notice & hearing scheduled"
     WINDOW_CONFIRM = "Give the agency access to correct the items on hold again?"
     WINDOW_DAYS = ["3", "4", "5", "6", "7"]
 
@@ -93,6 +94,22 @@ class ReviewLoopFactory:
     READ_ONLY = "Read only. This application is rejected."
     LOOP_HISTORY = ["Submitted", "Deficiency", "Agency Reply", "Accept Reply", "Scn Hearing", "Grant Window",
                     "Agency Reply", "Accept Reply", "Division Report", "Refuse"]
+
+    # ── Approval after the reply to Compliance 1 ──────────────────────────────
+    # Texts as seen on dev, 06-Nov-2026
+    APPROVE_DESKTOP_CONFIRM = ("All items are approved. Clear Desktop Scrutiny and move the application to Physical "
+                               "Verification?")
+    DESKTOP_CLEARED = "Desktop scrutiny cleared — application moved to Physical Verification."
+    HEAD_OFFICE_VERIFIED_CONFIRM = "Mark Head office as physically verified?"
+    HEAD_OFFICE_VERIFIED = "physically verified."          # "Head office (<district>) physically verified."
+    FINAL_APPROVAL_CONFIRM = "Give FINAL APPROVAL and issue the Form-II registration certificate?"
+    APPROVED_STAGE = "Approved — Certificate Issued · Closed"
+
+    @staticmethod
+    def certificate_issued(application_id: str) -> str:
+        """The final "Clear" history entry — the registration number is the Application ID."""
+        return (f"Physical verification cleared — Form-II registration certificate issued (Registration No. "
+                f"{application_id}).")
 
     @staticmethod
     def loop() -> RefusalData:

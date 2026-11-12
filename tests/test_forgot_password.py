@@ -328,7 +328,8 @@ def test_tc564_set_new_password_opens(forgot_password_page: ForgotPasswordPage, 
 @allure.story(STORY)
 @allure.title("TC-565: Wrong details or a wrong captcha keep the user on Forgot password without revealing which detail")
 def test_tc565_wrong_details(forgot_password_page: ForgotPasswordPage, wrong_details_agency,
-                             unknown_username_data: ForgotPasswordData, wrong_captcha_data: ForgotPasswordData):
+                             unknown_username_data: ForgotPasswordData,
+                             forgot_wrong_captcha_data: ForgotPasswordData):
     """
     Given I am on Forgot password
     When  I send a wrong PAN, then a username that does not exist, then the right details with a wrong captcha
@@ -360,9 +361,9 @@ def test_tc565_wrong_details(forgot_password_page: ForgotPasswordPage, wrong_det
     with allure.step("Send the right details with a wrong captcha"):
         forgot.open()
         before = forgot.captcha_image.screenshot()
-        forgot.submit_details(user.username, user.email, user.pan, captcha=wrong_captcha_data.value)
+        forgot.submit_details(user.username, user.email, user.pan, captcha=forgot_wrong_captcha_data.value)
         _expect_on_forgot_password(forgot)
-        expect(forgot.captcha_error).to_have_text(wrong_captcha_data.expected_error)
+        expect(forgot.captcha_error).to_have_text(forgot_wrong_captcha_data.expected_error)
         assert forgot.captcha_image.screenshot() != before, "No new captcha after the wrong captcha"
 
 

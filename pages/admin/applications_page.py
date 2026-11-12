@@ -106,8 +106,14 @@ class AdminApplicationsPage(BasePage):
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open Applications '{view}' (step '{step}', district '{district}')")
-    def open(self, view: str = "all", step: str = None, district: str = None):
-        """district: a district ID (see ``district_ids``)."""
+    @allure.step("Open Applications '{view}' (step '{step}', district '{district}', search '{query}')")
+    def open(self, view: str = "all", step: str = None, district: str = None, query: str = None):
+        """district: a district ID (see ``district_ids``); query: the Search box (``q``) — an Application ID
+        finds that one application.
+
+        Dev, 06-Nov-2026: a list holding an application that was given a post-hearing window (Compliance 2,
+        "Grant Window") fails to load ("The list could not be loaded (Ref …)") — Desktop scrutiny, On hold and
+        All applications — and such an application is not found even by its own ID ("Super admin" #89). Searching
+        by Application ID still finds every other application."""
         self.navigate(f"{ADMIN_APPLICATIONS_URL}?view={view}" + (f"&s={step}" if step else "")
-                      + (f"&district={district}" if district else ""))
+                      + (f"&district={district}" if district else "") + (f"&q={query}" if query else ""))

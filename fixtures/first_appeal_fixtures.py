@@ -30,7 +30,7 @@ from test_data.first_appeal_factory import (
     FirstAppealData,
     FirstAppealFactory,
 )
-from utils import file_manager
+from utils import failure_pages, file_manager
 from utils.state_store import TestStateStore, UserRecord
 from config import ADMIN_LOGOUT_URL
 from fixtures.sessions_fixtures import AGENCY_LOGOUT_URL
@@ -209,10 +209,10 @@ def filed_first_appeal_order_only(second_browser) -> dict:
     return _seed_first_appeal(second_browser, FirstAppealFactory.valid_order_only(file_manager.VALID_CERTIFICATE))
 
 
-def _filed_agency_page(second_browser, want_pending: bool):
+def _filed_agency_page(second_browser, node, want_pending: bool):
     """Generator behind the filed-appeal fixtures: logs a separate browser in as each ``first_appeal`` agency
     in turn and yields (FirstAppealPage, UserRecord) for the first whose appeal card is pending
-    (``want_pending``) or decided. Skips when none matches."""
+    (``want_pending``) or decided. Skips when none matches. ``node`` is the test, for the failure screenshot."""
     browser = second_browser()
     context = browser.new_context()
     page = context.new_page()
@@ -229,6 +229,7 @@ def _filed_agency_page(second_browser, want_pending: bool):
             if fa.filed_appeal_card.count():
                 pending = "Pending decision" in fa.filed_appeal_title.text_content()
                 if pending == want_pending:
+                    failure_pages.register(node, page, f"agency {agency.username}")
                     yield fa, agency
                     page.goto(AGENCY_LOGOUT_URL, wait_until="domcontentloaded")
                     return
@@ -240,10 +241,10 @@ def _filed_agency_page(second_browser, want_pending: bool):
 
 
 @pytest.fixture
-def appealed_agency_page(second_browser):
+def appealed_agency_page(second_browser, request):
     """FORM-III in a separate browser for an agency whose First Appeal awaits a decision (recorded as
     ``first_appeal`` in the state store). Yields (FirstAppealPage, the agency's UserRecord); nothing is filed."""
-    yield from _filed_agency_page(second_browser, want_pending=True)
+    yield from _filed_agency_page(second_browser, request.node, want_pending=True)
 
 
 @pytest.fixture
@@ -280,10 +281,10 @@ def appeal_filing_allowed():
 
 
 @pytest.fixture
-def decided_appeal_agency_page(second_browser):
+def decided_appeal_agency_page(second_browser, request):
     """FORM-III in a separate browser for an agency whose First Appeal has been decided (its card no longer
     says 'Pending decision'). Yields (FirstAppealPage, UserRecord); skips when no appeal has been decided."""
-    yield from _filed_agency_page(second_browser, want_pending=False)
+    yield from _filed_agency_page(second_browser, request.node, want_pending=False)
 
 
 # ── Agency-side data fixtures ──────────────────────────────────────────────────

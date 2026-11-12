@@ -229,6 +229,53 @@ class AppealOutcomeFactory:
         return AppealOutcomeData(disposal="dismissed_upheld", reasons=AppealOutcomeFactory._REASONS,
                                  scenario_label="dismissed_upheld")
 
+    # Reasons for each appellate order (first or second appeal), each well over the 50-character minimum
+    _ORDER_REASONS = {
+        "allowed": "the refusal order did not consider the corrected Part A details already on record, so it "
+                   "is set aside and the application is to be approved.",
+        "allowed_conditions": "the application is approved on condition that the agency files its updated Part A "
+                              "details with the Registering Authority within 15 days.",
+        "remanded": "the record does not show a fresh verification of Part A; the case is sent back to the "
+                    "District for re-scrutiny after a paper verification.",
+        "dismissed_upheld": "the appellant's grounds were examined against the record; the Part A deficiency "
+                            "named in the refusal order was not cured, so the refusal stands.",
+        "dismissed_default": "the appellant did not appear for the hearing on the date fixed and gave no valid "
+                             "reason for the absence, so the appeal is dismissed for default.",
+        "delay_rejected": "the appeal was filed beyond the limitation period without sufficient cause for the "
+                          "delay; condonation is refused and the case is closed.",
+        "final_dismissal": "the grounds raised against the First Appellate order are not made out on the record; "
+                           "the Second Appeal is dismissed and the case is closed under Sec 7(3).",
+    }
+
+    @staticmethod
+    def order(disposal: str) -> AppealOutcomeData:
+        """The appellate order ``disposal`` (a FIRST_DISPOSALS or SECOND_DISPOSALS value) with its reasons."""
+        reasons = f"QA automation appellate order (map test data): {AppealOutcomeFactory._ORDER_REASONS[disposal]}"
+        return AppealOutcomeData(disposal=disposal, reasons=reasons, scenario_label=disposal)
+
+
+class SecondAppealFactory:
+    """Builds FORM-IV filing payloads (``FirstAppealData`` with ``SecondAppealPage.DOC_SLOTS`` documents).
+    Texts as seen on dev, 06-Nov-2026."""
+
+    SUBMIT_LABEL = "Submit Second — and final — Appeal to the Commissionerate (FORM-IV)"
+    HEADING = "Second Appeal — Commissionerate (State) Level"
+    ADDRESSEE = ("To, The Second Appellate Authority, Commissioner, Skill Development, Employment & "
+                 "Entrepreneurship, Maharashtra State, Maharashtra.")
+
+    @staticmethod
+    def valid_with_documents(file_path: str) -> FirstAppealData:
+        """A complete Second Appeal with all three documents (``file_path`` reused for every slot)."""
+        return FirstAppealData(
+            grounds=["non_consideration", "natural_justice"],
+            brief_facts="QA automation (map test data): the First Appellate Authority upheld the refusal without "
+                        "considering the corrected Part A details placed on record with the First Appeal.",
+            relief_type="Setting Aside the Order",
+            relief_sought="Set aside the First Appellate order and the refusal, and direct registration (QA automation).",
+            documents={slot: file_path for slot in ("ra_order", "fa1_order", "other")},
+            scenario_label="second_appeal_valid_with_documents",
+        )
+
     @staticmethod
     def no_disposal() -> AppealOutcomeData:
         return AppealOutcomeData(disposal="", reasons=AppealOutcomeFactory._REASONS, scenario_label="no_disposal",
