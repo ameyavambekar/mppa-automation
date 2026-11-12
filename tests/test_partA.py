@@ -21,10 +21,14 @@ LATER_STEP_PAGES = ("partB", "partC", "partF", "enclosures", "declaration", "pre
 
 # Fields the server must reject when Part A is saved blank (KAN-TC-60).
 MANDATORY_FIELD_NAMES = (
-    "agency_type", "date_of_establishment", "incorporation_no", "incorporation_file",
+    "agency_type", "date_of_establishment",
     "tan_number", "tan_file", "gstin", "gst_file", "address_line1", "taluka", "city",
     "pincode", "authorized_signatory", "designation",
 )
+# Mandatory for every Agency type except Proprietorship (TC-430). The server checks them only once an Agency
+# type is chosen, so a save with Agency type blank does not flag them.
+INCORPORATION_FIELD_NAMES = ("incorporation_no", "incorporation_file")
+INCORPORATION_REQUIRED_TYPE = "Partnership Firm"
 MH_OFFICE_FIELD_NAMES = ("mh_address_line1", "mh_district_id", "mh_mandal_taluka", "mh_city", "mh_pincode")
 
 IS_BAD = re.compile(r"\bis-bad\b")
@@ -219,7 +223,12 @@ def test_tc60_blank_form_shows_validation_tooltip(part_a_page: PartAPage, logged
     When  I click "Save Part A & Continue"
     Then  the save is rejected and every mandatory field is highlighted in red at once
     And   the page scrolls to the first highlighted field
+    When  I choose an Agency type other than Proprietorship and save again
+    Then  the incorporation number and certificate are highlighted as well
     And   Part A is not saved (Part B still redirects back)
+
+    The incorporation fields depend on the Agency type (not needed for a Proprietorship, TC-430), so the
+    server checks them only once a type is chosen; a fully blank save does not flag them.
 
     Notion: KAN-TC-60 | KAN-8 AC-3, EC-7 | data: fresh_agency_user
     """
@@ -244,6 +253,17 @@ def test_tc60_blank_form_shows_validation_tooltip(part_a_page: PartAPage, logged
 
     with allure.step("Verify the page scrolled to the first highlighted field"):
         expect(part_a_page.rejected_fields.first).to_be_in_viewport()
+
+    with allure.step(f"Choose Agency type '{INCORPORATION_REQUIRED_TYPE}' and save again"):
+        part_a_page.select_legal_constitution(INCORPORATION_REQUIRED_TYPE)
+        expect(part_a_page.incorporation_no_required_mark).to_be_visible()
+        expect(part_a_page.incorporation_certificate_required_mark).to_be_visible()
+        part_a_page.click_save_next()
+
+    with allure.step("Verify the incorporation number and certificate are highlighted in red"):
+        highlighted = set(part_a_page.rejected_fields.evaluate_all("els => els.map(e => e.name)"))
+        missing = sorted(set(INCORPORATION_FIELD_NAMES) - highlighted)
+        assert not missing, f"Incorporation fields not highlighted: {missing}; highlighted: {sorted(highlighted)}"
 
     with allure.step("Verify Part A was not saved"):
         _expect_part_a_not_saved(page)
