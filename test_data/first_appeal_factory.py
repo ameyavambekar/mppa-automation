@@ -256,12 +256,102 @@ class AppealOutcomeFactory:
 
 class SecondAppealFactory:
     """Builds FORM-IV filing payloads (``FirstAppealData`` with ``SecondAppealPage.DOC_SLOTS`` documents).
-    Texts as seen on dev, 06-Nov-2026."""
+    Texts as seen on dev, 06-Nov-2026 and 13-Nov-2026 (KAN-15 cases, now linked to KAN-49)."""
 
     SUBMIT_LABEL = "Submit Second — and final — Appeal to the Commissionerate (FORM-IV)"
     HEADING = "Second Appeal — Commissionerate (State) Level"
     ADDRESSEE = ("To, The Second Appellate Authority, Commissioner, Skill Development, Employment & "
                  "Entrepreneurship, Maharashtra State, Maharashtra.")
+    SUBJECT = "Subject: Appeal against the order of the First Appellate Authority — {authority}"
+    TAB_TITLE = "Second Appeal — FORM-IV | Placement Agency Regulation Portal"
+    BREADCRUMB = r"Home\s*›\s*My Application\s*›\s*Second Appeal \(FORM-IV\)"
+    FORM_BADGE = "FORM-IV · See Rule 6(10)"
+    HEADER_LINES = ["To be decided by the Commissionerate (Second Appellate Authority)",
+                    "Under Section 7(2) of the Maharashtra Private Placement Agencies (Regulation) Act, 2025"]
+    CONFIRM = "Submit your SECOND and FINAL appeal?\n\nNo further appeal will be possible after this one."
+    SENT_TO = "Commissioner, Skill Development, Employment & Entrepreneurship, Maharashtra State"
+    FIRST_AUTHORITY = "Deputy Commissioner, Skill Development, Employment & Entrepreneurship, {district} District"
+    DECIDED_FINAL = ("Your Second Appeal was rejected. This decision is final and no further appeal can be filed on "
+                     "the portal.")
+    BRIEF_FACTS_PLACEHOLDER = "Concise narration of the relevant facts, including why the First Appellate order is incorrect…"
+    # Home › Appeals card
+    HOME_FILE_HINT = "Your First Appeal was dismissed. You can file the Second (final) Appeal."
+    HOME_FILE_LINK = "File Second Appeal"
+    HOME_VIEW_LINK = "View Second Appeal"
+    DOC_LABELS = {
+        "ra_order": "(b) Order of the Registering Authority",
+        "fa1_order": "(c) Order of the First Appellate Authority",
+        "other": "(d) Any other document",
+    }
+    REQUIRED_SLOTS = ("ra_order", "fa1_order")
+
+    @staticmethod
+    def valid_required_documents(file_path: str) -> FirstAppealData:
+        """A complete Second Appeal with only the two required documents, (b) and (c)."""
+        return FirstAppealData(
+            grounds=["error_of_law"],
+            brief_facts="QA automation (second appeal test data): the First Appellate Authority did not deal with "
+                        "the corrected Part A details placed on record.",
+            relief_type="Remand for Fresh Consideration",
+            relief_sought="Remand the matter for fresh consideration (QA automation).",
+            documents={slot: file_path for slot in SecondAppealFactory.REQUIRED_SLOTS},
+            scenario_label="second_appeal_required_documents",
+        )
+
+    @staticmethod
+    def no_ground(file_path: str) -> FirstAppealData:
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.grounds = []
+        data.scenario_label = "second_appeal_no_ground"
+        data.expected_error = FirstAppealFactory.NO_GROUND_ALERT
+        return data
+
+    @staticmethod
+    def other_ground_blank(file_path: str) -> FirstAppealData:
+        """'Other' ticked with nothing specified — must be refused."""
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.grounds, data.grounds_other = ["other"], ""
+        data.scenario_label = "second_appeal_other_ground_blank"
+        return data
+
+    @staticmethod
+    def without_document(file_path: str, slot: str) -> FirstAppealData:
+        """A complete Second Appeal missing the required document ``slot`` ('ra_order' or 'fa1_order')."""
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.documents.pop(slot)
+        data.scenario_label = f"second_appeal_without_{slot}"
+        return data
+
+    @staticmethod
+    def brief_facts_of_length(file_path: str, length: int) -> FirstAppealData:
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.brief_facts = "QA automation facts, appeal test data only"[:length]
+        data.scenario_label = f"second_appeal_brief_facts_{length}_chars"
+        return data
+
+    @staticmethod
+    def relief_of_length(file_path: str, length: int) -> FirstAppealData:
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.relief_sought = "QA-relief-sought-test"[:length]
+        data.scenario_label = f"second_appeal_relief_{length}_chars"
+        return data
+
+    @staticmethod
+    def oversized(file_path: str, oversized_path: str, slot: str) -> FirstAppealData:
+        """A PDF over 2 MB in ``slot`` — the page refuses to submit."""
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.documents[slot] = oversized_path
+        data.scenario_label = f"second_appeal_oversized_{slot}"
+        data.expected_error = FirstAppealFactory.TOO_LARGE_ALERT
+        return data
+
+    @staticmethod
+    def invalid_document(file_path: str, bad_path: str, label: str) -> FirstAppealData:
+        """A complete Second Appeal whose (b) document is not an acceptable PDF — the portal must refuse it."""
+        data = SecondAppealFactory.valid_required_documents(file_path)
+        data.documents["ra_order"] = bad_path
+        data.scenario_label = label
+        return data
 
     @staticmethod
     def valid_with_documents(file_path: str) -> FirstAppealData:

@@ -19,7 +19,22 @@ class SecondAppealPage(FirstAppealPage):
     type + relief sought (≥ 10), 9 limitation (auto-calculated), 10 documents (PDF, max 2 MB each — (b) the
     Registering Authority's order and (c) the First Appellate order are required, (d) any other document)
     and the verification. Submitting is "Submit Second — and final — Appeal to the Commissionerate (FORM-IV)".
+
+    Also seen on dev, 13-Nov-2026: badge "FORM-IV · See Rule 6(10)"; the order card adds "Original Registering
+    Authority Order" and "Date of Original Order"; the submit script alerts with no ground / a file over 2 MB and
+    otherwise asks "Submit your SECOND and FINAL appeal? …"; leaving a half-filled form asks nothing. Once filed,
+    the card "#N · Your Second Appeal — Pending decision" replaces the form; once decided the note reads "Your
+    Second Appeal was rejected. This decision is final …" and the journey's Result "Final: Rejected".
     """
+
+    @property
+    def form_badge(self):
+        return self.page.get_by_text("FORM-IV · See Rule 6(10)", exact=True)
+
+    @property
+    def subject(self):
+        """'Subject: Appeal against the order of the First Appellate Authority — <authority>' in the addressee card."""
+        return self.addressee.get_by_text("Subject:")
 
     # logical document slot → file input name (Section 10)
     DOC_SLOTS = {
