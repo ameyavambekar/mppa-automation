@@ -97,7 +97,7 @@ def test_tc400_header_overdue(renewal_page: LicenseRenewalPage, expired_renewal_
     """
     Given my registration certificate has expired
     When  I open agency/renewal.php
-    Then  the title and note are shown; Registration No. is my certificate number, Valid up to its expiry date
+    Then  the title and note are shown; Registration No. is my Application ID, Valid up to its expiry date
           and Days left "N days overdue"; "Back to my dashboard" opens Home
 
     Notion: KAN-TC-400 | KAN-37 AC-2
@@ -123,10 +123,12 @@ def test_tc400_header_overdue(renewal_page: LicenseRenewalPage, expired_renewal_
         renewal_page.back_to_dashboard()
         expect(page).to_have_url(ON_HOME)
 
-    with allure.step("Verify the facts match the certificate card on Home"):
+    with allure.step("Verify the facts match Home: Application ID and the certificate's Valid until"):
         home = AgencyHomePage(page)
         home.dismiss_testing_notice()
-        expect(home.certificate_field("Certificate no.")).to_have_text(registration_no)
+        # Registration No. is the Application ID; the card's "Certificate no." is a different number once a
+        # certificate has been renewed (e.g. 26275280511439 for 2026528111439).
+        expect(home.application_id).to_have_text(registration_no)
         expect(home.certificate_field("Valid until")).to_have_text(valid_up_to)
 
 

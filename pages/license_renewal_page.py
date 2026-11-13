@@ -19,7 +19,7 @@ class LicenseRenewalPage(BasePage):
       it POSTs to itself and the server lists what is wrong under "Please correct:" (``.rw-err``), keeping
       the answers (the file must be chosen again);
     - "Latest renewal application #N — filed <date> · <status>" once one is filed (With the department /
-      Renewed), followed by "Renewal opens 90 days before expiry — on <date>." while that is still ahead;
+      Renewed / Rejected + "Reason: <officer's reasons>" — after a rejection the form is shown again), followed by "Renewal opens 90 days before expiry — on <date>." while that is still ahead;
     - "No registration certificate was found for your agency." when no certificate was issued.
 
     A successful submission shows "Submitted. Renewal application #N submitted. …" (``.rw-ok``). Logged out
@@ -53,7 +53,12 @@ class LicenseRenewalPage(BasePage):
     BACK_LABEL = "Back to my dashboard"
     WITH_DEPARTMENT = "With the department"
     RENEWED = "Renewed"
+    REJECTED = "Rejected"
     CERTIFICATE_LINK_LABEL = "View / download the certificate"
+
+    @staticmethod
+    def rejection_reason(reasons: str) -> str:
+        return f"Reason: {reasons}"
 
     @staticmethod
     def window_message(opens_on: str) -> str:
@@ -274,5 +279,5 @@ class LicenseRenewalPage(BasePage):
                 return "pending"
             if self.RENEWED in text:
                 return "renewed"
-            return "decided"  # e.g. rejected — not seen on dev yet
+            return "decided"
         return "not_open"
