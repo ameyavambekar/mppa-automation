@@ -17,6 +17,7 @@ from pages.agency_home_page import AGENCY_HOME_URL, AgencyHomePage
 from pages.certificate_page import CertificatePage
 from pages.license_renewal_page import RENEWAL_URL, LicenseRenewalPage
 from utils.aio import aio_case
+from utils.state_store import TestStateStore
 
 STORY = "Licence Renewal"
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -392,7 +393,10 @@ def test_tc405_submit_renewal(page, renewal_chain_allowed, renewal_page: License
     with allure.step("Verify the submission message and the latest application"):
         expect(renewal_page.success_box).to_have_text(re.compile(
             r"^Submitted\.\s*Renewal application #\d+ submitted\. You will be informed by e-mail\.$"))
-        number = re.search(r"#(\d+)", renewal_page.success_box.inner_text()).group(1)
+        number = renewal_page.submitted_number()
+        TestStateStore().record_renewal(number=int(number), registration_no=user.application_id, status="pending",
+                                        username=user.username, filed_on=_today().isoformat(),
+                                        changes_made="no", cases_pending="no")
         expect(renewal_page.latest_application).to_contain_text(
             f"Latest renewal application #{number} — filed {_fmt(_today())}")
         expect(renewal_page.latest_application).to_contain_text(LicenseRenewalPage.WITH_DEPARTMENT)

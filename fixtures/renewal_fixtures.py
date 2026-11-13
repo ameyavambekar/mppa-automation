@@ -14,6 +14,7 @@ Compliance & Appeals Map state are ever changed; parked ones are read only.
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 
 import allure
 import pytest
@@ -25,6 +26,7 @@ from pages.license_renewal_page import LicenseRenewalPage
 from pages.login_page import LoginPage
 from test_data.admin_users_factory import OfficersFactory
 from test_data.renewal_factory import RenewalDecisionData, RenewalData, RenewalFactory, RenewalScope
+from utils.renewal_sync import record_rows
 from utils.state_store import TestStateStore
 
 RUN_ENV = "RUN_RENEWAL_TESTS"
@@ -32,6 +34,11 @@ CERTIFIED = ("approved", "licence_expired", "suspended")
 EXPIRE_REASON = "Automation — certificate expired to test the renewal flow (KAN-37)."
 NOT_ALLOWED = (f"set {RUN_ENV}=true to let the tests expire a certificate / submit / approve a renewal "
                f"(irreversible on dev)")
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+# renewal.php state → the status of the agency's newest recorded renewal that suggests it
+STORE_HINT = {"pending": "pending", "renewed": "renewed", "form": "rejected"}
 
 
 def _renewal_allowed() -> bool:
@@ -59,9 +66,15 @@ def _certified_agencies(include_parked: bool) -> list:
 
 
 def _find(page, states, include_parked: bool = True, newest_first: bool = False):
-    """The first certified agency whose renewal page is in one of ``states`` — left logged in on renewal.php."""
+    """The first certified agency whose renewal page is in one of ``states`` — left logged in on renewal.php.
+    Agencies whose newest recorded renewal (state store) suggests one of ``states`` are tried first; the
+    renewal page always decides."""
     users = _certified_agencies(include_parked)
-    for user in reversed(users) if newest_first else users:
+    users = list(reversed(users)) if newest_first else users
+    store = TestStateStore()
+    hinted = {u.username for state in states if state in STORE_HINT
+              for u in store.get_agency_users_with_renewal(STORE_HINT[state], include_parked)}
+    for user in sorted(users, key=lambda u: u.username not in hinted):
         if _renewal_state(page, user) in states:
             return user
     return None
@@ -88,6 +101,10 @@ def _submit_renewal(page, user) -> None:
         renewal.submit()
         if not renewal.success_box.count():
             pytest.fail(f"Renewal for {user.username} was not submitted: {renewal.error_messages()}")
+        TestStateStore().record_renewal(
+            number=int(renewal.submitted_number()), registration_no=user.application_id, status="pending",
+            username=user.username, filed_on=datetime.now(IST).date().isoformat(),
+            changes_made="no", cases_pending="no")
 
 
 def _expired_agency(page):
@@ -247,13 +264,15 @@ def officer_renewals_page(page) -> AdminRenewalsPage:
 @pytest.fixture
 def decided_renewals(officer_renewals_page: AdminRenewalsPage):
     """(AdminRenewalsPage, every row of the All tab) as the Super Admin; skips unless at least one renewal has
-    been approved and one rejected."""
+    been approved and one rejected. The rows are recorded in the state store on the way."""
     renewals = officer_renewals_page
     counts = renewals.tab_counts()
     if not counts["approved"] or not counts["rejected"]:
         pytest.skip(f"Needs a renewed and a rejected renewal application (counts: {counts}).")
     renewals.open(tab="all")
-    return renewals, renewals.row_data()
+    rows = renewals.row_data()
+    record_rows(rows)
+    return renewals, rows
 
 
 @pytest.fixture

@@ -12,6 +12,7 @@ state store (``TestStateStore.record_agency_status``):
 * Licences & certificates — Active / Expiring / Expired / Suspended / Revoked, by
   Registration No. (the Application ID)
 * Appeals — First Appeals (Division) and Second Appeals (Commissionerate)
+* Renewal applications — every licence renewal application (``utils.renewal_sync``)
 
 Later sources win (an appealed application is still listed as Rejected; an
 approved one under Licences). A known agency that has not paid and is no longer
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import os
 from collections import Counter
+from contextlib import contextmanager
 
 from pages.admin.appeals_page import AdminAppealsPage
 from pages.admin.applications_page import AdminApplicationsPage
@@ -128,39 +130,54 @@ def sync_agency_statuses(page, store: TestStateStore = None) -> Counter:
             continue
         store.record_agency_status(username=user.username, status=status, data=data)
         summary[status] += 1
+    from utils.renewal_sync import sync_renewals      # imported here: renewal_sync imports this module
+    summary.update({f"renewal {k}": v for k, v in sync_renewals(page, store).items()})
     return summary
 
 
-def main() -> None:
-    from dotenv import load_dotenv
-    from playwright.sync_api import sync_playwright
-
+@contextmanager
+def super_admin_page(playwright, store: TestStateStore):
+    """A headless page logged in to the Officer Console as the Super Admin (``.env``, else the store's
+    super_admin); logs out and closes the browser afterwards."""
     from config import ADMIN_LOGOUT_URL
     from pages.admin.dashboard_page import ADMIN_DASHBOARD_URL
     from pages.admin.login_page import AdminLoginPage
 
-    load_dotenv()
-    store = TestStateStore()
     username, password = os.getenv("ADMIN_SUPER_USERNAME"), os.getenv("ADMIN_SUPER_PASSWORD")
     if not (username and password):
         admin = store.get_any_super_admin()
         if admin is None:
             raise SystemExit("Set ADMIN_SUPER_USERNAME / ADMIN_SUPER_PASSWORD in .env (or seed a super_admin).")
         username, password = admin.username, admin.password
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
+    from utils import portal_popup
+
+    portal_popup.install()
+    browser = playwright.chromium.launch()
+    page = browser.new_context().new_page()      # new_context: the pop-up suppression wraps it
+    try:
         login = AdminLoginPage(page)
         login.open()
         error = login.login_past_captcha(username, password)
         if error:
             raise SystemExit(f"Admin login as {username} failed: {error}")
         page.wait_for_url(ADMIN_DASHBOARD_URL)
+        yield page
+    finally:
         try:
-            summary = sync_agency_statuses(page, store)
-        finally:
             page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
+        finally:
             browser.close()
+
+
+def main() -> None:
+    from dotenv import load_dotenv
+    from playwright.sync_api import sync_playwright
+
+    load_dotenv()
+    store = TestStateStore()
+    with sync_playwright() as p:
+        with super_admin_page(p, store) as page:
+            summary = sync_agency_statuses(page, store)
     for status, count in sorted(summary.items()):
         print(f"{status:24} {count}")
 

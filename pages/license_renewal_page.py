@@ -1,3 +1,5 @@
+import re
+
 import allure
 
 from config import AGENCY_BASE
@@ -263,6 +265,10 @@ class LicenseRenewalPage(BasePage):
         """The problems listed under 'Please correct:', in order."""
         lines = [" ".join(line.split()) for line in self.errors_box.inner_text().splitlines()]
         return [line for line in lines if line and line != self.ERRORS_HEADING]
+
+    def submitted_number(self) -> str:
+        """The N of "Renewal application #N submitted." in the success box after a submission."""
+        return re.search(r"#(\d+)", self.success_box.inner_text()).group(1)
 
     def state(self) -> str:
         """Where the agency stands on this page: 'form', 'pending', 'renewed', 'not_open', 'no_certificate'
