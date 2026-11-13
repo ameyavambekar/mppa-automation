@@ -38,6 +38,11 @@ class AdminAgencyViewPage(BasePage):
         return self.page.locator(".adm-page-title").first
 
     @property
+    def content(self):
+        """The main content area (agency name, registration no., stage …)."""
+        return self.page.locator("#adm-main")
+
+    @property
     def header_status_badge(self):
         # TODO: verify — first status pill (.sb) in the header/title area
         return self.page.locator(".adm-page-title .sb, .adm-page-title span[class*='sb-']").first

@@ -1,4 +1,4 @@
-"""Fixtures for Licence Renewal (KAN-37): the agency's renewal.php and the officer's Renewal applications.
+"""Fixtures for Licence Renewal: the agency's renewal.php (KAN-37) and the officer's Renewal applications (KAN-51).
 
 Where an agency stands is read live from its renewal page (``LicenseRenewalPage.state``): the state store's
 ``status_data`` is rewritten by the console sync, so it cannot hold the renewal stage. Candidates are the
@@ -23,7 +23,8 @@ from pages.admin.licenses_page import AdminLicensesPage
 from pages.admin.renewals_page import AdminRenewalsPage
 from pages.license_renewal_page import LicenseRenewalPage
 from pages.login_page import LoginPage
-from test_data.renewal_factory import RenewalDecisionData, RenewalData, RenewalFactory
+from test_data.admin_users_factory import OfficersFactory
+from test_data.renewal_factory import RenewalDecisionData, RenewalData, RenewalFactory, RenewalScope
 from utils.state_store import TestStateStore
 
 RUN_ENV = "RUN_RENEWAL_TESTS"
@@ -233,6 +234,75 @@ def renewal_admin_licenses_page(page) -> AdminLicensesPage:
 
 
 @pytest.fixture
+def officer_renewals_page(page) -> AdminRenewalsPage:
+    """Renewal applications (default tab) as the Super Admin. Logs out on teardown."""
+    page.context.clear_cookies()
+    _admin_login(page)
+    renewals = AdminRenewalsPage(page)
+    renewals.open()
+    yield renewals
+    _admin_logout(page)
+
+
+@pytest.fixture
+def decided_renewals(officer_renewals_page: AdminRenewalsPage):
+    """(AdminRenewalsPage, every row of the All tab) as the Super Admin; skips unless at least one renewal has
+    been approved and one rejected."""
+    renewals = officer_renewals_page
+    counts = renewals.tab_counts()
+    if not counts["approved"] or not counts["rejected"]:
+        pytest.skip(f"Needs a renewed and a rejected renewal application (counts: {counts}).")
+    renewals.open(tab="all")
+    return renewals, renewals.row_data()
+
+
+@pytest.fixture
+def renewal_scope_rows(logged_in_officers_page) -> list[dict]:
+    """Every renewal application row (All tab), read as the Super Admin in the officer fixtures' session."""
+    renewals = AdminRenewalsPage(logged_in_officers_page.page)
+    renewals.open(tab="all")
+    rows = renewals.row_data()
+    logged_in_officers_page.open()          # back to Officers & Access: new_officers creates officers there
+    if not rows:
+        pytest.skip("No renewal applications on dev yet.")
+    return rows
+
+
+@pytest.fixture
+def renewal_scope_areas(renewal_scope_rows) -> RenewalScope:
+    areas = RenewalFactory.scope_areas(renewal_scope_rows)
+    if not areas.district:
+        pytest.skip("No renewal application is in a known district.")
+    return areas
+
+
+@pytest.fixture
+def renewal_role_officer(new_officers, officer_login):
+    """Factory: creates a NEW test officer of ``role`` for the area (never an existing officer), logs it in in
+    a separate browser and opens Renewal applications. Returns the AdminRenewalsPage. The officers are deleted
+    on teardown (``new_officers``)."""
+    def _make(role: str, division: str = "", district: str = "") -> AdminRenewalsPage:
+        data = OfficersFactory.officer(role, division=division, district=district,
+                                       label=f"{role} officer {division}/{district}".rstrip("/"))
+        new_officers.create(data)
+        page, error = officer_login(data)
+        if error:
+            pytest.fail(f"New {role} officer {data.username} could not log in: {error}")
+        renewals = AdminRenewalsPage(page)
+        renewals.open()
+        return renewals
+
+    return _make
+
+
+@pytest.fixture
+def logged_out_page(page):
+    """The browser with no officer session."""
+    page.context.clear_cookies()
+    return page
+
+
+@pytest.fixture
 def renewal_officer_login(page):
     """A callable that swaps the browser to the Officer Console as the Super Admin (mid-test, after the agency
     steps). Logs the officer out on teardown."""
@@ -295,3 +365,8 @@ def renewal_rejection_data() -> RenewalDecisionData:
 def renewal_short_remarks_data() -> list[RenewalDecisionData]:
     """[too-short rejection, too-short approval] — the order KAN-TC-413 tries them."""
     return [RenewalFactory.short_rejection(), RenewalFactory.short_approval()]
+
+
+@pytest.fixture
+def renewal_dialog_remarks_data() -> RenewalDecisionData:
+    return RenewalFactory.dialog_remarks()

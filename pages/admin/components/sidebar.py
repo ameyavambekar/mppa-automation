@@ -214,6 +214,11 @@ class AdminSidebar(BasePage):
     def go_to_approved(self):
         self.approved_link.click()
 
+    @allure.step("Sidebar → Renewal applications")
+    def go_to_renewals(self):
+        with self.page.expect_navigation():
+            self.renewals_link.click()
+
     @allure.step("Sidebar → Appeals")
     def go_to_appeals(self):
         self.appeals_link.click()
