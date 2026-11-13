@@ -2,7 +2,8 @@
 Data Factory — Licence Renewal (Form-II)
 ========================================
 Answers for the agency's Renewal application form (module/agency/renewal.php) and the officer's
-decision remarks (admin/licenses/renewals.php), for KAN-37 (AIO KAN-TC-399…415, KAN-TC-829, KAN-TC-832).
+decision remarks (admin/licenses/renewals.php), for KAN-37 (AIO KAN-TC-399…411, 415, 832) and KAN-51
+(KAN-TC-412…414, 829, 833…845).
 
 The form has no client-side checks: whatever is filled is posted and the server lists what is wrong under
 "Please correct:". ``expected_errors`` holds those lines in the order the page lists them.
@@ -49,6 +50,16 @@ class RenewalDecisionData:
     remarks: str
     scenario_label: str = ""
     expected_error: Optional[str] = None    # "Write at least N characters." when too short
+
+
+@dataclass
+class RenewalScope:
+    """Areas for the officer-scope cases: officers are created for these (new test officers only)."""
+    district: str = ""                      # the district with the most renewal applications
+    division: str = ""                      # its division
+    empty_division: str = ""                # a division / district with no renewal application
+    empty_district: str = ""
+    division_districts: tuple = ()
 
 
 class RenewalFactory:
@@ -134,3 +145,29 @@ class RenewalFactory:
     def short_rejection() -> RenewalDecisionData:
         return RenewalDecisionData(decision="reject", remarks="Too short", scenario_label="Reject, 9-character reasons",
                                    expected_error="Write at least 30 characters.")
+
+    @staticmethod
+    def dialog_remarks() -> RenewalDecisionData:
+        """KAN-TC-838: remarks typed and then abandoned with Close / ×."""
+        return RenewalDecisionData(decision="approve", remarks="Typed and then closed without confirming.",
+                                   scenario_label="Remarks typed, dialog closed")
+
+    # ── Officer scope (KAN-51 AC-13…15) ───────────────────────────────────────
+
+    @staticmethod
+    def scope_areas(rows: list[dict]) -> RenewalScope:
+        """From the Super Administrator's All rows: the district with the most renewal applications, its
+        division, and a district (of another division) with none."""
+        from test_data.district_breakup_factory import DistrictBreakupFactory as D
+        counts: dict[str, int] = {}
+        for r in rows:
+            if D.division_of(r["district"]):
+                counts[r["district"]] = counts.get(r["district"], 0) + 1
+        if not counts:
+            return RenewalScope()
+        district = max(counts, key=counts.get)
+        division = D.division_of(district)
+        empty = next(((dv, d) for dv, ds in D.DIVISIONS.items() if dv != division for d in ds if d not in counts),
+                     ("", ""))
+        return RenewalScope(district=district, division=division, empty_division=empty[0],
+                            empty_district=empty[1], division_districts=D.DIVISIONS[division])

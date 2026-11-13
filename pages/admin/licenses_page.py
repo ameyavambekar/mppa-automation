@@ -401,6 +401,11 @@ class AdminLicensesPage(BasePage):
             params.append(f"q={query}")
         self.navigate(ADMIN_LICENSES_URL + ("?" + "&".join(params) if params else ""))
 
+    @allure.step("Click Renewal applications")
+    def open_renewal_applications(self):
+        with self.page.expect_navigation():
+            self.renewal_applications_link.click()
+
     @allure.step("Filter licences by status: {status}")
     def filter_by_status(self, status: str):
         """status: one of STATUS_FILTERS."""

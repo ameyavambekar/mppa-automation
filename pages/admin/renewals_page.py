@@ -45,7 +45,34 @@ class AdminRenewalsPage(BasePage):
     PENDING = "Pending"
     RENEWED = "Renewed"
     REJECTED = "Rejected"
+    STATUS_OF_TAB = {"submitted": PENDING, "approved": RENEWED, "rejected": REJECTED}
     EMPTY_LIST = "No renewal applications in this list."
+    REMARKS_MAX = "2000"
+    DIVISIONAL_NOTE = ("You can view renewals of your area (decisions are taken by the District officer / "
+                       "Commissioner).")
+    SIDEBAR_SECTION = "Registry"
+    # Officer notification when an agency files a renewal (KAN-51 AC-11)
+    NOTIFICATION_TITLE = "Renewal application #{number} received"
+    NOTIFICATION_BODY = "Review it under Registry → Renewal applications."
+    NOTIFICATION_TYPE = "New application"
+    NOTIFICATION_DOT = "#2e5aa8"
+    # Audit log (KAN-51 AC-12)
+    AUDIT_RENEWED = "CERTIFICATE_RENEWED"
+    AUDIT_REJECTED = "CERTIFICATE_RENEWAL_REJECTED"
+    AUDIT_TABLE = "agency_approvals"
+    AUDIT_DETAILS = {AUDIT_RENEWED: "Renewal #{number} approved — certificate valid",
+                     AUDIT_REJECTED: "Renewal application #{number} rejected:"}
+
+    _ROWS_JS = """rows => rows.map(r => {
+        const c = r.cells, t = e => (e ? e.textContent : '').replace(/\\s+/g, ' ').trim();
+        const badge = c[7].querySelector('.ui-badge'), app = r.querySelector('a[href*="agency_view.php"]');
+        return {number: t(c[0]), agency: t(c[1].querySelector('strong')), reg: t(c[1].querySelector('.ui-mono')),
+                district: t(c[2]), validity: t(c[3]), applied: t(c[4]), declarations: t(c[5]),
+                fee: t(c[6].firstChild), reference: t(c[6].querySelector('.ui-muted')), status: t(badge),
+                badge_class: badge ? badge.className : '', decided: t(c[7].querySelector('div')),
+                actions: [...c[8].querySelectorAll('a, button')].map(t),
+                application: app ? app.getAttribute('href') : ''};
+    })"""
 
     @staticmethod
     def too_short(decision: str) -> str:
@@ -169,6 +196,11 @@ class AdminRenewalsPage(BasePage):
         return self.dialog.get_by_role("button", name="Close")
 
     @property
+    def close_x_button(self):
+        """The × in the dialog's header."""
+        return self.dialog.locator(".smod-cls")
+
+    @property
     def toast(self):
         return self.page.locator("#uiToasts .ui-toast")
 
@@ -183,6 +215,11 @@ class AdminRenewalsPage(BasePage):
     def open_tab(self, tab: str):
         with self.page.expect_navigation():
             self.tab(tab).click()
+
+    @allure.step("Click Licences & certificates")
+    def open_licenses(self):
+        with self.page.expect_navigation():
+            self.licenses_link.click()
 
     @allure.step("Click {decision} on the renewal of {registration_no}")
     def open_decision(self, registration_no: str, decision: str):
@@ -214,6 +251,10 @@ class AdminRenewalsPage(BasePage):
     def close_dialog(self):
         self.close_button.click()
 
+    @allure.step("Close the decision dialog with ×")
+    def close_dialog_with_x(self):
+        self.close_x_button.click()
+
     @allure.step("Open the agency's application")
     def open_application(self, registration_no: str, number: str = None):
         with self.page.expect_navigation():
@@ -240,3 +281,16 @@ class AdminRenewalsPage(BasePage):
     def renewal_number(self, registration_no: str) -> str:
         """The # (renewal application number) of the agency's newest listed renewal."""
         return self.cell_text(registration_no, "#")
+
+    def row_data(self) -> list[dict]:
+        """Every listed row as a dict: number, agency, reg, district, validity, applied, declarations, fee (the
+        amount only), reference (the payment reference under it), status, badge_class, decided, actions, application (the Application link's href)."""
+        return self.rows.evaluate_all(self._ROWS_JS)
+
+    def tab_counts(self) -> dict[str, int]:
+        return {tab: self.get_tab_count(tab) for tab in self.TABS}
+
+    @staticmethod
+    def agency_id(application_href: str) -> str:
+        """The agency id in an Application link (…agency_view.php?id=<id>)."""
+        return re.search(r"[?&]id=(\d+)", application_href).group(1)
