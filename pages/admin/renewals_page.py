@@ -282,6 +282,10 @@ class AdminRenewalsPage(BasePage):
         """The # (renewal application number) of the agency's newest listed renewal."""
         return self.cell_text(registration_no, "#")
 
+    def decided_officer(self, registration_no: str, number: str = None) -> str:
+        """The officer named in '<date> · <officer>' under a decided renewal's status."""
+        return self.decided_by(registration_no, number).text_content().split(" · ", 1)[1].strip()
+
     def row_data(self) -> list[dict]:
         """Every listed row as a dict: number, agency, reg, district, validity, applied, declarations, fee (the
         amount only), reference (the payment reference under it), status, badge_class, decided, actions, application (the Application link's href)."""
