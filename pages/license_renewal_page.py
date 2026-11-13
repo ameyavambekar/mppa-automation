@@ -1,246 +1,278 @@
 import allure
 
+from config import AGENCY_BASE
 from pages.base_page import BasePage
-from config import FORMS_BASE
+
+RENEWAL_URL = f"{AGENCY_BASE}/renewal.php"
 
 
 class LicenseRenewalPage(BasePage):
-    """Part-D: Renewal Details page (Licence Renewal Application)."""
+    """Agency — Renewal of Registration Certificate (Form-II) (module/agency/renewal.php).
 
-    # ── Breadcrumb ────────────────────────────────────────────────────────────
+    A header card (``.rw-head``: title and note) with three facts (``.rw-kv``: Registration No., Valid up
+    to, Days left). Below it, one of:
 
-    @property
-    def breadcrumb_home_link(self):
-        return self.page.locator("//div[contains(@class,'max-w-6xl')]//a[text()='Home']").first
+    - the "Renewal application" form, from 90 days before expiry (and once expired) while no renewal is
+      pending: question 1 (``changes_made`` no/yes + ``changes_details``), question 2 (``cases_pending``
+      no/yes + ``cases_details``), 3 the supporting document (``document``), the fee box (``.rw-fee``),
+      the declaration (``declare``) and "Pay ₹2,000 & submit renewal". The form has no client-side checks:
+      it POSTs to itself and the server lists what is wrong under "Please correct:" (``.rw-err``), keeping
+      the answers (the file must be chosen again);
+    - "Latest renewal application #N — filed <date> · <status>" once one is filed (With the department /
+      Renewed), followed by "Renewal opens 90 days before expiry — on <date>." while that is still ahead;
+    - "No registration certificate was found for your agency." when no certificate was issued.
 
-    @property
-    def breadcrumb_dashboard_link(self):
-        return self.page.locator("//a[text()='Dashboard']").first
+    A successful submission shows "Submitted. Renewal application #N submitted. …" (``.rw-ok``). Logged out
+    (or before Form-I is submitted) the page redirects to the agency login (``?reason=not_logged_in``).
+    """
 
-    @property
-    def breadcrumb_current_step(self):
-        return self.page.locator("//span[contains(text(),'Renewal Details')]").first
+    TITLE = "Renewal of Registration Certificate (Form-II)"
+    NOTE = ("A certificate can be renewed from 90 days before its expiry date. "
+            "After approval it is valid for 5 more years.")
+    FACT_LABELS = ("Registration No.", "Valid up to", "Days left")
+    NO_VALUE = "—"
+    NO_CERTIFICATE = "No registration certificate was found for your agency."
+    WINDOW_DAYS = 90
+    RENEWAL_YEARS = 5
+    FORM_TITLE = "Renewal application"
+    QUESTION_1 = ("1. Has anything changed since registration (address, key persons, constitution, "
+                  "branches)? *")
+    QUESTION_2 = ("2. Is any criminal case, complaint, suspension or cancellation pending against the agency "
+                  "or its key persons? *")
+    QUESTION_3 = "3. Supporting document (required if anything changed)"
+    CHANGES_PLACEHOLDER = "If Yes — describe the changes"
+    CASES_PLACEHOLDER = "If Yes — give the details"
+    DOCUMENT_HELP = "PDF, JPG or PNG · minimum 10 KB, maximum 2 MB"
+    DOCUMENT_ACCEPT = ".pdf,.jpg,.jpeg,.png"
+    FEE_LABEL = "Renewal fee — Within Maharashtra (Rule 3(3)(d))"
+    FEE = "₹2,000"
+    DECLARATION = ("I declare that the information given is true and that the agency continues to comply with "
+                   "the Act and the Rules.")
+    SUBMIT_LABEL = "Pay ₹2,000 & submit renewal"
+    ERRORS_HEADING = "Please correct:"
+    BACK_LABEL = "Back to my dashboard"
+    WITH_DEPARTMENT = "With the department"
+    RENEWED = "Renewed"
+    CERTIFICATE_LINK_LABEL = "View / download the certificate"
 
-    # ── Renewal Banner ────────────────────────────────────────────────────────
+    @staticmethod
+    def window_message(opens_on: str) -> str:
+        """'Renewal opens 90 days before expiry — on <dd Mon yyyy>.'"""
+        return f"Renewal opens 90 days before expiry — on {opens_on}."
 
-    @property
-    def renewal_banner(self):
-        return self.page.locator(".renewal-banner")
-
-    @property
-    def renewal_banner_title(self):
-        return self.page.locator(".renewal-banner-title")
-
-    @property
-    def renewal_banner_subtitle(self):
-        return self.page.locator(".renewal-banner-sub")
-
-    @property
-    def renewal_only_badge(self):
-        return self.page.locator(".renewal-badge")
-
-    # ── Alerts ────────────────────────────────────────────────────────────────
-
-    @property
-    def success_alert(self):
-        return self.page.locator(".alert-renewal.success")
-
-    @property
-    def error_alert(self):
-        return self.page.locator(".alert-renewal.error")
-
-    # ── Saved Summary Box ─────────────────────────────────────────────────────
-
-    @property
-    def summary_box(self):
-        return self.page.locator(".summary-box")
-
-    @property
-    def summary_box_title(self):
-        return self.page.locator(".summary-box-title")
-
-    def summary_value(self, key: str):
-        """Returns the value cell for a summary row, e.g. 'Existing Registration Number',
-        'Date of Expiry', 'Suspension / Cancellation in Past',
-        'Suspension / Cancellation Details'."""
-        return self.page.locator(
-            f"//span[@class='summary-key' and contains(text(),'{key}')]"
-            f"/following-sibling::span[@class='summary-val']"
-        )
+    # ── Header ────────────────────────────────────────────────────────────────
 
     @property
-    def summary_registration_number(self):
-        return self.summary_value("Existing Registration Number")
+    def header(self):
+        """The first card: title, note and the three facts (the form card has its own ``.rw-head``)."""
+        return self.page.locator(".rw-card").first
 
     @property
-    def summary_expiry_date(self):
-        return self.summary_value("Date of Expiry")
+    def title(self):
+        return self.header.locator(".rw-head h1")
 
     @property
-    def summary_expiry_chip(self):
-        # e.g. "203 days left" / "Expired 12d ago"
-        return self.page.locator("#expiryChip")
+    def note(self):
+        return self.header.locator(".rw-head p")
 
     @property
-    def summary_suspension_flag(self):
-        return self.summary_value("Suspension / Cancellation in Past")
+    def facts(self):
+        """The three header facts, each '<label><value>' (the label is a <small>)."""
+        return self.page.locator(".rw-kv > div")
+
+    def fact(self, label: str):
+        return self.facts.filter(has=self.page.locator("small", has_text=label))
 
     @property
-    def summary_suspension_details(self):
-        return self.summary_value("Suspension / Cancellation Details")
+    def back_to_dashboard_link(self):
+        return self.page.get_by_role("link", name=self.BACK_LABEL)
 
-    # ── Form Card Header ──────────────────────────────────────────────────────
-
-    @property
-    def card_header_title(self):
-        return self.page.locator(".card-header-title")
+    # ── Messages below the header ─────────────────────────────────────────────
 
     @property
-    def card_header_subtitle(self):
-        return self.page.locator(".card-header-sub")
-
-    # ── Field 1: Existing Registration Number ─────────────────────────────────
-
-    @property
-    def registration_number_input(self):
-        return self.page.locator("#regNumber")
+    def errors_box(self):
+        """'Please correct:' and one line per problem the server found."""
+        return self.page.locator(".rw-err")
 
     @property
-    def registration_number_label(self):
-        return self.page.locator("//div[contains(text(),'Existing Registration Number')]").first
+    def success_box(self):
+        return self.page.locator(".rw-ok")
 
     @property
-    def registration_number_helper_note(self):
-        return self.page.locator("//input[@id='regNumber']/following-sibling::div[contains(@class,'helper-note')]")
-
-    # ── Field 2: Date of Expiry ───────────────────────────────────────────────
-
-    @property
-    def expiry_date_input(self):
-        return self.page.locator("#expiryDate")
+    def latest_application(self):
+        """'Latest renewal application #N — filed <date> · <status badge>' (+ the renewed-to line)."""
+        return self.page.locator(".rw-body").filter(has_text="Latest renewal application #")
 
     @property
-    def expiry_date_label(self):
-        return self.page.locator("//div[contains(text(),'Date of Expiry of Registration')]").first
+    def latest_application_status(self):
+        return self.latest_application.locator(".ui-badge")
 
     @property
-    def expiry_status_text(self):
-        # e.g. "✓ Valid — 203 days remaining" / "⚠ Registration has already expired (12 days ago)"
-        return self.page.locator("#expiryStatus")
-
-    # ── Field 3: Suspension / Cancellation ────────────────────────────────────
+    def certificate_link(self):
+        return self.latest_application.get_by_role("link", name=self.CERTIFICATE_LINK_LABEL)
 
     @property
-    def suspension_label(self):
-        return self.page.locator("//div[contains(text(),'Whether any suspension / cancellation')]").first
+    def window_notice(self):
+        """'Renewal opens 90 days before expiry — on <date>.'"""
+        return self.page.locator(".rw-body").filter(has_text="Renewal opens 90 days before expiry")
 
     @property
-    def suspension_yes_radio(self):
-        return self.page.locator("#suspYes")
+    def no_certificate_notice(self):
+        return self.page.locator(".rw-body").filter(has_text=self.NO_CERTIFICATE)
+
+    # ── Renewal application form ──────────────────────────────────────────────
 
     @property
-    def suspension_no_radio(self):
-        return self.page.locator("#suspNo")
+    def form(self):
+        return self.page.locator("form:has(input[name='declare'])")
 
     @property
-    def suspension_yes_card(self):
-        return self.page.locator("#cardYes")
+    def form_title(self):
+        return self.page.get_by_text(self.FORM_TITLE, exact=True)
 
     @property
-    def suspension_no_card(self):
-        return self.page.locator("#cardNo")
+    def question_labels(self):
+        """The three question labels (1 changes, 2 cases, 3 supporting document)."""
+        return self.form.locator(".rw-q label.t")
+
+    def changes_radio(self, answer: str):
+        """answer: 'no' or 'yes'."""
+        return self.form.locator(f"input[name='changes_made'][value='{answer}']")
 
     @property
-    def suspension_details_block(self):
-        return self.page.locator("#suspDetailsBlock")
+    def changes_radios(self):
+        return self.form.locator("input[name='changes_made']")
 
     @property
-    def suspension_details_textarea(self):
-        return self.page.locator("#suspDetails")
+    def changes_details(self):
+        return self.form.locator("textarea[name='changes_details']")
+
+    def cases_radio(self, answer: str):
+        """answer: 'no' or 'yes'."""
+        return self.form.locator(f"input[name='cases_pending'][value='{answer}']")
 
     @property
-    def suspension_char_count(self):
-        # e.g. "1000 / 1000 characters"
-        return self.page.locator("#charCount")
+    def cases_radios(self):
+        return self.form.locator("input[name='cases_pending']")
 
     @property
-    def no_suspension_note(self):
-        return self.page.locator("#noSuspNote")
-
-    # ── Action Bar ────────────────────────────────────────────────────────────
+    def cases_details(self):
+        return self.form.locator("textarea[name='cases_details']")
 
     @property
-    def back_to_step3_link(self):
-        return self.page.locator(".btn-back")
+    def document_input(self):
+        return self.form.locator("input[name='document']")
 
     @property
-    def save_button(self):
-        # "💾 Save Part D" / "💾 Update Part D"
-        return self.page.locator("#saveBtn")
+    def document_help(self):
+        return self.form.get_by_text(self.DOCUMENT_HELP)
 
     @property
-    def submit_and_finish_link(self):
-        return self.page.locator(".btn-next")
+    def fee_box(self):
+        return self.form.locator(".rw-fee")
+
+    @property
+    def fee_amount(self):
+        return self.fee_box.locator("b")
+
+    @property
+    def declaration_checkbox(self):
+        return self.form.locator("input[name='declare']")
+
+    @property
+    def declaration_label(self):
+        return self.form.locator("label:has(input[name='declare'])")
+
+    @property
+    def submit_button(self):
+        return self.page.get_by_role("button", name=self.SUBMIT_LABEL)
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open the Part-D Renewal Details page directly")
+    @allure.step("Open the Renewal page")
     def open(self):
-        self.navigate(f"{FORMS_BASE}/partD.php")
+        self.navigate(RENEWAL_URL)
+        self.wait_for_load()
 
-    @allure.step("Fill Existing Registration Number: {registration_number}")
-    def fill_registration_number(self, registration_number: str):
-        self.registration_number_input.fill(registration_number)
-        self.registration_number_input.blur()
+    @allure.step("Answer question 1 (anything changed): {answer}")
+    def answer_changes(self, answer: str):
+        self.changes_radio(answer).check()
 
-    @allure.step("Fill Date of Expiry: {expiry_date}")
-    def fill_expiry_date(self, expiry_date: str):
-        """expiry_date in yyyy-mm-dd format, e.g. '2026-12-31'."""
-        self.expiry_date_input.fill(expiry_date)
-        self.expiry_date_input.blur()
+    @allure.step("Describe the changes: {text}")
+    def describe_changes(self, text: str):
+        self.changes_details.fill(text)
 
-    @allure.step("Select suspension / cancellation in the past: Yes")
-    def select_suspension_yes(self):
-        self.suspension_yes_radio.check()
+    @allure.step("Answer question 2 (cases pending): {answer}")
+    def answer_cases(self, answer: str):
+        self.cases_radio(answer).check()
 
-    @allure.step("Select suspension / cancellation in the past: No")
-    def select_suspension_no(self):
-        self.suspension_no_radio.check()
+    @allure.step("Give the details of the cases: {text}")
+    def describe_cases(self, text: str):
+        self.cases_details.fill(text)
 
-    @allure.step("Fill suspension / cancellation details")
-    def fill_suspension_details(self, details: str):
-        self.suspension_details_textarea.fill(details)
-        self.suspension_details_textarea.blur()
+    @allure.step("Choose the supporting document: {path}")
+    def choose_document(self, path: str):
+        self.document_input.set_input_files(path)
 
-    @allure.step("Click 'Save Part D'")
-    def click_save(self):
-        self.save_button.click()
+    @allure.step("Tick the declaration")
+    def tick_declaration(self):
+        self.declaration_checkbox.check()
 
-    @allure.step("Click 'Save Part D' and handle alert")
-    def click_save_and_handle_alert(self, action: str = "dismiss") -> str:
-        return self.click_and_handle_alert(self.save_button, action=action)
+    @allure.step("Fill the renewal form")
+    def fill_form(self, data) -> None:
+        """Fills what ``data`` (a ``RenewalData``) gives; None / "" leaves a field untouched."""
+        if data.changes_made:
+            self.answer_changes(data.changes_made)
+        if data.changes_details:
+            self.describe_changes(data.changes_details)
+        if data.cases_pending:
+            self.answer_cases(data.cases_pending)
+        if data.cases_details:
+            self.describe_cases(data.cases_details)
+        if data.document:
+            self.choose_document(data.document)
+        if data.declare:
+            self.tick_declaration()
 
-    @allure.step("Click 'Submit & Finish'")
-    def click_submit_and_finish(self):
-        self.submit_and_finish_link.click()
+    @allure.step("Click 'Pay ₹2,000 & submit renewal'")
+    def submit(self):
+        """Posts the form; the page reloads with the server's answer (on dev no payment page appears)."""
+        with self.page.expect_navigation():
+            self.submit_button.click()
+        self.wait_for_load()
 
-    @allure.step("Click '← Step 3'")
-    def click_back_to_step3(self):
-        self.back_to_step3_link.click()
+    @allure.step("Click 'Back to my dashboard'")
+    def back_to_dashboard(self):
+        with self.page.expect_navigation():
+            self.back_to_dashboard_link.click()
 
-    @allure.step("Click 'Dashboard' breadcrumb")
-    def click_breadcrumb_dashboard(self):
-        self.breadcrumb_dashboard_link.click()
+    # ── Read helpers (queries, not assertions) ────────────────────────────────
 
-    @allure.step("Fill the complete Part-D renewal form")
-    def fill_renewal_form(self, registration_number: str, expiry_date: str,
-                          has_suspension: bool = False, suspension_details: str = ""):
-        """Fills all Part-D fields. suspension_details is only entered when
-        has_suspension is True (the textarea is hidden otherwise)."""
-        self.fill_registration_number(registration_number)
-        self.fill_expiry_date(expiry_date)
-        if has_suspension:
-            self.select_suspension_yes()
-            self.fill_suspension_details(suspension_details)
-        else:
-            self.select_suspension_no()
+    def fact_value(self, label: str) -> str:
+        """A header fact's value, without its label."""
+        return " ".join(self.fact(label).evaluate(
+            "d => [...d.childNodes].filter(n => n.nodeName !== 'SMALL').map(n => n.textContent).join(' ')"
+        ).split())
+
+    def error_messages(self) -> list[str]:
+        """The problems listed under 'Please correct:', in order."""
+        lines = [" ".join(line.split()) for line in self.errors_box.inner_text().splitlines()]
+        return [line for line in lines if line and line != self.ERRORS_HEADING]
+
+    def state(self) -> str:
+        """Where the agency stands on this page: 'form', 'pending', 'renewed', 'not_open', 'no_certificate'
+        or 'login' (redirected away)."""
+        if "renewal.php" not in self.page.url:
+            return "login"
+        if self.declaration_checkbox.count():
+            return "form"
+        if self.no_certificate_notice.count():
+            return "no_certificate"
+        if self.latest_application.count():
+            text = self.latest_application.inner_text()
+            if self.WITH_DEPARTMENT in text:
+                return "pending"
+            if self.RENEWED in text:
+                return "renewed"
+            return "decided"  # e.g. rejected — not seen on dev yet
+        return "not_open"

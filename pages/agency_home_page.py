@@ -77,6 +77,19 @@ class AgencyHomePage(BasePage):
         (STAGE_CLEARED_EVENT, "Desktop scrutiny cleared — application moved to Physical Verification."),
         (SUBMITTED_EVENT, SUBMITTED_EVENT_NOTE),
     )
+    # Once the certificate has expired (KAN-37)
+    EXPIRED_HEADING = "Your certificate has expired"
+    EXPIRED_TEXT = "Renew immediately to continue operating legally."
+    START_RENEWAL_LABEL = "Start renewal"
+    RENEWAL_PATH = "agency/renewal.php"
+    CERTIFICATE_CARD_TITLE = "Registration certificate (Form-II)"
+    CERTIFICATE_FIELDS = ("Certificate no.", "Valid from", "Valid until")
+    DOWNLOAD_PDF_LABEL = "Download PDF"
+    CERTIFICATE_PDF_PATH = "agency/certificate_pdf.php"
+    RENEWAL_RECEIVED_NOTIFICATION = "Your renewal application #{n} has been received and sent to the Registering Authority"
+    RENEWED_NOTIFICATION = "Your registration certificate has been renewed up to {valid_until}"
+    RENEWED_NOTIFICATION_TEXT = ("Your registration certificate has been renewed up to {valid_until}. "
+                                 "Download the renewed certificate from your dashboard.")
     REGISTERED_TILES = {"My application": VIEW_APPLICATION_PATH,
                         "Corrections": "agency/forms/corrections.php",
                         "Certificate": CERTIFICATE_PATH,
@@ -177,6 +190,45 @@ class AgencyHomePage(BasePage):
     def view_certificate_button(self):
         """'View certificate' — in the banner instead of 'View my application' once the certificate is issued."""
         return self.page.locator(".hd-next").get_by_role("link", name=self.VIEW_CERTIFICATE_LABEL)
+
+    @property
+    def start_renewal_button(self):
+        """'Start renewal' — in the banner (red alert "Your certificate has expired") once the certificate has expired."""
+        return self.page.locator(".hd-next").get_by_role("link", name=self.START_RENEWAL_LABEL)
+
+    # ── Registration certificate (Form-II) card ───────────────────────────────
+
+    @property
+    def certificate_card(self):
+        """Shown once the certificate is issued: chip (Active / Expired), subtitle ("Valid" / "Expired N days
+        ago"), Certificate no., Valid from, Valid until and the buttons."""
+        return self.page.locator(".ui-card").filter(
+            has=self.page.locator(".ui-card-title", has_text=self.CERTIFICATE_CARD_TITLE))
+
+    @property
+    def certificate_subtitle(self):
+        return self.certificate_card.locator(".ui-card-sub")
+
+    @property
+    def certificate_chip(self):
+        return self.certificate_card.locator(".ui-card-head .ui-badge")
+
+    def certificate_field(self, label: str):
+        """The value of a certificate field (label: one of CERTIFICATE_FIELDS)."""
+        return self.certificate_card.locator(".cert-row > div").filter(
+            has=self.page.locator("small", has_text=label)).locator("b, span")
+
+    @property
+    def certificate_buttons(self):
+        return self.certificate_card.locator(".ui-card-body a.ui-btn")
+
+    @property
+    def certificate_view_button(self):
+        return self.certificate_card.get_by_role("link", name=self.VIEW_CERTIFICATE_LABEL)
+
+    @property
+    def certificate_start_renewal_button(self):
+        return self.certificate_card.get_by_role("link", name=self.START_RENEWAL_LABEL)
 
     # ── Application progress ──────────────────────────────────────────────────
 
@@ -380,6 +432,16 @@ class AgencyHomePage(BasePage):
         """Marks every notification read; the page reloads once the server answers."""
         with self.page.expect_navigation():
             self.mark_all_read_button.click()
+
+    @allure.step("Click 'Start renewal' in the expired-certificate alert")
+    def start_renewal(self):
+        with self.page.expect_navigation():
+            self.start_renewal_button.click()
+
+    @allure.step("Click 'Start renewal' on the certificate card")
+    def start_renewal_from_certificate(self):
+        with self.page.expect_navigation():
+            self.certificate_start_renewal_button.click()
 
     @allure.step("Click 'Logout'")
     def logout(self):
