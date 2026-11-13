@@ -109,6 +109,23 @@ test moves them on::
     store.get_map_users("hearing_scheduled")
     store.unpark_map_state(username="omannan")      # it no longer stands there
 
+Licence renewals
+----------------
+``renewal_applications`` holds one row per renewal application, keyed by the
+portal's renewal application number (the # on the officer's Renewal
+applications page), with its status (``RENEWAL_STATUSES``: pending → renewed /
+rejected) and the facts tests use — date filed, payment reference, the two
+declarations, the decision date, officer, remarks and the new expiry. An agency
+can have several (a rejected agency may apply again). Record a renewal when it
+is filed or decided; ``utils.renewal_sync`` records every one the console lists::
+
+    store.record_renewal(number=6, registration_no="2026528111439", status="pending", filed_on="2026-11-13")
+    store.record_renewal(number=6, registration_no="2026528111439", status="rejected",
+                         decided_on="2026-11-13", remarks="…")
+
+    store.get_latest_renewal("sidhujivin")              # RenewalRecord(number=6, status="rejected", …)
+    store.get_agency_users_with_renewal("pending")      # agencies whose newest renewal is pending
+
 The DB persists between test runs by design — it mirrors users actually
 registered in the dev environment.  Delete ``state/test_state.db`` only if you
 also reset the dev environment.
@@ -153,6 +170,12 @@ DRAFT_STATUSES = ("filling_form", "ready_to_pay", "draft_expired")
 # status_data["review"] for a stage: the Applications "Under review" / "Compliance — with agency" /
 # "Show cause / hearing" steps (the last two are the "On hold — with agency" list)
 REVIEW_STATES = ("under_review", "with_agency", "show_cause")
+# A licence renewal application, as the officer's Renewal applications page shows it
+# (Pending decision → Renewed / Rejected).
+RENEWAL_STATUSES = ("pending", "renewed", "rejected")
+# Facts recorded with a renewal (None leaves what was recorded before).
+RENEWAL_FACTS = ("filed_on", "payment_ref", "changes_made", "cases_pending", "decided_on", "decided_by",
+                 "remarks", "valid_upto")
 
 # Numbered steps written before steps were named ("1" was Part A, as in the forms' headings).
 # Frozen: the numbering predates the "premises" step.
@@ -189,6 +212,24 @@ class UserRecord:
     # {"state": <MapState key>, "view_id": …, "appeal_id": …, …} while parked for the Compliance & Appeals
     # Map tests; empty otherwise. Survives status writes and the console sync.
     map_state: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RenewalRecord:
+    """One row of ``renewal_applications``. Dates are ISO (yyyy-mm-dd) strings."""
+    number: int                             # the portal's renewal application number (#)
+    registration_no: str                    # the agency's Registration No. (= its Application ID)
+    status: str                             # one of RENEWAL_STATUSES
+    username: Optional[str] = None          # the state-store agency, when known
+    filed_on: Optional[str] = None
+    payment_ref: Optional[str] = None       # TEST-RNW-… on dev
+    changes_made: Optional[str] = None      # 'no' / 'yes'
+    cases_pending: Optional[str] = None     # 'no' / 'yes'
+    decided_on: Optional[str] = None
+    decided_by: Optional[str] = None        # officer name as the console shows it
+    remarks: Optional[str] = None           # approval remarks / rejection reasons
+    valid_upto: Optional[str] = None        # the new expiry, once renewed
+    updated_at: Optional[str] = None
 
 
 class TestStateStore:
@@ -300,6 +341,7 @@ class TestStateStore:
 
             # ── Create tables (no-ops if already correct) ─────────────────────
             step_names = ",".join(f"'{s}'" for s in FORM_STEPS)
+            renewal_statuses = ",".join(f"'{s}'" for s in RENEWAL_STATUSES)
             status_names = ",".join(f"'{s}'" for s in FORM_STEP_STATUSES)
             conn.executescript(f"""
                  CREATE TABLE IF NOT EXISTS users (
@@ -336,6 +378,25 @@ class TestStateStore:
                      updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                      PRIMARY KEY (user_id, step)
                  );
+
+                 CREATE TABLE IF NOT EXISTS renewal_applications (
+                     number          INTEGER PRIMARY KEY,
+                     user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                     registration_no TEXT NOT NULL,
+                     status          TEXT NOT NULL CHECK (status IN ({renewal_statuses})),
+                     filed_on        TEXT,
+                     payment_ref     TEXT,
+                     changes_made    TEXT CHECK (changes_made IS NULL OR changes_made IN ('no','yes')),
+                     cases_pending   TEXT CHECK (cases_pending IS NULL OR cases_pending IN ('no','yes')),
+                     decided_on      TEXT,
+                     decided_by      TEXT,
+                     remarks         TEXT,
+                     valid_upto      TEXT,
+                     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                 );
+
+                 CREATE INDEX IF NOT EXISTS idx_renewal_user
+                     ON renewal_applications(user_id, number);
 
                  CREATE INDEX IF NOT EXISTS idx_users_role
                      ON users(role);
@@ -444,8 +505,13 @@ class TestStateStore:
                 raise ValueError(f"No user found with username '{username}'")
 
     def delete_user(self, *, username: str) -> None:
-        """Forgets a user whose account no longer exists on the portal (e.g. a draft an admin deleted)."""
+        """Forgets a user whose account no longer exists on the portal (e.g. a draft an admin deleted).
+        Its renewal applications are kept, without the user."""
         with self._connect() as conn:
+            conn.execute(
+                "UPDATE renewal_applications SET user_id = NULL "
+                "WHERE user_id IN (SELECT id FROM users WHERE username = ?)", (username,)
+            )
             conn.execute(
                 "DELETE FROM form_applications WHERE user_id IN (SELECT id FROM users WHERE username = ?)", (username,)
             )
@@ -539,7 +605,94 @@ class TestStateStore:
                 (user["id"], step, status, json.dumps(data) if data is not None else None),
             )
 
+    def record_renewal(self, *, number: int, registration_no: str, status: str, username: Optional[str] = None,
+                       **facts) -> None:
+        """Records (or updates) renewal application ``number`` of the agency with ``registration_no``.
+
+        ``status`` is one of ``RENEWAL_STATUSES``; ``facts`` are any of ``RENEWAL_FACTS`` (a fact left out or
+        ``None`` keeps what was recorded before). The agency is matched by ``username`` when given, otherwise
+        by its Application ID (= Registration No.); a renewal of an agency the store does not know is kept
+        without one."""
+        if status not in RENEWAL_STATUSES:
+            raise ValueError(f"Unknown renewal status '{status}' — expected one of {RENEWAL_STATUSES}")
+        unknown = set(facts) - set(RENEWAL_FACTS)
+        if unknown:
+            raise ValueError(f"Unknown renewal fact(s) {sorted(unknown)} — expected {RENEWAL_FACTS}")
+        values = [facts.get(f) for f in RENEWAL_FACTS]
+        cols = ", ".join(RENEWAL_FACTS)
+        keep = ", ".join(f"{f} = COALESCE(excluded.{f}, renewal_applications.{f})" for f in RENEWAL_FACTS)
+        with self._connect() as conn:
+            if username:
+                user = conn.execute(
+                    "SELECT id FROM users WHERE username = ? AND role = 'agency'", (username,)
+                ).fetchone()
+                if user is None:
+                    raise ValueError(f"No agency user found with username '{username}'")
+            else:
+                user = conn.execute(
+                    "SELECT id FROM users WHERE application_id = ? AND role = 'agency'", (registration_no,)
+                ).fetchone()
+            conn.execute(
+                f"""
+                INSERT INTO renewal_applications (number, user_id, registration_no, status, {cols}, updated_at)
+                VALUES (?, ?, ?, ?, {",".join("?" * len(RENEWAL_FACTS))}, CURRENT_TIMESTAMP)
+                ON CONFLICT(number) DO UPDATE SET
+                    user_id = COALESCE(excluded.user_id, renewal_applications.user_id),
+                    registration_no = excluded.registration_no,
+                    status = excluded.status,
+                    {keep},
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (int(number), user["id"] if user else None, registration_no, status, *values),
+            )
+
     # ── Readers ───────────────────────────────────────────────────────────────
+
+    _RENEWAL_SELECT = "SELECT r.*, u.username FROM renewal_applications r LEFT JOIN users u ON u.id = r.user_id"
+
+    @staticmethod
+    def _row_to_renewal(row: sqlite3.Row) -> RenewalRecord:
+        return RenewalRecord(**{k: row[k] for k in RenewalRecord.__dataclass_fields__})
+
+    def get_renewals(self, username: Optional[str] = None, status: Optional[str] = None) -> list[RenewalRecord]:
+        """Recorded renewal applications, newest (highest number) first — of one agency and / or in one
+        status (``RENEWAL_STATUSES``) when given."""
+        if status is not None and status not in RENEWAL_STATUSES:
+            raise ValueError(f"Unknown renewal status '{status}' — expected one of {RENEWAL_STATUSES}")
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""{self._RENEWAL_SELECT} WHERE (? IS NULL OR u.username = ?) AND (? IS NULL OR r.status = ?)
+                    ORDER BY r.number DESC""",
+                (username, username, status, status),
+            ).fetchall()
+            return [self._row_to_renewal(r) for r in rows]
+
+    def get_renewal(self, number: int) -> Optional[RenewalRecord]:
+        with self._connect() as conn:
+            row = conn.execute(f"{self._RENEWAL_SELECT} WHERE r.number = ?", (int(number),)).fetchone()
+            return self._row_to_renewal(row) if row else None
+
+    def get_latest_renewal(self, username: str) -> Optional[RenewalRecord]:
+        """The agency's newest recorded renewal application, or None."""
+        renewals = self.get_renewals(username=username)
+        return renewals[0] if renewals else None
+
+    def get_agency_users_with_renewal(self, status: str, include_parked: bool = True) -> list[UserRecord]:
+        """Agencies whose NEWEST recorded renewal application is in ``status``, oldest agency first. Parked
+        agencies (``park_map_state``) are left out when ``include_parked`` is False."""
+        if status not in RENEWAL_STATUSES:
+            raise ValueError(f"Unknown renewal status '{status}' — expected one of {RENEWAL_STATUSES}")
+        parked_sql = "" if include_parked else " AND u.map_state IS NULL"
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""SELECT u.* FROM users u
+                    JOIN renewal_applications r ON r.user_id = u.id
+                    WHERE u.role = 'agency' {self._LIVE_SQL}{parked_sql} AND r.status = ?
+                      AND r.number = (SELECT MAX(number) FROM renewal_applications WHERE user_id = u.id)
+                    ORDER BY u.id""",
+                (status,),
+            ).fetchall()
+            return [self._row_to_record(row, conn) for row in rows]
 
     # "Other" at registration carries no Maharashtra district into Part A.
     _LISTED_DISTRICT_SQL = "AND u.district IS NOT NULL AND u.district NOT IN ('', 'Other')"

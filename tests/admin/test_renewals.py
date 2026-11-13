@@ -582,6 +582,10 @@ def test_tc829_reject_renewal(officer_pending_renewal_to_decide, renewal_rejecti
         expect(renewals.decided_by(reg, number)).to_have_text(re.compile(rf"^{today} · \S.*$"))
         assert renewals.action_labels(reg, number) == [AdminRenewalsPage.APPLICATION_LABEL], \
             renewals.action_labels(reg, number)
+        TestStateStore().record_renewal(
+            number=int(number), registration_no=reg, status="rejected", username=user.username,
+            decided_on=_today().isoformat(), decided_by=renewals.decided_officer(reg, number),
+            remarks=reasons)
 
     with allure.step("Verify the certificate on Licences & certificates has not changed"):
         licenses.open(status="all")
@@ -660,6 +664,10 @@ def test_tc414_approve_expired(officer_pending_renewal_to_decide, renewal_approv
         expect(renewals.decided_by(reg, number)).to_have_text(re.compile(rf"^{today} · \S.*$"))
         assert renewals.action_labels(reg, number) == [AdminRenewalsPage.APPLICATION_LABEL], \
             renewals.action_labels(reg, number)
+        TestStateStore().record_renewal(
+            number=int(number), registration_no=reg, status="renewed", username=user.username,
+            decided_on=_today().isoformat(), decided_by=renewals.decided_officer(reg, number),
+            remarks=renewal_approval_data.remarks, valid_upto=_renewed_expiry(current_expiry).isoformat())
 
     with allure.step("Verify Licences & certificates"):
         licenses.open(status="all")
