@@ -13,7 +13,8 @@ class AdminRenewalsPage(BasePage):
     certificates → "Renewal applications".
 
     Tabs (``.rn-tab``, ``?tab=``) Pending decision (submitted), Renewed (approved), Rejected and All, each with
-    a count. One table row per renewal application: #, Agency (name + registration no.), District, Current
+    a count. One table row per renewal application, newest first (an agency that renewed before has several):
+    # (the renewal application number), Agency (name + registration no.), District, Current
     validity ("Up to <date>", + "Renewed to <date>" once approved), Applied, Declarations, Fee (+ payment
     reference), Status (+ "<date> · <officer>" once decided) and the actions Approve / Reject (pending only)
     and Application (agency_view.php).
@@ -42,6 +43,9 @@ class AdminRenewalsPage(BasePage):
     REMARKS_PLACEHOLDER = {"approve": "e.g. Documents verified, no adverse report.",
                            "reject": "At least 30 characters"}
     PENDING = "Pending"
+    RENEWED = "Renewed"
+    REJECTED = "Rejected"
+    EMPTY_LIST = "No renewal applications in this list."
 
     @staticmethod
     def too_short(decision: str) -> str:
@@ -90,28 +94,40 @@ class AdminRenewalsPage(BasePage):
 
     @property
     def rows(self):
-        return self.page.locator("#adm-main table.ui-table tbody tr")
+        """Renewal application rows (not the "No renewal applications in this list." row)."""
+        return self.page.locator("#adm-main table.ui-table tbody tr:not(:has(td[colspan]))")
 
-    def row(self, registration_no: str):
-        """The row of the agency with this registration no. (shown under its name)."""
+    @property
+    def empty_row(self):
+        return self.page.locator("#adm-main table.ui-table tbody td[colspan]")
+
+    def rows_of(self, registration_no: str):
+        """Every listed renewal of the agency with this registration no. (shown under its name), newest first."""
         return self.rows.filter(has=self.page.locator(".ui-mono", has_text=re.compile(rf"^\s*{registration_no}\s*$")))
 
-    def cell(self, registration_no: str, column: str):
+    def row(self, registration_no: str, number: str = None):
+        """The agency's renewal application ``number`` (the # column) — its newest listed one when not given."""
+        if number is None:
+            return self.rows_of(registration_no).first
+        return self.rows_of(registration_no).filter(
+            has=self.page.locator("td:first-child", has_text=re.compile(rf"^\s*{number}\s*$")))
+
+    def cell(self, registration_no: str, column: str, number: str = None):
         """column: one of COLUMNS."""
-        return self.row(registration_no).locator("td").nth(self.COLUMNS.index(column))
+        return self.row(registration_no, number).locator("td").nth(self.COLUMNS.index(column))
 
-    def agency_name(self, registration_no: str):
-        return self.cell(registration_no, "Agency").locator("strong")
+    def agency_name(self, registration_no: str, number: str = None):
+        return self.cell(registration_no, "Agency", number).locator("strong")
 
-    def status_badge(self, registration_no: str):
-        return self.cell(registration_no, "Status").locator(".ui-badge")
+    def status_badge(self, registration_no: str, number: str = None):
+        return self.cell(registration_no, "Status", number).locator(".ui-badge")
 
-    def decided_by(self, registration_no: str):
+    def decided_by(self, registration_no: str, number: str = None):
         """'<dd Mon yyyy> · <officer>' under the status once decided."""
-        return self.cell(registration_no, "Status").locator("div")
+        return self.cell(registration_no, "Status", number).locator("div")
 
-    def action_buttons(self, registration_no: str):
-        return self.cell(registration_no, "Action").locator("a, button")
+    def action_buttons(self, registration_no: str, number: str = None):
+        return self.cell(registration_no, "Action", number).locator("a, button")
 
     def approve_button(self, registration_no: str):
         return self.row(registration_no).get_by_role("button", name=self.APPROVE_LABEL)
@@ -119,8 +135,8 @@ class AdminRenewalsPage(BasePage):
     def reject_button(self, registration_no: str):
         return self.row(registration_no).get_by_role("button", name=self.REJECT_LABEL)
 
-    def application_link(self, registration_no: str):
-        return self.row(registration_no).get_by_role("link", name=self.APPLICATION_LABEL)
+    def application_link(self, registration_no: str, number: str = None):
+        return self.row(registration_no, number).get_by_role("link", name=self.APPLICATION_LABEL)
 
     # ── Decision dialog ───────────────────────────────────────────────────────
 
@@ -199,9 +215,9 @@ class AdminRenewalsPage(BasePage):
         self.close_button.click()
 
     @allure.step("Open the agency's application")
-    def open_application(self, registration_no: str):
+    def open_application(self, registration_no: str, number: str = None):
         with self.page.expect_navigation():
-            self.application_link(registration_no).click()
+            self.application_link(registration_no, number).click()
 
     @allure.step("{decision} the renewal of {registration_no}")
     def decide(self, registration_no: str, decision: str, remarks: str) -> str:
@@ -215,8 +231,12 @@ class AdminRenewalsPage(BasePage):
     def get_tab_count(self, tab: str) -> int:
         return int(self.tab_count(tab).inner_text().strip())
 
-    def cell_text(self, registration_no: str, column: str) -> str:
-        return " ".join(self.cell(registration_no, column).inner_text().split())
+    def cell_text(self, registration_no: str, column: str, number: str = None) -> str:
+        return " ".join(self.cell(registration_no, column, number).inner_text().split())
 
-    def action_labels(self, registration_no: str) -> list[str]:
-        return [t.strip() for t in self.action_buttons(registration_no).all_inner_texts()]
+    def action_labels(self, registration_no: str, number: str = None) -> list[str]:
+        return [t.strip() for t in self.action_buttons(registration_no, number).all_inner_texts()]
+
+    def renewal_number(self, registration_no: str) -> str:
+        """The # (renewal application number) of the agency's newest listed renewal."""
+        return self.cell_text(registration_no, "#")

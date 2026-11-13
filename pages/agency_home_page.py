@@ -87,6 +87,8 @@ class AgencyHomePage(BasePage):
     DOWNLOAD_PDF_LABEL = "Download PDF"
     CERTIFICATE_PDF_PATH = "agency/certificate_pdf.php"
     RENEWAL_RECEIVED_NOTIFICATION = "Your renewal application #{n} has been received and sent to the Registering Authority"
+    RENEWAL_REJECTED_NOTIFICATION = "Your renewal application was rejected"
+    RENEWAL_REJECTED_NOTIFICATION_TEXT = "Your renewal application was rejected. {reasons}"
     RENEWED_NOTIFICATION = "Your registration certificate has been renewed up to {valid_until}"
     RENEWED_NOTIFICATION_TEXT = ("Your registration certificate has been renewed up to {valid_until}. "
                                  "Download the renewed certificate from your dashboard.")

@@ -2,7 +2,8 @@
 (admin/licenses/renewals.php).
 
 The pending renewal is found by reading the agencies' renewal pages; with RUN_RENEWAL_TESTS=true one is
-submitted (after expiring a certificate if need be) when none is pending. KAN-TC-414 approves it and only runs
+submitted (after expiring a certificate if need be) when none is pending. KAN-TC-829 rejects it and KAN-TC-414
+approves one (a rejected agency can file again); both only run
 with RUN_RENEWAL_TESTS=true (irreversible on dev).
 """
 
@@ -14,6 +15,8 @@ from playwright.sync_api import expect
 
 from pages.admin.licenses_page import AdminLicensesPage
 from pages.admin.renewals_page import AdminRenewalsPage
+from pages.agency_home_page import AgencyHomePage
+from pages.license_renewal_page import LicenseRenewalPage
 from utils.aio import aio_case
 from utils.state_store import TestStateStore
 
@@ -64,7 +67,9 @@ def test_tc412_pending_listed(page, officer_pending_renewal):
         expect(renewals.table_headers).to_have_text(list(AdminRenewalsPage.COLUMNS))
 
     with allure.step(f"Verify the row of {user.agency_name} under Pending decision"):
-        expect(renewals.row(reg)).to_have_count(1)
+        expect(renewals.rows_of(reg)).to_have_count(1)
+        number = renewals.renewal_number(reg)
+        assert re.fullmatch(r"\d+", number), f"# is '{number}'"
         expect(renewals.agency_name(reg)).to_have_text(user.agency_name)
         if user.district and user.district != "Other":
             assert renewals.cell_text(reg, "District") == user.district
@@ -80,11 +85,12 @@ def test_tc412_pending_listed(page, officer_pending_renewal):
     with allure.step("Open the All tab — the application is listed and counted"):
         renewals.open_tab("all")
         expect(renewals.selected_tab).to_contain_text(AdminRenewalsPage.TABS["all"])
-        expect(renewals.row(reg)).to_have_count(1)
+        expect(renewals.row(reg, number)).to_have_count(1)
+        expect(renewals.status_badge(reg, number)).to_have_text(AdminRenewalsPage.PENDING)
         assert renewals.get_tab_count("all") == renewals.rows.count()
 
     with allure.step("Click Application — the agency's application opens"):
-        renewals.open_application(reg)
+        renewals.open_application(reg, number)
         expect(page).to_have_url(re.compile(r"/dashboard/agency_view\.php\?id=\d+$"))
 
 
@@ -122,6 +128,84 @@ def test_tc413_remarks_minimum(officer_pending_renewal, renewal_short_remarks_da
         expect(renewals.status_badge(reg)).to_have_text(AdminRenewalsPage.PENDING)
 
 
+@aio_case("KAN-TC-829")
+@allure.story(STORY)
+@allure.title("TC-829: Rejecting a renewal leaves the certificate as it was and tells the agency why")
+def test_tc829_reject_renewal(officer_pending_renewal_to_decide, renewal_rejection_data,
+                              renewal_admin_licenses_page: AdminLicensesPage, renewal_page: LicenseRenewalPage,
+                              renewal_agency_login):
+    """
+    Given an agency with an expired certificate has a renewal pending
+    When  I reject it with reasons of 30 characters or more
+    Then  the renewal moves to Rejected, the certificate's status and validity do not change, History records
+          the rejection with the reasons, and the agency sees the rejection with the reasons on its renewal page
+          and on Home — and can file a new renewal
+
+    Notion: KAN-TC-829 | KAN-37 AC-12 | Data: reasons of 30+ characters — irreversible (RUN_RENEWAL_TESTS)
+    """
+    renewals, user = officer_pending_renewal_to_decide
+    reg, name = user.application_id, user.agency_name
+    licenses = renewal_admin_licenses_page
+    reasons = renewal_rejection_data.remarks
+    today = _fmt(_today())
+
+    with allure.step("Read the certificate on Licences & certificates before the decision"):
+        licenses.open(status="all")
+        status_before = licenses.status_badge(name).text_content().strip()
+        validity_before = licenses.get_row_validity_dates(name)
+        expired_before = licenses.get_stat_chip_count("expired")
+
+    with allure.step("Reject the renewal with reasons"):
+        renewals.open(tab="submitted")
+        number = renewals.renewal_number(reg)
+        toast = renewals.decide(reg, "reject", reasons)
+        allure.attach(toast, "Toast", allure.attachment_type.TEXT)
+        assert toast, "No toast after rejecting"
+
+    with allure.step(f"Verify the tabs: renewal #{number} is no longer pending and is listed under Rejected"):
+        renewals.open(tab="submitted")
+        expect(renewals.row(reg, number)).to_have_count(0)
+        renewals.open(tab="rejected")
+        expect(renewals.row(reg, number)).to_have_count(1)
+        expect(renewals.status_badge(reg, number)).to_have_text(AdminRenewalsPage.REJECTED)
+        expect(renewals.status_badge(reg, number)).to_have_class(re.compile(r"\bui-badge-red\b"))
+        expect(renewals.decided_by(reg, number)).to_have_text(re.compile(rf"^{today} · \S.*$"))
+        assert renewals.action_labels(reg, number) == [AdminRenewalsPage.APPLICATION_LABEL], \
+            renewals.action_labels(reg, number)
+
+    with allure.step("Verify the certificate on Licences & certificates has not changed"):
+        licenses.open(status="all")
+        expect(licenses.status_badge(name)).to_have_text(status_before)
+        assert licenses.get_row_validity_dates(name) == validity_before
+        assert licenses.get_stat_chip_count("expired") == expired_before
+
+    with allure.step("Verify the certificate History records the rejection"):
+        licenses.open_history(name)
+        entry = licenses.history_data()[0]
+        assert entry["title"] == "Renewal rejected", entry
+        assert entry["body"] == f"Renewal application #{number} rejected: {reasons}", entry
+        licenses.close_history()
+
+    with allure.step("As the agency, verify the renewal page shows the rejection and the form again"):
+        renewal_agency_login(user)
+        renewal_page.open()
+        expect(renewal_page.latest_application).to_contain_text(
+            re.compile(rf"Latest renewal application #{number} — filed {DATE}\s*·\s*{LicenseRenewalPage.REJECTED}"))
+        expect(renewal_page.latest_application).to_contain_text(LicenseRenewalPage.rejection_reason(reasons))
+        expect(renewal_page.form).to_be_visible()
+        expect(renewal_page.submit_button).to_be_visible()
+
+    with allure.step("Verify the rejection notification on Home"):
+        home = AgencyHomePage(renewal_page.page)
+        home.open()
+        home.dismiss_testing_notice()
+        title = AgencyHomePage.RENEWAL_REJECTED_NOTIFICATION
+        expect(home.notification_title(title).first).to_have_text(title)
+        expect(home.notification_message(title).first).to_have_text(
+            AgencyHomePage.RENEWAL_REJECTED_NOTIFICATION_TEXT.format(reasons=reasons))
+        expect(home.start_renewal_button).to_be_visible()
+
+
 @aio_case("KAN-TC-414")
 @allure.story(STORY)
 @allure.title("TC-414: Approving a renewal of an expired certificate renews it for 5 years from today")
@@ -151,19 +235,21 @@ def test_tc414_approve_expired(officer_pending_renewal_to_decide, renewal_approv
 
     with allure.step(f"Approve the renewal — the certificate is valid up to {new_expiry}"):
         renewals.open(tab="submitted")
+        number = renewals.renewal_number(reg)
         toast = renewals.decide(reg, "approve", renewal_approval_data.remarks)
         assert toast == AdminRenewalsPage.approved_toast(new_expiry), toast
         TestStateStore().record_agency_status(username=user.username, status="approved")
 
-    with allure.step("Verify the tabs: no longer pending, listed under Renewed"):
+    with allure.step(f"Verify the tabs: renewal #{number} is no longer pending and is listed under Renewed"):
         renewals.open(tab="submitted")
-        expect(renewals.row(reg)).to_have_count(0)
+        expect(renewals.row(reg, number)).to_have_count(0)
         renewals.open(tab="approved")
-        expect(renewals.row(reg)).to_have_count(1)
-        expect(renewals.cell(reg, "Current validity")).to_contain_text(f"Renewed to {new_expiry}")
-        expect(renewals.status_badge(reg)).to_have_text(AdminRenewalsPage.TABS["approved"])
-        expect(renewals.decided_by(reg)).to_have_text(re.compile(rf"^{today} · \S.*$"))
-        assert renewals.action_labels(reg) == [AdminRenewalsPage.APPLICATION_LABEL], renewals.action_labels(reg)
+        expect(renewals.row(reg, number)).to_have_count(1)
+        expect(renewals.cell(reg, "Current validity", number)).to_contain_text(f"Renewed to {new_expiry}")
+        expect(renewals.status_badge(reg, number)).to_have_text(AdminRenewalsPage.RENEWED)
+        expect(renewals.decided_by(reg, number)).to_have_text(re.compile(rf"^{today} · \S.*$"))
+        assert renewals.action_labels(reg, number) == [AdminRenewalsPage.APPLICATION_LABEL], \
+            renewals.action_labels(reg, number)
 
     with allure.step("Verify Licences & certificates"):
         licenses.open(status="all")

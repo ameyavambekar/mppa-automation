@@ -2,7 +2,7 @@
 Data Factory — Licence Renewal (Form-II)
 ========================================
 Answers for the agency's Renewal application form (module/agency/renewal.php) and the officer's
-decision remarks (admin/licenses/renewals.php), for KAN-37 (AIO KAN-TC-399…415, KAN-TC-832).
+decision remarks (admin/licenses/renewals.php), for KAN-37 (AIO KAN-TC-399…415, KAN-TC-829, KAN-TC-832).
 
 The form has no client-side checks: whatever is filled is posted and the server lists what is wrong under
 "Please correct:". ``expected_errors`` holds those lines in the order the page lists them.
@@ -117,6 +117,13 @@ class RenewalFactory:
     def approval() -> RenewalDecisionData:
         return RenewalDecisionData(decision="approve", remarks="Documents verified, no adverse report.",
                                    scenario_label="Approve with remarks")
+
+    @staticmethod
+    def rejection() -> RenewalDecisionData:
+        return RenewalDecisionData(decision="reject",
+                                   remarks="The agency did not submit the supporting documents asked for during "
+                                           "verification.",
+                                   scenario_label="Reject with reasons (30+ characters)")
 
     @staticmethod
     def short_approval() -> RenewalDecisionData:

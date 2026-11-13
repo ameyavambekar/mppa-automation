@@ -7,6 +7,7 @@ state-store agencies with a certificate (approved / licence_expired / suspended)
 The renewal chain is irreversible on dev, so it only runs with RUN_RENEWAL_TESTS=true:
 - expire a certificate (officer, Licences & certificates → Expire) when no agency has the form open;
 - submit a renewal (KAN-TC-405, or to provide a pending one);
+- reject it (KAN-TC-829) — the form opens again, so the agency can file another;
 - approve it (KAN-TC-414).
 A renewed agency can be expired again, so the chain keeps itself going. Only agencies not parked at a
 Compliance & Appeals Map state are ever changed; parked ones are read only.
@@ -283,6 +284,11 @@ def renewal_invalid_documents_data() -> list[RenewalData]:
 @pytest.fixture
 def renewal_approval_data() -> RenewalDecisionData:
     return RenewalFactory.approval()
+
+
+@pytest.fixture
+def renewal_rejection_data() -> RenewalDecisionData:
+    return RenewalFactory.rejection()
 
 
 @pytest.fixture
