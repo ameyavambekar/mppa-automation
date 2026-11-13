@@ -277,7 +277,7 @@ def appeal_filing_allowed():
     """Skips unless RUN_APPEAL_FILING_TESTS=true. Each filing uses up a refused agency for good (one First
     Appeal per agency; refusing more takes the long officer + agency loop), so these tests run only on purpose."""
     if os.getenv("RUN_APPEAL_FILING_TESTS", "false").lower() != "true":
-        pytest.skip("Files a First Appeal and uses up a refused agency — set RUN_APPEAL_FILING_TESTS=true to run.")
+        pytest.skip("Files an appeal and uses up the agency — set RUN_APPEAL_FILING_TESTS=true to run.")
 
 
 @pytest.fixture

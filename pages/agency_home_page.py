@@ -360,6 +360,11 @@ class AgencyHomePage(BasePage):
         """Every link on the page to FORM-III ('File First Appeal' / 'View First Appeal')."""
         return self.page.locator("a[href*='appeals/first.php']")
 
+    @property
+    def second_appeal_links(self):
+        """Every link on the page to FORM-IV ('File Second Appeal' / 'View Second Appeal')."""
+        return self.page.locator("a[href*='appeals/second.php']")
+
     # ── Side column ───────────────────────────────────────────────────────────
 
     @property

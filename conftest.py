@@ -65,6 +65,7 @@ pytest_plugins = [
     "fixtures.sessions_fixtures",
     "fixtures.admin_users_fixtures",
     "fixtures.first_appeal_fixtures",
+    "fixtures.second_appeal_fixtures",
     "fixtures.notifications_fixtures",
     "fixtures.audit_log_fixtures",
     "fixtures.compliance_fixtures",
