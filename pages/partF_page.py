@@ -54,13 +54,13 @@ class PartFPage(BasePage):
         "em": "Do you recruit or place job seekers for overseas/international employment opportunities?",
         "lin": "Has a Labour Identification Number (LIN) been assigned to your establishment on the Shram Suvidha Portal?",
         "epf": "Is your agency registered with EPFO (or do you employ 20 or more staff/contract workers)?",
-        "esic": "Is your agency registered with ESIC (or do you employ 10 or more covered employees)?",
+        "esic": "Is your agency registered with ESIC?",   # shortened in portal 2.1.0 (17-Nov-2026)
     }
     # Yes/No radio name per certificate id
     _FLAGS = {"cl": "contract_labour_applicable", "sec": "security_applicable", "em": "emigration_applicable",
               "lin": "lin_applicable", "epf": "epf_applicable", "esic": "esic_applicable"}
 
-    SECTIONS = ("Certificate & Licence Details", "Authorised Signatory — Specimen Signature", "Application Details")
+    SECTIONS = ("Certificate & Licence Details", "Authorised Signatory — Signature", "Application Details")
     PREMISES_SECTION = "Office Premises Document"
     # SECTIONS when Part C's Service Mode includes offline work
     OFFLINE_SECTIONS = (SECTIONS[0], PREMISES_SECTION, *SECTIONS[1:])
@@ -71,12 +71,20 @@ class PartFPage(BasePage):
     SAVED_DOCUMENT_NOTE = "Uploaded View ↗ (choose a file only to replace it)"
     SUBTITLE = "Dates must be in DD/MM/YYYY format"
     CERT_FILE_HINT = "PDF, JPG or PNG · 10 KB – 2 MB"
-    SIGNATURE_HINT = "JPG or PNG ONLY — PDF not accepted for signatures · 10 KB – 2 MB"
+    # Signature — since portal 2.1.0 (17-Nov-2026): PNG with a transparent background, at least
+    # 150 × 40 pixels, up to 1 MB, and required.
+    SIGNATURE_TITLE = "Upload Signature *"
+    SIGNATURE_GUIDANCE = ("Upload the signature of the authorised signatory as a PNG image with a transparent "
+                          "background. Sign on plain white paper with a dark pen, scan or photograph it, remove "
+                          "the background (any free \"remove background\" tool) and save as PNG.")
+    SIGNATURE_HINT = "PNG ONLY with transparent background · at least 150 × 40 pixels · up to 1 MB"
     APPLICATION_DATE_HINT = "Today's date (system date) — filled in automatically."
     ERRORS_HEADING = "Please fix the following before saving:"
     DOCUMENT_REQUIRED_ERROR = "Please upload the document."
     CERT_FILE_TYPE_ERROR = "Only PDF, JPG or PNG allowed."
-    SIGNATURE_TYPE_ERROR = "Only JPG or PNG allowed for the signature."
+    SIGNATURE_TYPE_ERROR = "Only a PNG image (transparent background) is allowed for the signature."
+    SIGNATURE_TOO_LARGE_ERROR = "The signature image is larger than 1 MB."
+    SIGNATURE_REQUIRED_ERROR = "Upload the signature (PNG with a transparent background)."
     FILE_TOO_LARGE_ERROR = "File is too large — max 2 MB."
     PLACE_REQUIRED_ERROR = "Place is required."
     PREMISES_TITLE = "Office Premises Owner Registration Document / Lease / Leave & Licence Agreement"
@@ -85,13 +93,18 @@ class PartFPage(BasePage):
     PREMISES_REQUIRED_ERROR = "Please upload the office premises document."
 
     # Server-side texts (shown in ``server_errors`` after a rejected save)
-    FILE_TOO_SMALL_ERROR = "File is smaller than 10 KB — upload a clear, complete scan."
-    SIGNATURE_TOO_SMALL_ERROR = f"Signature: {FILE_TOO_SMALL_ERROR}"
+    FILE_TOO_SMALL_ERROR = "File is too small — upload a clear, complete scan (minimum 10 KB)."
+    SIGNATURE_TOO_SMALL_ERROR = ("Signature: the image is too small — upload a clear signature "
+                                 "(at least 150 × 40 pixels).")
+    SIGNATURE_NOT_TRANSPARENT_ERROR = ("Signature: the background is not transparent. Save the signature as a "
+                                       "PNG with a transparent background.")
 
     @staticmethod
-    def certificate_too_small_errors(name: str) -> tuple[str, str]:
-        """Server messages for a certificate document under 10 KB; ``name`` is e.g. 'Contractor Licence'."""
-        return (f"{name} document: {PartFPage.FILE_TOO_SMALL_ERROR}", f"{name}: Document upload is required.")
+    def certificate_too_small_errors(name: str) -> tuple[str, ...]:
+        """Server messages for a certificate document under 10 KB; ``name`` is e.g. 'Contractor Licence'.
+        Since portal 2.1.0 (17-Nov-2026) only this one message is shown (no "<name>: Document upload is
+        required." line)."""
+        return (f"{name} document: {PartFPage.FILE_TOO_SMALL_ERROR}",)
 
     @staticmethod
     def required_error(label: str) -> str:
@@ -249,7 +262,7 @@ class PartFPage(BasePage):
 
     @property
     def signature_input(self):
-        """'Signature Upload on Official Letter Head' — JPG / PNG only."""
+        """'Upload Signature *' — PNG with a transparent background only."""
         return self.page.locator("#sigFile")
 
     @property
@@ -259,6 +272,12 @@ class PartFPage(BasePage):
     @property
     def signature_hint(self):
         return self.signature_input.locator("xpath=following-sibling::p[contains(@class,'hlp')]")
+
+    @property
+    def signature_guidance(self):
+        """Paragraph under the title explaining how to make a transparent PNG signature (SIGNATURE_GUIDANCE)."""
+        return self.signature_input.locator(
+            "xpath=ancestor::div[contains(@class,'fld')][1]/preceding-sibling::p[1]")
 
     @property
     def application_date_input(self):

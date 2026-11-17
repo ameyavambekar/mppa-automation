@@ -7,7 +7,8 @@ PART_B_URL = f"{FORMS_BASE}/partB.php"
 
 
 class PartBPage(BasePage):
-    """Page object for Step 2 — Part B: Key Persons (forms/partB.php).
+    """Page object for Step 2 — Part B: Constitution and Management Details (forms/partB.php; "Key Persons"
+    before portal 2.1.0).
 
     One ``.person-card`` per key person, ``#person_0``, ``#person_1`` … in the
     order they were added. Per-person locators take that ``index``; the card
@@ -30,6 +31,39 @@ class PartBPage(BasePage):
     a successful save lands on Part C (partC.php?prev_saved=1).
     """
 
+    # Since portal 2.1.0 (17-Nov-2026) the step is "Constitution and Management Details", the category
+    # banner states the legal constitution and its minimum (``category_banner``), and a Private Limited
+    # Company needs at least 2 directors and a "Number of Members / Shareholders" of at least 2.
+    TITLE = "Step 2 — Part B: Constitution and Management Details"
+    SUBTITLE = "Nationality verified via Aadhaar / Passport"
+    COMPANY_MIN_DIRECTORS = 2
+    COMPANY_MIN_MEMBERS = 2
+    MEMBERS_LABEL = "Number of Members / Shareholders *"
+    MEMBERS_HELP = "Separate from the number of directors. Minimum 2 as per the Companies Act, 2013."
+    MEMBERS_PLACEHOLDER = "Minimum 2"
+    COMPANY_REQUIREMENT = ("Requirement: Minimum 2 directors (DIN required for each); number of members / "
+                           "shareholders: at least 2. Companies Act, 2013 (Sections 3 and 149) — minimum 2 "
+                           "directors and 2 members.")
+    GUIDANCE_COMPANY = ("Aadhaar is mandatory for every person. Passport is required only for foreign nationals. "
+                        "DIN and PAN are required for each Director.")
+
+    @staticmethod
+    def banner_heading(legal_constitution: str, persons: str) -> str:
+        """'Legal constitution: <type> · persons to enter: <persons>' (e.g. 'Directors')."""
+        return f"Legal constitution: {legal_constitution} · persons to enter: {persons}"
+
+    @staticmethod
+    def min_counter_text(entered: int, minimum: int) -> str:
+        """'! 1 entered · required: minimum 2' below the minimum, '✓ 2 entered · …' once met."""
+        return f"{'✓' if entered >= minimum else '!'} {entered} entered · required: minimum {minimum}"
+
+    @staticmethod
+    def min_directors_error(entered: int) -> str:
+        return (f"A Private Limited Company must have at least 2 directors — {entered} entered. "
+                "Add the remaining directors.")
+
+    MEMBERS_REQUIRED_ERROR = "Enter the number of members / shareholders."
+
     NATIONALITIES = ("Indian", "Foreign")
     NATIONALITY_LABELS = ("Indian", "Foreign National")
     # The first card offers +91 only; cards added with "Add Another …" offer all of these.
@@ -47,8 +81,8 @@ class PartBPage(BasePage):
     AADHAAR_REQUIRED_ERROR = "Aadhaar Card Number is mandatory."
     AADHAAR_LENGTH_ERROR = "Aadhaar must be exactly 12 digits."
     AADHAAR_PREFIX_ERROR = "Aadhaar cannot start with 0 or 1."
-    DIN_REQUIRED_ERROR = "DIN/DPIN is required for Private Limited Company."
-    DIN_LENGTH_ERROR = "DIN/DPIN must be 8 digits."
+    DIN_REQUIRED_ERROR = "DIN is required for a Director of a Private Limited Company."
+    DIN_LENGTH_ERROR = "DIN must be 8 digits."
     PAN_REQUIRED_ERROR = "PAN is required for Private Limited Company."
     PAN_FORMAT_ERROR = "PAN format invalid (e.g. ABCDE1234F)."
     PASSPORT_REQUIRED_ERROR = "Passport is mandatory for foreign nationals."
@@ -68,7 +102,7 @@ class PartBPage(BasePage):
 
     @property
     def title(self):
-        """Heading 'Step 2 — Part B: Key Persons'."""
+        """Heading TITLE."""
         return self.page.locator("//h2[contains(text(),'Part B')]")
 
     @property
@@ -119,8 +153,14 @@ class PartBPage(BasePage):
 
     @property
     def category_banner(self):
-        """'Category of Key Persons: <label> (based on your agency type: <type>)'."""
+        """Since portal 2.1.0: ``banner_heading`` ('Legal constitution: <type> · persons to enter: <persons>'),
+        then the type's requirement (e.g. COMPANY_REQUIREMENT) and a note to enter all relevant persons."""
         return self.page.locator(".category-banner")
+
+    @property
+    def min_counter(self):
+        """``min_counter_text`` under the members field (class ``bad`` below the minimum, ``ok`` once met)."""
+        return self.page.locator("#minCounter")
 
     @property
     def person_label(self):
@@ -131,6 +171,12 @@ class PartBPage(BasePage):
     def guidance_note(self):
         """Note starting 'Aadhaar is mandatory for every person. …' under the banner."""
         return self.page.locator("//p[contains(normalize-space(),'Aadhaar is mandatory for every person')]")
+
+    @property
+    def members_count_input(self):
+        """'Number of Members / Shareholders *' (type=number, min 2 for a Private Limited Company) —
+        added on dev 17-Nov-2026 (portal 2.1.0), separate from the number of directors."""
+        return self.page.locator("input[name='members_count']")
 
     # ── Person cards ──────────────────────────────────────────────────────────
 
@@ -309,6 +355,11 @@ class PartBPage(BasePage):
     @allure.step("Person {index}: Set Address Proof: {path}")
     def set_address_proof(self, index: int, path: str):
         self.address_proof_input(index).set_input_files(path)
+
+    @allure.step("Fill Number of Members / Shareholders: {count}")
+    def fill_members_count(self, count: int):
+        self.members_count_input.fill(str(count))
+        self.members_count_input.blur()
 
     @allure.step("Click 'Add Another' person")
     def click_add_person(self):

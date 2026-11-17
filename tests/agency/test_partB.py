@@ -34,6 +34,16 @@ def _add_person(part_b: PartBPage) -> int:
     return part_b.person_indexes()[-1]
 
 
+def _meet_company_minimum(part_b: PartBPage, second: KeyPersonData = None) -> None:
+    """Since portal 2.1.0 a Private Limited Company saves only with "Number of Members / Shareholders" of
+    at least 2 and at least 2 directors: enters 2 members and, while only one card is shown, adds
+    ``second`` (default: the second valid director)."""
+    with allure.step("Meet the company minimum: 2 members and 2 directors"):
+        part_b.fill_members_count(PartBPage.COMPANY_MIN_MEMBERS)
+        if len(part_b.person_indexes()) < PartBPage.COMPANY_MIN_DIRECTORS:
+            _fill_person(part_b, _add_person(part_b), second or PartBFactory.second_valid_director())
+
+
 def _expect_server_errors(part_b: PartBPage, page, *messages: str, person: int = 1) -> None:
     """Part B was reloaded with the error box listing each message for ``person``."""
     expect(page).to_have_url(ON_PART_B)
@@ -140,8 +150,8 @@ def test_tc82_part_b_opens_after_part_a_saved(
         expect(part_b_page.progress_step("Part B")).to_be_visible()
 
     with allure.step("Verify the heading and subtitle"):
-        expect(part_b_page.title).to_have_text("Step 2 — Part B: Key Persons")
-        expect(part_b_page.sub_title).to_have_text("Nationality verified via Aadhaar / Passport")
+        expect(part_b_page.title).to_have_text(PartBPage.TITLE)
+        expect(part_b_page.sub_title).to_have_text(PartBPage.SUBTITLE)
 
 
 # ---------------------------------------------------------------------------
@@ -154,8 +164,12 @@ def test_tc83_category_banner_reflects_agency_type(part_b_page: PartBPage, part_
     """
     Given Part A is saved as Private Limited Company
     When  I open Part B
-    Then  the banner, the first card title and the add button all say "Director"
-    And   for a Proprietorship agency they all say "Proprietor"
+    Then  the banner names the legal constitution and "Directors", with the company minimum
+          (2 directors, 2 members), and the first card title and the add button say "Director"
+    And   for a Proprietorship agency the banner, card and button name the Proprietor
+
+    Portal 2.1.0 (17-Nov-2026) replaced "Category of Key Persons: <label> (based on your agency type: …)"
+    with "Legal constitution: <type> · persons to enter: <persons>" and the type's requirement.
 
     Notion: KAN-TC-83 | KAN-19 AC-2 | data: Private Limited Company, Proprietorship users
     """
@@ -164,20 +178,21 @@ def test_tc83_category_banner_reflects_agency_type(part_b_page: PartBPage, part_
         with allure.step(f"Log in as a {agency_type} agency and open Part B"):
             part_b_login_as(agency_type)
 
-        with allure.step(f"Verify the banner names '{label}' and '{agency_type}'"):
-            expect(part_b_page.category_banner).to_contain_text(f"Category of Key Persons: {label}")
-            expect(part_b_page.category_banner).to_contain_text(f"(based on your agency type: {agency_type})")
+        with allure.step(f"Verify the banner names '{agency_type}' and the {label}s to enter"):
+            expect(part_b_page.category_banner).to_contain_text(f"Legal constitution: {agency_type}")
+            expect(part_b_page.category_banner).to_contain_text(f"persons to enter: {label}")
 
         with allure.step(f"Verify '{label} 1' and 'Add Another {label}'"):
             expect(part_b_page.person_title(0)).to_have_text(f"{label} 1")
             expect(part_b_page.add_person_button).to_have_text(f"Add Another {label}")
 
         if label == PartBFactory.PERSON_LABEL:
-            with allure.step("Verify the guidance note for Private Limited Company"):
-                expect(part_b_page.guidance_note).to_contain_text(
-                    "Aadhaar is mandatory for every person. Passport is required only for foreign nationals. "
-                    "DIN/DPIN and PAN are required for each Director under Private Limited Company."
-                )
+            with allure.step("Verify the company requirement and guidance note"):
+                expect(part_b_page.category_banner).to_contain_text(
+                    PartBPage.banner_heading(agency_type, f"{label}s"))
+                expect(part_b_page.category_banner).to_contain_text(PartBPage.COMPANY_REQUIREMENT)
+                expect(part_b_page.guidance_note).to_contain_text(PartBPage.GUIDANCE_COMPANY)
+                expect(part_b_page.members_count_input).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +208,8 @@ def test_tc84_mandatory_fields_validated_on_save(
     Given Director 1 is empty
     When  I save, then fill only Full Name and save again
     Then  the browser first blocks the save on Full Name
-    And   the server then rejects DIN / DPIN, PAN, Aadhaar, Mobile and Residential Address
+    And   the server then rejects DIN, PAN, Aadhaar, Mobile and Residential Address
+    And   (since portal 2.1.0) the missing second director and number of members
     And   Personal Email ID (optional) is not reported
 
     Notion: KAN-TC-84 | KAN-19 AC-5 | data: blank
@@ -218,6 +234,8 @@ def test_tc84_mandatory_fields_validated_on_save(
             PartBPage.AADHAAR_REQUIRED_ERROR, PartBPage.DIN_REQUIRED_ERROR, PartBPage.PAN_REQUIRED_ERROR,
             PartBPage.MOBILE_REQUIRED_ERROR, PartBPage.ADDRESS_REQUIRED_ERROR,
         )
+        expect(part_b_page.server_errors).to_contain_text(PartBPage.min_directors_error(1))
+        expect(part_b_page.server_errors).to_contain_text(PartBPage.MEMBERS_REQUIRED_ERROR)
         expect(part_b_page.server_errors).not_to_contain_text("mail")
 
 
@@ -656,6 +674,7 @@ def test_tc103_personal_email_optional_but_valid(
     page, user = logged_in_part_b_page
     data = part_b_malformed_email_data
     _fill_person(part_b_page, 0, data)
+    _meet_company_minimum(part_b_page)
 
     for email in data.invalid_values:
         with allure.step(f"Save with Personal Email ID '{email}' — the browser blocks it"):
@@ -862,6 +881,9 @@ def test_tc110_remove_added_entry(part_b_page: PartBPage, logged_in_part_b_page,
     Then  only that card is removed, the others keep their data and titles
     And   the new card's number keeps counting up (no renumbering)
 
+    Possible defect (portal 2.1.0, 17-Nov-2026, not logged yet): the new card is numbered by the card
+    count, so it repeats "Director 3" next to the existing "Director 3".
+
     Notion: KAN-TC-110 | KAN-19 AC-8, EC-6 | data: valid_director
     """
     page, user = logged_in_part_b_page
@@ -940,6 +962,7 @@ def test_tc112_duplicate_aadhaar_blocked(
         _fill_person(part_b_page, 0, part_b_valid_data)
         second = _add_person(part_b_page)
         _fill_person(part_b_page, second, part_b_duplicate_aadhaar_data)
+        _meet_company_minimum(part_b_page)
 
     with allure.step("Click 'Save Part B & Continue'"):
         part_b_page.click_submit()
@@ -961,16 +984,18 @@ def test_tc113_valid_save_continues_to_part_c(
     part_b_page: PartBPage, logged_in_part_b_page, part_b_valid_data: KeyPersonData
 ):
     """
-    Given Director 1 has every mandatory field valid
+    Given Director 1 has every mandatory field valid, plus (since portal 2.1.0) a second Director and
+          2 members
     When  I click "Save Part B & Continue"
     Then  Part B is saved, I land on Part C and Part B shows ✓ in the progress bar
 
-    Notion: KAN-TC-113 | KAN-19 AC-9 | data: valid_director
+    Notion: KAN-TC-113 | KAN-19 AC-9 | data: valid_director, second_valid_director
     """
     page, user = logged_in_part_b_page
 
     with allure.step("Fill every mandatory field of Director 1"):
         _fill_person(part_b_page, 0, part_b_valid_data)
+        _meet_company_minimum(part_b_page)
 
     with allure.step("Click 'Save Part B & Continue'"):
         part_b_page.click_submit()
@@ -994,9 +1019,9 @@ def test_tc114_saved_data_restored(
     part_b_valid_data: KeyPersonData, part_b_second_valid_data: KeyPersonData,
 ):
     """
-    Given I saved Part B with two Directors
+    Given I saved Part B with two Directors and 2 members
     When  I reopen Part B, go to Part A, and open Part B again
-    Then  both Directors are shown with every value exactly as saved
+    Then  both Directors and the number of members are shown exactly as saved
 
     Notion: KAN-TC-114 | KAN-19 AC-10 | data: valid_director, second_valid_director
     """
@@ -1006,6 +1031,7 @@ def test_tc114_saved_data_restored(
     with allure.step("Fill two Directors and save"):
         _fill_person(part_b_page, 0, people[0])
         _fill_person(part_b_page, _add_person(part_b_page), people[1])
+        _meet_company_minimum(part_b_page)
         part_b_page.click_submit()
         _expect_part_b_saved(page, user)
 
@@ -1016,7 +1042,8 @@ def test_tc114_saved_data_restored(
                 page.wait_for_load_state("networkidle")
             part_b_page.open()
 
-        with allure.step("Verify both Directors are restored"):
+        with allure.step("Verify both Directors and the number of members are restored"):
+            expect(part_b_page.members_count_input).to_have_value(str(PartBPage.COMPANY_MIN_MEMBERS))
             expect(part_b_page.person_cards).to_have_count(2)
             for index, person in enumerate(people):
                 expect(part_b_page.full_name_input(index)).to_have_value(person.full_name)
@@ -1045,8 +1072,8 @@ def test_tc119_static_texts(part_b_page: PartBPage, logged_in_part_b_page):
     page, user = logged_in_part_b_page
 
     with allure.step("Verify the heading, subtitle and '← Part A' link"):
-        expect(part_b_page.title).to_have_text("Step 2 — Part B: Key Persons")
-        expect(part_b_page.sub_title).to_have_text("Nationality verified via Aadhaar / Passport")
+        expect(part_b_page.title).to_have_text(PartBPage.TITLE)
+        expect(part_b_page.sub_title).to_have_text(PartBPage.SUBTITLE)
         expect(part_b_page.back_to_part_a_link).to_be_visible()
 
     with allure.step("Verify the deadline banner and 'Save & Log out'"):
@@ -1064,6 +1091,15 @@ def test_tc119_static_texts(part_b_page: PartBPage, logged_in_part_b_page):
         expect(part_b_page.aadhaar_hint(0)).to_have_text(PartBPage.AADHAAR_HINT)
         expect(part_b_page.personal_email_hint(0)).to_have_text(PartBPage.PERSONAL_EMAIL_HINT)
 
+    with allure.step("Verify the members field and the directors counter (portal 2.1.0)"):
+        members = part_b_page.members_count_input
+        expect(members.locator("xpath=ancestor::div[1]")).to_contain_text(PartBPage.MEMBERS_LABEL)
+        expect(members.locator("xpath=ancestor::div[1]")).to_contain_text(PartBPage.MEMBERS_HELP)
+        expect(members).to_have_attribute("placeholder", PartBPage.MEMBERS_PLACEHOLDER)
+        expect(members).to_have_attribute("min", str(PartBPage.COMPANY_MIN_MEMBERS))
+        expect(part_b_page.min_counter).to_have_text(
+            PartBPage.min_counter_text(len(part_b_page.person_indexes()), PartBPage.COMPANY_MIN_DIRECTORS))
+
 
 # ---------------------------------------------------------------------------
 # TC-437  DIN / DPIN and PAN shown for company agency types
@@ -1075,16 +1111,18 @@ def test_tc437_din_pan_shown_for_company(part_b_page: PartBPage, logged_in_part_
     """
     Given Part A is saved as Private Limited Company
     When  I look at Director 1 and add Director 2
-    Then  both have DIN / DPIN and PAN Number, and there is no address-proof upload
+    Then  both have DIN and PAN Number, and there is no address-proof upload
+
+    Since portal 2.1.0 the field is "DIN" (was "DIN / DPIN").
 
     Notion: KAN-TC-437 | KAN-19 AC-3
     """
     page, user = logged_in_part_b_page
 
-    with allure.step("Verify DIN / DPIN and PAN on Director 1"):
-        expect(part_b_page.din_input(0)).to_have_attribute("placeholder", "8-digit DIN / DPIN")
+    with allure.step("Verify DIN and PAN on Director 1"):
+        expect(part_b_page.din_input(0)).to_have_attribute("placeholder", "8-digit DIN")
         expect(part_b_page.pan_input(0)).to_have_attribute("placeholder", "e.g. ABCDE1234F")
-        expect(part_b_page.person_card(0)).to_contain_text("DIN / DPIN *")
+        expect(part_b_page.person_card(0)).to_contain_text("DIN *")
         expect(part_b_page.person_card(0)).to_contain_text("PAN Number *")
 
     with allure.step("Verify there is no address-proof upload"):
@@ -1219,6 +1257,7 @@ def test_tc442_personal_email_differs_from_official(
 
     with allure.step("Save with the official agency email"):
         _fill_person(part_b_page, 0, KeyPersonData(**{**data.__dict__, "email": user.email}))
+        _meet_company_minimum(part_b_page)
         part_b_page.click_submit()
         _expect_server_errors(part_b_page, page, PartBPage.EMAIL_SAME_AS_OFFICIAL_ERROR)
 

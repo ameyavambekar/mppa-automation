@@ -151,8 +151,14 @@ def part_f_undersized_certificate_data() -> PartFData:
 
 @pytest.fixture
 def part_f_undersized_signature_data() -> PartFData:
-    """TC-575: a signature under 10 KB."""
+    """TC-575: an 8 × 8 pixel signature (below 150 × 40 pixels)."""
     return PartFFactory.undersized_signature()
+
+
+@pytest.fixture
+def part_f_opaque_signature_data() -> PartFData:
+    """KAN-TC-849: a signature PNG with a white (opaque) background."""
+    return PartFFactory.opaque_signature()
 
 
 @pytest.fixture

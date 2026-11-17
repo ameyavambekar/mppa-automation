@@ -6,6 +6,7 @@ from playwright.sync_api import expect
 
 from config import FORMS_BASE
 from pages.declaration_page import DECLARATION_URL, PREVIEW_LOCKED_URL, PREVIEW_URL, DeclarationPage
+from pages.enclosures_page import EnclosuresPage
 from pages.login_page import LoginPage
 from pages.partA_page import PartAPage
 from pages.partB_page import PartBPage
@@ -170,7 +171,7 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
         part_c.open()
         page.wait_for_load_state("networkidle")
         saved_c = {
-            "Placement Type": part_c.placement_type_select.input_value(),
+            "Area of Placement Operations": part_c.checked_placement_type.input_value(),
             "Service Mode": part_c.service_mode_select.input_value(),
             "Digital Platform": _yes_no(part_c.digital_platform_radio("1").is_checked()),
             "Training": _yes_no(part_c.training_radio("1").is_checked()),
@@ -206,6 +207,7 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
         expect(preview_page.row_labels(PreviewPage.PART_F)).to_have_text(list(PreviewPage.PART_F_LABELS))
         expect(preview_page.value(PreviewPage.PART_F, "Place")).to_have_text(place)
         expect(preview_page.value(PreviewPage.PART_F, "Application Date")).to_have_text(DATE)
+        expect(preview_page.value(PreviewPage.PART_F, "Signature")).to_have_text(PreviewPage.VIEW_LABEL)
 
 
 # ---------------------------------------------------------------------------
@@ -259,19 +261,24 @@ def test_tc507_key_persons(preview_page: PreviewPage, logged_in_preview_page):
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-508")
 @allure.story(STORY)
-@allure.title("TC-508: Enclosures show all six documents with ✓ and a \"View\" link to the saved file")
+@allure.title("TC-508: Enclosures show each uploaded document with ✓ and a \"View\" link to the saved file")
 def test_tc508_enclosures(preview_page: PreviewPage, logged_in_preview_page):
     """
-    Given the six documents are uploaded
+    Given the two mandatory documents are uploaded (and no optional one)
     When  I look at Enclosures on the Preview step
-    Then  each document has a card with ✓ and a "View" link that serves the saved file in a new tab
+    Then  each document has a card with ✓ and a "View" link that serves the saved file in a new tab,
+          and the office address proof card names its type
+
+    Portal 2.1.0 (17-Nov-2026) cut the documents from six to two mandatory ones.
 
     Notion: KAN-TC-508 | KAN-39 AC-4
     """
     page, user = logged_in_preview_page
 
-    with allure.step("Verify there are six document cards"):
+    with allure.step("Verify there are two document cards"):
         expect(preview_page.enclosure_cards).to_have_count(len(PreviewPage.ENCLOSURE_TITLES))
+        expect(preview_page.enclosure_card("Office Address Proof")).to_contain_text(
+            re.compile("Office Address Proof — (" + "|".join(map(re.escape, EnclosuresPage.ADDRESS_PROOF_TYPES)) + ")"))
 
     for title in PreviewPage.ENCLOSURE_TITLES:
         with allure.step(f"Verify '{title}'"):

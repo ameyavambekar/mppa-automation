@@ -11,9 +11,9 @@ from pages.partC_page import PART_C_URL, PartCPage
 from pages.partF_page import PART_F_URL, PartFPage
 from test_data.partF_factory import CertificateData, PartFData, PartFFactory, TypedInput
 from utils.aio import aio_case
-from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, OVERSIZED_FILE, OVERSIZED_IMAGE,
-                                SIGNATURE_JPG, SIGNATURE_PNG, UNSUPPORTED_CERTIFICATE, UNSUPPORTED_SPREADSHEET,
-                                VALID_CERTIFICATE)
+from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, OVERSIZED_FILE,
+                                SIGNATURE_JPG, SIGNATURE_OVERSIZED_PNG, SIGNATURE_TRANSPARENT_PNG,
+                                UNSUPPORTED_CERTIFICATE, UNSUPPORTED_SPREADSHEET, VALID_CERTIFICATE)
 from utils.state_store import TestStateStore
 
 STORY = "Step 4 - Certificates, Licences & Signature"
@@ -210,7 +210,7 @@ def test_tc147_application_date_read_only(part_f_page: PartFPage, logged_in_part
 def test_tc148_place_required(part_f_page: PartFPage, logged_in_part_f_page, part_f_all_no_data: PartFData):
     """
     Given every certificate is answered No
-    When  I save without a Place, then choose one and save
+    When  I save without a Place, then choose one (and the signature, required since portal 2.1.0) and save
     Then  the first save is blocked with "Place is required." and the second succeeds
 
     Notion: KAN-TC-148 | data: all_no
@@ -229,8 +229,9 @@ def test_tc148_place_required(part_f_page: PartFPage, logged_in_part_f_page, par
         expect(part_f_page.field_error(part_f_page.place_select)).to_have_text(PartFPage.PLACE_REQUIRED_ERROR)
         _expect_blocked(page, part_f_page, PartFPage.PLACE_REQUIRED_ERROR)
 
-    with allure.step(f"Select '{part_f_all_no_data.place}' and save"):
+    with allure.step(f"Select '{part_f_all_no_data.place}', choose the signature and save"):
         part_f_page.select_place(part_f_all_no_data.place)
+        part_f_page.set_signature(part_f_all_no_data.signature)
         part_f_page.click_submit()
 
     with allure.step("Verify Part F is saved"):
@@ -238,30 +239,40 @@ def test_tc148_place_required(part_f_page: PartFPage, logged_in_part_f_page, par
 
 
 # ---------------------------------------------------------------------------
-# TC-149  JPG / PNG signature accepted
+# TC-149  Transparent PNG signature accepted, JPG rejected
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-149")
 @allure.story(STORY)
-@allure.title("TC-149: A JPG or PNG signature under 2 MB is accepted")
+@allure.title("TC-149: A transparent PNG signature is accepted and a JPG signature is rejected")
 def test_tc149_signature_jpg_png_accepted(part_f_page: PartFPage, logged_in_part_f_page):
     """
     Given I am on Part F
-    When  I choose a JPG, then a PNG signature
-    Then  each file is kept with no error
+    When  I choose a JPG, then a PNG with a transparent background as the signature
+    Then  the JPG is removed with "Only a PNG image (transparent background) is allowed for the signature."
+    And   the PNG is kept with no error
 
-    Notion: KAN-TC-149 | data: signature_valid.jpg, signature_valid.png
+    Since portal 2.1.0 (17-Nov-2026) the signature is "Upload Signature *": PNG only, transparent background,
+    at least 150 × 40 pixels, up to 1 MB. JPG signatures were accepted before.
+
+    Notion: KAN-TC-149 | data: signature_valid.jpg, signature_transparent.png
     """
     page, user = logged_in_part_f_page
 
-    with allure.step("Verify the signature title and hint"):
-        expect(part_f_page.signature_title).to_have_text("Signature Upload on Official Letter Head")
+    with allure.step("Verify the signature title, guidance and hint"):
+        expect(part_f_page.signature_title).to_have_text(PartFPage.SIGNATURE_TITLE)
+        expect(part_f_page.signature_guidance).to_have_text(PartFPage.SIGNATURE_GUIDANCE)
         expect(part_f_page.signature_hint).to_have_text(PartFPage.SIGNATURE_HINT)
+        expect(part_f_page.signature_input).to_have_attribute("accept", ".png,image/png")
 
-    for path in (SIGNATURE_JPG, SIGNATURE_PNG):
-        with allure.step(f"Choose {os.path.basename(path)} — kept, no error"):
-            part_f_page.set_signature(path)
-            expect(part_f_page.field_error(part_f_page.signature_input)).to_have_count(0)
-            assert _chosen_files(part_f_page.signature_input) == 1, "The signature file was not kept"
+    with allure.step("Choose signature_valid.jpg — rejected and removed"):
+        part_f_page.set_signature(SIGNATURE_JPG)
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(PartFPage.SIGNATURE_TYPE_ERROR)
+        assert _chosen_files(part_f_page.signature_input) == 0, "The JPG signature was kept"
+
+    with allure.step(f"Choose {os.path.basename(SIGNATURE_TRANSPARENT_PNG)} — kept, no error"):
+        part_f_page.set_signature(SIGNATURE_TRANSPARENT_PNG)
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
+        assert _chosen_files(part_f_page.signature_input) == 1, "The signature file was not kept"
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +285,8 @@ def test_tc150_signature_pdf_rejected(part_f_page: PartFPage, logged_in_part_f_p
     """
     Given I am on Part F
     When  I choose a PDF as the signature
-    Then  "Only JPG or PNG allowed for the signature." is shown and the file is removed
+    Then  "Only a PNG image (transparent background) is allowed for the signature." is shown and the file
+          is removed
 
     Notion: KAN-TC-150 | KAN-21 EC-8 | data: certificate.pdf
     """
@@ -293,22 +305,24 @@ def test_tc150_signature_pdf_rejected(part_f_page: PartFPage, logged_in_part_f_p
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-151")
 @allure.story(STORY)
-@allure.title("TC-151: A signature larger than 2 MB is rejected immediately")
+@allure.title("TC-151: A signature larger than 1 MB is rejected immediately")
 def test_tc151_signature_too_large(part_f_page: PartFPage, logged_in_part_f_page):
     """
     Given I am on Part F
-    When  I choose a JPG larger than 2 MB as the signature
-    Then  "File is too large — max 2 MB." is shown and the file is removed
+    When  I choose a PNG of about 1.5 MB as the signature
+    Then  "The signature image is larger than 1 MB." is shown and the file is removed
 
-    Notion: KAN-TC-151 | KAN-21 EC-7 | data: oversized_image.jpg
+    Portal 2.1.0 (17-Nov-2026) lowered the signature limit from 2 MB to 1 MB.
+
+    Notion: KAN-TC-151 | KAN-21 EC-7 | data: signature_oversized.png (~1.5 MB)
     """
     page, user = logged_in_part_f_page
 
-    with allure.step("Choose a signature larger than 2 MB"):
-        part_f_page.set_signature(OVERSIZED_IMAGE)
+    with allure.step("Choose a signature larger than 1 MB"):
+        part_f_page.set_signature(SIGNATURE_OVERSIZED_PNG)
 
     with allure.step("Verify the error and that the file was removed"):
-        expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(PartFPage.FILE_TOO_LARGE_ERROR)
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(PartFPage.SIGNATURE_TOO_LARGE_ERROR)
         assert _chosen_files(part_f_page.signature_input) == 0, "The oversized file was kept"
 
 
@@ -564,7 +578,7 @@ def test_tc161_invalid_dates(part_f_page: PartFPage, logged_in_part_f_page, part
 @allure.title("TC-162: Switching a certificate from \"Yes\" back to \"No\" hides its fields and clears their errors")
 def test_tc162_yes_to_no_clears_errors(part_f_page: PartFPage, logged_in_part_f_page):
     """
-    Given a Place is chosen
+    Given a Place and the signature are chosen
     When  I save with the Contractor Licence answered Yes and blank, switch it to No, and save again
     Then  the first save shows its three errors; after No they are gone and Part F saves
 
@@ -573,9 +587,10 @@ def test_tc162_yes_to_no_clears_errors(part_f_page: PartFPage, logged_in_part_f_
     page, user = logged_in_part_f_page
     block = part_f_page.certificate_block("cl")
 
-    with allure.step("Answer Yes for the Contractor Licence, select a Place and save"):
+    with allure.step("Answer Yes for the Contractor Licence, select a Place, choose the signature and save"):
         part_f_page.select_certificate("cl", True)
         part_f_page.select_place(PartFFactory.PLACE)
+        part_f_page.set_signature(SIGNATURE_TRANSPARENT_PNG)
         part_f_page.click_submit()
         expect(block.locator("p.fld-err")).to_have_count(3)
 
@@ -647,7 +662,7 @@ def test_tc166_back_to_part_c(part_f_page: PartFPage, logged_in_part_f_page):
     with allure.step("Verify Part C opens with its saved values"):
         expect(page).to_have_url(re.compile(rf"{re.escape(PART_C_URL)}"))
         expect(part_c.title).to_have_text("Step 3 — Part C: Operations & Infrastructure")
-        expect(part_c.placement_type_select).not_to_have_value("")
+        expect(part_c.checked_placement_type).to_have_count(1)
 
 
 # ---------------------------------------------------------------------------
@@ -950,6 +965,7 @@ def test_tc470_answers_after_save(
 
     with allure.step("Precondition: save Part F with the Contractor Licence answered No"):
         part_f_page.select_place(PartFFactory.PLACE)
+        part_f_page.set_signature(SIGNATURE_TRANSPARENT_PNG)
         part_f_page.click_submit()
         _expect_part_f_saved(page, part_f_page, user)
         part_f_page.open()
@@ -995,8 +1011,11 @@ def test_tc574_certificate_too_small(
     Given the Contractor Licence is answered Yes with a valid number and date, and a Place is chosen
     When  I choose a PDF under 10 KB and click "Save Part F & Continue"
     Then  the page keeps the file, but the server rejects the save with
-          "Contractor Licence document: File is smaller than 10 KB — upload a clear, complete scan."
-          and "Contractor Licence: Document upload is required." and Part F is not saved
+          "Contractor Licence document: File is too small — upload a clear, complete scan (minimum 10 KB)."
+          and Part F is not saved
+
+    Portal 2.1.0 (17-Nov-2026) reworded the message and dropped the second line
+    "Contractor Licence: Document upload is required.".
 
     Notion: KAN-TC-574 | KAN-21 EC-11 | data: undersized_certificate (valid_doc.pdf, 298 bytes)
     """
@@ -1020,29 +1039,32 @@ def test_tc574_certificate_too_small(
 
 
 # ---------------------------------------------------------------------------
-# TC-575  Signature under 10 KB rejected by the server
+# TC-575  Signature below 150 × 40 pixels rejected by the server
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-575")
 @allure.story(STORY)
-@allure.title("TC-575: A specimen signature under 10 KB is rejected by the server and blocks saving")
+@allure.title("TC-575: A signature smaller than 150 × 40 pixels is rejected by the server and blocks saving")
 def test_tc575_signature_too_small(
     part_f_page: PartFPage, logged_in_part_f_page, part_f_undersized_signature_data: PartFData
 ):
     """
     Given every certificate is answered No and a Place is chosen
-    When  I choose a PNG under 10 KB as the signature and click "Save Part F & Continue"
+    When  I choose an 8 × 8 pixel PNG (72 bytes) as the signature and click "Save Part F & Continue"
     Then  the page keeps the file, but the server rejects the save with
-          "Signature: File is smaller than 10 KB — upload a clear, complete scan." and Part F is not saved
+          "Signature: the image is too small — upload a clear signature (at least 150 × 40 pixels)."
+    And   Part F is not saved
 
-    Notion: KAN-TC-575 | KAN-21 EC-12 | data: undersized_signature (signature_undersized.png, 72 bytes)
+    Since portal 2.1.0 (17-Nov-2026) the server checks the signature's pixel size instead of the 10 KB minimum.
+
+    Notion: KAN-TC-575 | KAN-21 EC-12 | data: undersized_signature (signature_undersized.png, 8 × 8, 72 bytes)
     """
     page, user = logged_in_part_f_page
 
-    with allure.step("Choose a signature under 10 KB and a Place"):
+    with allure.step("Choose an 8 × 8 pixel signature and a Place"):
         _fill(part_f_page, part_f_undersized_signature_data)
 
     with allure.step("Verify the page keeps the file with no error under it"):
-        assert _chosen_files(part_f_page.signature_input) == 1, "The page removed the signature under 10 KB"
+        assert _chosen_files(part_f_page.signature_input) == 1, "The page removed the 8 × 8 signature"
         expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
 
     with allure.step("Click 'Save Part F & Continue'"):
@@ -1050,6 +1072,43 @@ def test_tc575_signature_too_small(
 
     with allure.step("Verify the server rejects the signature and Part F is not saved"):
         _expect_rejected_by_server(page, part_f_page, PartFPage.SIGNATURE_TOO_SMALL_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# TC-849  Signature without a transparent background rejected by the server
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-849")
+@allure.story(STORY)
+@allure.title("TC-849: A signature PNG without a transparent background is rejected by the server and blocks saving")
+def test_tc849_signature_not_transparent(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_opaque_signature_data: PartFData
+):
+    """
+    Given every certificate is answered No and a Place is chosen
+    When  I choose a PNG with a white background as the signature and click "Save Part F & Continue"
+    Then  the page keeps the file, but the server rejects the save with
+          "Signature: the background is not transparent. Save the signature as a PNG with a transparent
+          background."
+    And   Part F is not saved
+
+    Portal 2.1.0 (17-Nov-2026) requires a transparent background; the browser only checks the type and size.
+
+    Notion: KAN-TC-849 | KAN-21 | data: opaque_signature (signature_valid.png, 320 × 120, RGB)
+    """
+    page, user = logged_in_part_f_page
+
+    with allure.step("Choose an opaque PNG signature and a Place"):
+        _fill(part_f_page, part_f_opaque_signature_data)
+
+    with allure.step("Verify the page keeps the file with no error under it"):
+        assert _chosen_files(part_f_page.signature_input) == 1, "The page removed the opaque PNG signature"
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
+
+    with allure.step("Click 'Save Part F & Continue'"):
+        part_f_page.click_submit()
+
+    with allure.step("Verify the server rejects the signature and Part F is not saved"):
+        _expect_rejected_by_server(page, part_f_page, PartFPage.SIGNATURE_NOT_TRANSPARENT_ERROR)
 
 
 # ---------------------------------------------------------------------------

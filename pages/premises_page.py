@@ -19,8 +19,8 @@ class PremisesPage(BasePage):
     button. Saved cards show the photo, "Location: <lat>, <lng> (±<N> m) · Map"
     and a green "Uploaded" badge.
 
-    The classroom and working-area cards have a Yes / No question, saved as soon
-    as it is answered: No hides the photo and marks the card "Not applicable".
+    The classroom card has a Yes / No question, saved as soon as it is answered: No hides the
+    photo and marks the card "Not applicable". (Before portal 2.1.0 the working area had one too.)
 
     Errors appear in ``message_box``. "Save & continue to Declaration" is checked
     by the server and moves on to the next step.
@@ -32,10 +32,13 @@ class PremisesPage(BasePage):
         "exterior": ("Office premises — outside view", True, None),
         "interior": ("Office — inside view", True, None),
         "classroom": ("Classroom / training room", False, "Does your agency have a classroom / training room?"),
-        "working_area": ("Working area", False, "Does your agency have a separate working area?"),
+        # Since portal 2.1.0 (17-Nov-2026) the working area is a required photo (no question) and the
+        # service charges display board is a new required photo.
+        "working_area": ("Working area", True, None),
+        "charges_board": ("Service charges display board", True, None),
     }
-    REQUIRED = ("signboard", "exterior", "interior")
-    CONDITIONAL = ("classroom", "working_area")
+    REQUIRED = ("signboard", "exterior", "interior", "working_area", "charges_board")
+    CONDITIONAL = ("classroom",)
 
     # Client-side texts
     TITLE = "Premises photographs"
@@ -44,6 +47,8 @@ class PremisesPage(BasePage):
             "access when the browser asks. Use Take photo on a mobile phone for best results. JPG / PNG, up to 3 MB "
             "each. The location must be in Maharashtra.")
     HELP = "The photo is saved with your current location."
+    CHARGES_BOARD_HINT = ("The board at the office showing the service charges / fees charged to job seekers and "
+                          "employers — the charges must be clearly readable.")
     NO_PHOTO = "No photo yet"
     BADGE_REQUIRED = "Required"
     BADGE_UPLOADED = "Uploaded"
@@ -53,7 +58,8 @@ class PremisesPage(BasePage):
     NO_LOCATION_SUPPORT_ERROR = "This browser cannot read your location. Use a mobile phone or a different browser."
     LOCATION_DENIED_ERROR = "Location permission is required. Allow location access for this site and try again."
     # Server message on "Save & continue to Declaration" with a photo or answer missing.
-    MISSING_PHOTOS_ERROR = "Head office: answer both questions and add every required photo before continuing."
+    MISSING_PHOTOS_ERROR = ("Head office: answer the classroom question and add every required photo (including the "
+                            "working area and the service charges board) before continuing.")
 
     @staticmethod
     def outside_maharashtra_error(lat: float, lng: float) -> str:
@@ -224,7 +230,10 @@ class PremisesPage(BasePage):
 
     @allure.step("Answer '{key}' question: {yes}")
     def answer(self, key: str, yes: bool):
-        """Answers a conditional card's Yes / No question; the page saves it straight away."""
+        """Answers a conditional card's Yes / No question; the page saves it straight away. An answer that
+        is already selected is left alone (checking it again sends nothing)."""
+        if self.answer_radio(key, yes).is_checked():
+            return
         with self.page.expect_response(lambda r: "premises.php" in r.url and r.request.method == "POST"):
             self.answer_radio(key, yes).check()
 

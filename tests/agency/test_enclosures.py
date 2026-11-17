@@ -21,7 +21,7 @@ PART_F_LOCKED_STEP_URL = f"{PART_F_URL}?error=complete_partF_first"
 
 def _record_uploads(enclosures: EnclosuresPage, user) -> None:
     """Every upload uses the user up for the Documents tests: record it in the state store."""
-    status = "completed" if enclosures.uploaded_count() == 6 else "in_progress"
+    status = "completed" if enclosures.uploaded_count() == len(EnclosuresPage.MANDATORY) else "in_progress"
     TestStateStore().mark_form_step_status(username=user.username, step="enclosures", status=status)
 
 
@@ -45,6 +45,9 @@ def _expect_not_uploaded(enclosures: EnclosuresPage, number: int) -> None:
     expect(enclosures.document_row(number)).not_to_have_class(re.compile(r"\bdone\b"))
     expect(enclosures.document_number(number)).to_have_text(str(number))
     expect(enclosures.uploaded_badge(number)).to_have_count(0)
+
+
+ALL = len(EnclosuresPage.MANDATORY)   # 2 since portal 2.1.0 (17-Nov-2026)
 
 
 def _expect_rejected(enclosures: EnclosuresPage, number: int, error: str) -> None:
@@ -86,31 +89,34 @@ def test_tc379_documents_locked_until_part_f_saved(enclosures_page: EnclosuresPa
 
 
 # ---------------------------------------------------------------------------
-# TC-380  All six mandatory documents — uploads
+# TC-380  Both mandatory documents — uploads
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-380")
 @allure.story(STORY)
-@allure.title("TC-380: Uploading all six mandatory documents brings the counter to 6/6")
+@allure.title("TC-380: Uploading both mandatory documents brings the counter to 2/2")
 def test_tc380_all_mandatory_documents(
     enclosures_page: EnclosuresPage, logged_in_enclosures_page, enclosures_all_mandatory_data: DocumentUploads
 ):
     """
     Given no document has been uploaded
-    When  I choose a PDF for each of documents 1–6 and click "Upload Documents"
-    Then  "6 file(s) uploaded successfully." is shown, the counter reads 6/6 with the bar full,
+    When  I choose a PDF for documents 1 (PAN card) and 2 (office address proof, with its type) and click
+          "Upload Documents"
+    Then  "2 file(s) uploaded successfully." is shown, the counter reads 2/2 with the bar full,
           every mandatory row shows ✓, its file name and "View ↗",
           and a "Next: Premises Photos →" link appears
+
+    Portal 2.1.0 (17-Nov-2026) cut the mandatory documents from six to two.
 
     Notion: KAN-TC-380 | KAN-9 AC-2, AC-4, AC-11 | data: all_mandatory
     """
     page, user = logged_in_enclosures_page
     data = enclosures_all_mandatory_data
 
-    with allure.step("Upload documents 1–6"):
+    with allure.step("Upload documents 1 and 2"):
         _upload(enclosures_page, page, user, data.documents)
 
-    with allure.step("Verify the counter reads 6/6 with the bar full"):
-        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
+    with allure.step("Verify the counter reads 2/2 with the bar full"):
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(ALL))
         expect(enclosures_page.progress_fill).to_have_attribute("style", re.compile(r"width:\s*100%"))
 
     for number, path in data.documents.items():
@@ -134,46 +140,46 @@ def test_tc381_counter_after_upload(
     """
     Given no document has been uploaded
     When  I choose document 1 without uploading, upload it, then upload document 2
-    Then  the counter stays 0/6 until "Upload Documents", then reads 1/6, then 2/6
+    Then  the counter stays 0/2 until "Upload Documents", then reads 1/2, then 2/2
 
     Notion: KAN-TC-381 | KAN-9 AC-2 | data: first_document
     """
     page, user = logged_in_enclosures_page
     path = enclosures_first_document_data.documents[1]
 
-    with allure.step("Verify the counter reads 0/6 with an empty bar"):
+    with allure.step("Verify the counter reads 0/2 with an empty bar"):
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(0))
         expect(enclosures_page.progress_fill).to_have_attribute("style", re.compile(r"width:\s*0%"))
 
-    with allure.step("Choose document 1 without uploading — the counter stays 0/6"):
+    with allure.step("Choose document 1 without uploading — the counter stays 0/2"):
         enclosures_page.choose_document(1, path)
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(0))
 
-    with allure.step("Click 'Upload Documents' — 1/6"):
+    with allure.step("Click 'Upload Documents' — 1/2"):
         enclosures_page.click_upload()
         _record_uploads(enclosures_page, user)
         expect(enclosures_page.messages).to_have_text([EnclosuresPage.uploaded_message(1)])
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(1))
-        expect(enclosures_page.progress_fill).to_have_attribute("style", re.compile(r"width:\s*17%"))
+        expect(enclosures_page.progress_fill).to_have_attribute("style", re.compile(r"width:\s*50%"))
 
-    with allure.step("Upload document 2 — 2/6"):
+    with allure.step("Upload document 2 — 2/2"):
         _upload(enclosures_page, page, user, {2: path})
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(2))
 
 
 # ---------------------------------------------------------------------------
-# TC-382  Premises Photos locked until 6/6 — uploads
+# TC-382  Premises Photos locked until 2/2 — uploads
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-382")
 @allure.story(STORY)
-@allure.title("TC-382: The Premises Photos step is locked until all six mandatory documents are uploaded")
+@allure.title("TC-382: The Premises Photos step is locked until both mandatory documents are uploaded")
 def test_tc382_premises_photos_locked_until_six(
     enclosures_page: EnclosuresPage, logged_in_enclosures_page, enclosures_all_mandatory_data: DocumentUploads
 ):
     """
-    Given fewer than six mandatory documents are uploaded
+    Given not every mandatory document is uploaded
     When  I open Premises Photos by URL, log out and back in, then upload the remaining mandatory documents
-    Then  I am sent back to the Documents step and login lands there, until 6/6 shows
+    Then  I am sent back to the Documents step and login lands there, until 2/2 shows
           "Next: Premises Photos →", which opens the Premises Photos step
 
     Notion: KAN-TC-382 | KAN-9 AC-11 | data: all_mandatory
@@ -196,9 +202,9 @@ def test_tc382_premises_photos_locked_until_six(
         page.wait_for_url(f"{FORMS_BASE}/**", timeout=15000)
         expect(page).to_have_url(ON_ENCLOSURES)
 
-    with allure.step("Upload the six mandatory documents — 6/6 and 'Next: Premises Photos →'"):
+    with allure.step("Upload both mandatory documents — 2/2 and 'Next: Premises Photos →'"):
         _upload(enclosures_page, page, user, enclosures_all_mandatory_data.documents)
-        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(ALL))
         expect(enclosures_page.next_premises_photos_link).to_be_visible()
 
     with allure.step("Click 'Next: Premises Photos →' — the Premises Photos step opens"):
@@ -212,24 +218,24 @@ def test_tc382_premises_photos_locked_until_six(
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-383")
 @allure.story(STORY)
-@allure.title("TC-383: Optional documents 7–8 upload without changing the mandatory counter")
+@allure.title("TC-383: Optional documents 3–4 upload without changing the mandatory counter")
 def test_tc383_optional_documents(
     enclosures_page: EnclosuresPage, logged_in_enclosures_page, enclosures_optional_only_data: DocumentUploads
 ):
     """
     Given no document has been uploaded
-    When  I upload documents 7 and 8 only
-    Then  both are shown as uploaded and the counter still reads 0/6
+    When  I upload documents 3 and 4 only
+    Then  both are shown as uploaded and the counter still reads 0/2
 
     Notion: KAN-TC-383 | KAN-9 AC-2, AC-6 | data: optional_only
     """
     page, user = logged_in_enclosures_page
     data = enclosures_optional_only_data
 
-    with allure.step("Upload documents 7 and 8"):
+    with allure.step("Upload documents 3 and 4"):
         _upload(enclosures_page, page, user, data.documents)
 
-    with allure.step("Verify both are uploaded and the counter still reads 0/6"):
+    with allure.step("Verify both are uploaded and the counter still reads 0/2"):
         for number, path in data.documents.items():
             _expect_uploaded(enclosures_page, number, path)
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(0))
@@ -246,7 +252,7 @@ def test_tc384_not_pdf_rejected(
 ):
     """
     Given I am on the Documents step
-    When  I choose a JPG for document 3, a PNG for document 1 and a DOCX for document 8
+    When  I choose a JPG for document 3, a PNG for document 1 and a DOCX for document 4
     Then  each shows "Only PDF files are allowed." and the file is removed
 
     Notion: KAN-TC-384 | KAN-9 AC-3, EC-1 | data: not_pdf
@@ -271,7 +277,7 @@ def test_tc385_pdf_too_large(
     """
     Given I am on the Documents step
     When  I choose a 3 MB PDF for document 2
-    Then  "File is larger than 2 MB — please upload a smaller PDF." is shown and the file is removed
+    Then  "File is larger than 2 MB." is shown and the file is removed
 
     Notion: KAN-TC-385 | KAN-9 AC-3, EC-3 | data: too_large
     """
@@ -297,7 +303,7 @@ def test_tc386_uploaded_state_persists(
     """
     Given no document has been uploaded
     When  I upload document 1, open Part F and come back
-    Then  document 1 still shows ✓, its file name and "View ↗" (opening a new tab), and the counter reads 1/6
+    Then  document 1 still shows ✓, its file name and "View ↗" (opening a new tab), and the counter reads 1/2
 
     Notion: KAN-TC-386 | KAN-9 AC-9 | data: first_document
     """
@@ -313,7 +319,7 @@ def test_tc386_uploaded_state_persists(
         enclosures_page.open()
         page.wait_for_load_state("networkidle")
 
-    with allure.step("Verify document 1 is still uploaded and the counter reads 1/6"):
+    with allure.step("Verify document 1 is still uploaded and the counter reads 1/2"):
         _expect_uploaded(enclosures_page, 1, path)
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(1))
         expect(enclosures_page.view_link(1)).to_have_attribute("href", re.compile(r"serve_enclosure\.php"))
@@ -331,7 +337,7 @@ def test_tc387_replace_document(
     """
     Given document 1 is uploaded
     When  I choose a PDF with a different name for it and click "Upload Documents"
-    Then  document 1 shows the new file name, "View ↗" points to a new upload, and the counter stays 1/6
+    Then  document 1 shows the new file name, "View ↗" points to a new upload, and the counter stays 1/2
 
     Notion: KAN-TC-387 | KAN-9 AC-9 | data: replacement
     """
@@ -430,7 +436,7 @@ def test_tc394_same_file_twice(
     """
     Given no document has been uploaded
     When  I upload the same PDF for document 1 twice
-    Then  each upload succeeds, document 1 stays uploaded and the counter stays 1/6
+    Then  each upload succeeds, document 1 stays uploaded and the counter stays 1/2
 
     Notion: KAN-TC-394 | KAN-9 EC-6 | data: first_document
     """
@@ -455,8 +461,8 @@ def test_tc395_training_certificate_optional(
 ):
     """
     Given Part C was saved with "Does the agency provide training?" = No
-    When  I open the Documents step and upload documents 1–6 only
-    Then  document 7 is an optional row and the counter reads 6/6 without it
+    When  I open the Documents step and upload documents 1 and 2 only
+    Then  document 3 (training certificate) is an optional row and the counter reads 2/2 without it
 
     Notion: KAN-TC-395 | KAN-9 EC-5 | data: all_mandatory
     """
@@ -470,14 +476,14 @@ def test_tc395_training_certificate_optional(
             pytest.skip(f"{user.username}'s Part C was saved with training = Yes")
         enclosures_page.open()
 
-    with allure.step("Verify document 7 is shown as optional"):
-        expect(enclosures_page.document_title(7)).to_have_text(EnclosuresPage.DOCUMENTS[7][1])
-        expect(enclosures_page.required_marker(7)).to_have_count(0)
+    with allure.step("Verify document 3 is shown as optional"):
+        expect(enclosures_page.document_title(3)).to_have_text(EnclosuresPage.DOCUMENTS[3][1])
+        expect(enclosures_page.required_marker(3)).to_have_count(0)
 
-    with allure.step("Upload documents 1–6 only — 6/6"):
+    with allure.step("Upload documents 1 and 2 only — 2/2"):
         _upload(enclosures_page, page, user, enclosures_all_mandatory_data.documents)
-        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
-        _expect_not_uploaded(enclosures_page, 7)
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(ALL))
+        _expect_not_uploaded(enclosures_page, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -487,21 +493,24 @@ def test_tc395_training_certificate_optional(
 @allure.story(STORY)
 @allure.title("TC-396: After logging out and back in, the counter and upload states are as left")
 def test_tc396_uploads_persist_across_sessions(
-    enclosures_page: EnclosuresPage, logged_in_enclosures_page, enclosures_first_three_data: DocumentUploads
+    enclosures_page: EnclosuresPage, logged_in_enclosures_page, enclosures_partial_data: DocumentUploads
 ):
     """
     Given no document has been uploaded
-    When  I upload documents 1–3, click "Save & Log out", log in again and open the Documents step
-    Then  documents 1–3 are uploaded, 4–6 are not, and the counter reads 3/6
+    When  I upload documents 1 and 3, click "Save & Log out", log in again and open the Documents step
+    Then  documents 1 and 3 are uploaded, 2 and 4 are not, and the counter reads 1/2
 
-    Notion: KAN-TC-396 | KAN-9 AC-9 | data: first_three
+    Portal 2.1.0 (17-Nov-2026) has four documents (two mandatory), so the step is left part-done with one
+    mandatory and one optional document.
+
+    Notion: KAN-TC-396 | KAN-9 AC-9 | data: partial
     """
     page, user = logged_in_enclosures_page
-    data = enclosures_first_three_data
+    data = enclosures_partial_data
 
-    with allure.step("Upload documents 1–3"):
+    with allure.step("Upload documents 1 and 3"):
         _upload(enclosures_page, page, user, data.documents)
-        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(3))
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(1))
 
     with allure.step("Click 'Save & Log out', log in again and open the Documents step"):
         enclosures_page.save_and_logout()
@@ -510,12 +519,12 @@ def test_tc396_uploads_persist_across_sessions(
         page.wait_for_url(f"{FORMS_BASE}/**", timeout=15000)
         enclosures_page.open()
 
-    with allure.step("Verify documents 1–3 are uploaded and 4–6 are not"):
+    with allure.step("Verify documents 1 and 3 are uploaded and 2 and 4 are not"):
         for number, path in data.documents.items():
             _expect_uploaded(enclosures_page, number, path)
-        for number in (4, 5, 6):
+        for number in set(EnclosuresPage.DOCUMENTS) - set(data.documents):
             _expect_not_uploaded(enclosures_page, number)
-        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(3))
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(1))
 
 
 # ---------------------------------------------------------------------------
@@ -529,8 +538,8 @@ def test_tc397_pdf_too_small(
 ):
     """
     Given I am on the Documents step
-    When  I choose a 298-byte PDF, then a 0-byte PDF, for document 5
-    Then  each shows "File is smaller than 10 KB — upload a clear, complete scan." and is removed
+    When  I choose a 298-byte PDF, then a 0-byte PDF, for document 4
+    Then  each shows "File is too small — upload a clear, complete file." and is removed
 
     Notion: KAN-TC-397 | KAN-9 AC-3, EC-2 | data: too_small
     """
@@ -547,13 +556,16 @@ def test_tc397_pdf_too_small(
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-471")
 @allure.story(STORY)
-@allure.title("TC-471: The Documents step shows the heading, note, counter, eight documents and upload button")
+@allure.title("TC-471: The Documents step shows the heading, note, counter, four documents and upload button")
 def test_tc471_page_layout(enclosures_page: EnclosuresPage, logged_in_enclosures_page):
     """
     Given I have saved Part F
     When  I open the Documents step
-    Then  the heading, subtitle, "← Part F", progress bar, note, counter, eight documents in three groups
-          and the "Upload Documents" button are shown
+    Then  the heading, subtitle, "← Part F", progress bar, note, counter, four documents in two groups
+          (with the address proof type select) and the "Upload Documents" button are shown
+
+    Portal 2.1.0 (17-Nov-2026): four documents in "Core Documents" and "Other"; the note points to the
+    Premises Photos step for office photographs.
 
     Notion: KAN-TC-471 | KAN-9 AC-1
     """
@@ -573,16 +585,22 @@ def test_tc471_page_layout(enclosures_page: EnclosuresPage, logged_in_enclosures
 
     with allure.step("Verify the note and the counter"):
         expect(enclosures_page.note).to_contain_text(EnclosuresPage.NOTE)
-        expect(enclosures_page.note).to_contain_text("Tip: photos (e.g. the office photograph) can be converted to PDF")
+        expect(enclosures_page.note).to_contain_text(EnclosuresPage.NOTE_PHOTOS)
         expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(0))
 
-    with allure.step("Verify the groups and the eight documents"):
+    with allure.step("Verify the groups and the four documents"):
         expect(enclosures_page.group_headings).to_have_text(list(EnclosuresPage.GROUPS))
-        expect(enclosures_page.document_rows).to_have_count(8)
+        expect(enclosures_page.document_rows).to_have_count(len(EnclosuresPage.DOCUMENTS))
         for number, (_, title, mandatory) in EnclosuresPage.DOCUMENTS.items():
             expect(enclosures_page.document_title(number)).to_have_text(title)
             expect(enclosures_page.required_marker(number)).to_have_count(1 if mandatory else 0)
             expect(enclosures_page.document_hint(number)).to_have_text(EnclosuresPage.FILE_HINT)
+
+    with allure.step("Verify the office address proof type select"):
+        expect(enclosures_page.address_proof_help).to_have_text(EnclosuresPage.ADDRESS_PROOF_HELP)
+        expect(enclosures_page.address_proof_type_select.locator("option")).to_have_text(
+            [EnclosuresPage.ADDRESS_PROOF_PLACEHOLDER, *EnclosuresPage.ADDRESS_PROOF_TYPES])
+        expect(enclosures_page.address_proof_type_select).to_have_value("")
 
     with allure.step("Verify the upload button"):
         expect(enclosures_page.upload_button).to_have_text("Upload Documents")
@@ -593,12 +611,12 @@ def test_tc471_page_layout(enclosures_page: EnclosuresPage, logged_in_enclosures
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-472")
 @allure.story(STORY)
-@allure.title("TC-472: The Documents step opens with 0/6 uploaded and every document empty")
+@allure.title("TC-472: The Documents step opens with 0/2 uploaded and every document empty")
 def test_tc472_default_state(enclosures_page: EnclosuresPage, logged_in_enclosures_page):
     """
     Given no document has ever been uploaded
     When  I open the Documents step
-    Then  the counter reads 0/6 with an empty bar, each row shows its number with no file,
+    Then  the counter reads 0/2 with an empty bar, each row shows its number with no file,
           and there is no "Next: Premises Photos →" link
 
     Notion: KAN-TC-472 | KAN-9 AC-2
@@ -629,21 +647,21 @@ def test_tc473_several_documents_at_once(
 ):
     """
     Given no document has been uploaded
-    When  I choose PDFs for documents 1, 2 and 7 and click "Upload Documents" once
-    Then  "3 file(s) uploaded successfully." is shown, all three are uploaded and the counter reads 2/6
+    When  I choose PDFs for documents 1, 2 and 4 and click "Upload Documents" once
+    Then  "3 file(s) uploaded successfully." is shown, all three are uploaded and the counter reads 2/2
 
     Notion: KAN-TC-473 | KAN-9 AC-4 | data: several_at_once
     """
     page, user = logged_in_enclosures_page
     data = enclosures_several_at_once_data
 
-    with allure.step("Upload documents 1, 2 and 7 together"):
+    with allure.step("Upload documents 1, 2 and 4 together"):
         _upload(enclosures_page, page, user, data.documents)
 
-    with allure.step("Verify all three are uploaded and the counter reads 2/6"):
+    with allure.step("Verify all three are uploaded and the counter reads 2/2"):
         for number, path in data.documents.items():
             _expect_uploaded(enclosures_page, number, path)
-        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(2))
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(ALL))
 
 
 # ---------------------------------------------------------------------------
@@ -675,3 +693,56 @@ def test_tc474_save_and_logout(enclosures_page: EnclosuresPage, logged_in_enclos
         page.wait_for_url(f"{FORMS_BASE}/**", timeout=15000)
         enclosures_page.open()
         expect(enclosures_page.title).to_have_text(EnclosuresPage.TITLE)
+
+
+# ---------------------------------------------------------------------------
+# TC-851  Office address proof type — uploads document 2
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-851")
+@allure.story(STORY)
+@allure.title("TC-851: The office address proof is uploaded only after its document type is chosen, and the type is kept")
+def test_tc851_address_proof_type(
+    enclosures_page: EnclosuresPage, logged_in_enclosures_page, enclosures_address_proof_data: DocumentUploads
+):
+    """
+    Given the office address proof (document 2) is not uploaded
+    When  I upload a PDF for it with no type chosen, then choose "Rent / Leave and Licence Agreement" and upload
+          it again, and reload the page
+    Then  the first upload is refused with "Office Address Proof: choose the type of document from the list.",
+          the second is saved, and after the reload the document is still uploaded with its type selected
+
+    Portal 2.1.0 (17-Nov-2026) added the type select (``doctype3``).
+
+    Notion: KAN-TC-851 | KAN-9 | data: address_proof
+    """
+    page, user = logged_in_enclosures_page
+    data = enclosures_address_proof_data
+    counter_before = enclosures_page.uploaded_count()
+
+    with allure.step("Verify the type select starts unselected"):
+        expect(enclosures_page.address_proof_help).to_have_text(EnclosuresPage.ADDRESS_PROOF_HELP)
+        expect(enclosures_page.address_proof_type_select).to_have_value("")
+        _expect_not_uploaded(enclosures_page, 2)
+
+    with allure.step("Upload document 2 with no type chosen"):
+        enclosures_page.upload_documents(data.documents, address_proof_type=None)
+
+    with allure.step("Verify the upload is refused and nothing is saved"):
+        expect(page).to_have_url(ON_ENCLOSURES)
+        expect(enclosures_page.messages).to_have_text([data.expected_error])
+        _expect_not_uploaded(enclosures_page, 2)
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(counter_before))
+
+    with allure.step(f"Choose '{data.address_proof_type}' and upload document 2 again"):
+        enclosures_page.upload_documents(data.documents, address_proof_type=data.address_proof_type)
+        _record_uploads(enclosures_page, user)
+
+    with allure.step("Verify document 2 is uploaded"):
+        expect(enclosures_page.messages).to_have_text([EnclosuresPage.uploaded_message(1)])
+        _expect_uploaded(enclosures_page, 2, data.documents[2])
+        expect(enclosures_page.mandatory_counter).to_have_text(EnclosuresPage.counter_text(counter_before + 1))
+
+    with allure.step("Reload and verify the document and its type are kept"):
+        page.reload(wait_until="networkidle")
+        _expect_uploaded(enclosures_page, 2, data.documents[2])
+        expect(enclosures_page.address_proof_type_select).to_have_value(data.address_proof_type)

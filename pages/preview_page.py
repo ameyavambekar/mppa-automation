@@ -46,17 +46,19 @@ class PreviewPage(BasePage):
                      "Address Line 2", "City / Village", "Taluka", "District", "State", "Pincode", "Office in MH",
                      "Auth. Signatory", "Designation", "Aadhaar (Signatory)", "Google Maps")
     PERSON_LABELS = ("PAN", "Aadhaar", "Nationality", "Mobile", "Address", "DIN/DPIN")
-    PART_C_LABELS = ("Placement Type", "Sectors", "Digital Platform", "Training", "Mobilization", "Service Mode",
-                     "Type of Agency", "Charges displayed")
+    # Portal 2.1.0 (17-Nov-2026): "Placement Type" became "Area of Placement Operations".
+    PART_C_LABELS = ("Area of Placement Operations", "Sectors", "Digital Platform", "Training", "Mobilization",
+                     "Service Mode", "Type of Agency", "Charges displayed")
     # Part F certificate rows: (number label, date label) → Part F certificate key (see PartFPage.CERTIFICATES)
     CERTIFICATE_ROWS = {("Contract Labour Cert", "Contract Labour Date"): "cl",
                         ("Emigration Cert", "Emigration Date"): "em",
                         ("Security Licence", "Security Date"): "sec",
                         ("LIN Number", "LIN Date"): "lin"}
-    PART_F_LABELS = (*(label for pair in CERTIFICATE_ROWS for label in pair), "Application Date", "Place")
-    ENCLOSURE_TITLES = ("PAN Card of the Agency", "Office Address Proof", "Office / Premises Photograph",
-                        "Authorised Signatory — Signature & PAN in Letterhead", "Address Proof of Key Persons",
-                        "Specimen Signature of Authorised Signatory")
+    # Since portal 2.1.0 the signature is uploaded on Part F and shown there ("Signature" · View).
+    PART_F_LABELS = (*(label for pair in CERTIFICATE_ROWS for label in pair), "Application Date", "Place", "Signature")
+    # Since portal 2.1.0 only the two mandatory documents (plus any optional ones uploaded); the address proof
+    # card reads "Office Address Proof — <type>".
+    ENCLOSURE_TITLES = ("PAN Card of the Agency", "Office Address Proof")
     SIGNED_FORM_LABELS = ("Self-Declaration", "Authorisation")
     EMPTY = "—"
     ACCEPTED = "Accepted"
