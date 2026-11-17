@@ -205,18 +205,29 @@ class AppealOutcomeFactory:
 
     MIN_REASONS = 50
     NO_DISPOSAL = "Choose Grant appeal or Reject appeal."   # was "Select the appellate order (disposal)." before 17-Nov-2026
+    NO_GROUND = "Select the ground of the order."            # Reject chosen, no ground picked (dev, 17-Nov-2026)
     SHORT_REASONS = "Write the reasons of the order (at least 50 characters)."
-    CONFIRM = "Pass this order?\n\n{label}\n{desc}"
+    # confirmation (dev, 17-Nov-2026; was "Pass this order?…"): verb GRANT for a Grant ground, REJECT otherwise
+    CONFIRM = "{verb} this appeal?\n\n{label}\n{desc}"
     IMPACT_DEFAULT = "Choose an option to see its effect on the application."
-    # disposal → effect shown under the select (and in the confirmation)
+    IMPACT_NO_KIND = "Choose Grant or Reject to see the effect on the application."
+    # disposal → effect shown under the select (and in the confirmation); the page's DISPOSAL desc, dev 17-Nov-2026
     IMPACT = {
-        "allowed": "District order reversed. Status becomes APPROVED and the certificate is issued.",
-        "allowed_conditions": "Approved; the applicant must comply with the conditions written in the order within 15 days.",
-        "remanded": "Case sent back to the District to re-evaluate after a fresh site visit or paper verification.",
-        "dismissed_upheld": "District refusal confirmed. Opens the 60-day window for the Second Appeal.",
-        "dismissed_default": "The appellant did not appear for the hearing without valid reason.",
-        "delay_rejected": "Filed beyond 60 days without sufficient cause. Case permanently closed.",
+        "allowed": "The refusal / suspension order is set aside. The application is APPROVED and the registration "
+                   "certificate is issued.",
+        "dismissed_upheld": "The order is confirmed on the documents and the hearing. (First Appeal: the 60-day "
+                            "window for the Second Appeal opens.)",
+        "dismissed_default": "The appellant did not appear for the hearing without a valid reason.",
+        "delay_rejected": "Filed beyond 60 days without sufficient cause. Case closed.",
+        "final_dismissal": "Second Appeal rejected. Case closed permanently under Sec 7(3).",
     }
+
+    @classmethod
+    def confirm(cls, disposal: str, label: str) -> str:
+        """The confirmation asked on saving the order ``disposal`` (its ``label`` from AdminAppealsPage)."""
+        verb = "REJECT" if disposal in ("dismissed_upheld", "dismissed_default", "delay_rejected",
+                                        "final_dismissal") else "GRANT"
+        return cls.CONFIRM.format(verb=verb, label=label, desc=cls.IMPACT[disposal])
     AUDIT_TABLE = "agency_appeals"
     AUDIT_FILED = "1st Appeal"
 

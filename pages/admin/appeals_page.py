@@ -38,32 +38,35 @@ class AdminAppealsPage(BasePage):
     APPEAL_COLUMNS = ["#", "Agency", "District", "Appeal", "Filed", "Decision due", "Hearing", "Status", ""]
     REJECTION_COLUMNS = ["Agency", "District", "Rejected", "Reason given to the agency", "Appeal (Division)",
                          "Second appeal (Commissionerate)", ""]
-    # appellate order (disposal) of a first appeal: value → label
+    # Ground of the order (disposal) of a first appeal: value → label, as the page's DISPOSAL.first lists it
+    # (dev, 17-Nov-2026). The saved remarks start with "<label> — ". "allowed_conditions" and "remanded" are no
+    # longer offered; they keep their old labels for appeals decided before 17-Nov-2026.
     FIRST_DISPOSALS = {
-        "allowed": "Appeal Allowed — Order Set Aside",
+        "allowed": "Grant — appeal allowed, order set aside",
         "allowed_conditions": "Appeal Allowed with Conditions",
         "remanded": "Remanded Back for Re-Scrutiny",
-        "dismissed_upheld": "Appeal Dismissed — Refusal Upheld",
-        "dismissed_default": "Dismissed for Default of Appearance",
-        "delay_rejected": "Delay Condonation Rejected",
+        "dismissed_upheld": "Reject — refusal upheld on merits",
+        "dismissed_default": "Reject — non-appearance at the hearing",
+        "delay_rejected": "Reject — delay not condoned",
     }
-    # appellate order of a second appeal (the page's DISPOSAL.second, dev 06-Nov-2026): value → label.
+    # Ground of the order of a second appeal (the page's DISPOSAL.second, dev 17-Nov-2026): value → label.
     # No "refusal upheld" here — the Commissionerate's dismissal is final (Sec 7(3)).
     SECOND_DISPOSALS = {
-        "allowed": "Appeal Allowed — Order Set Aside",
+        "allowed": "Grant — appeal allowed, order set aside",
         "allowed_conditions": "Appeal Allowed with Conditions",
         "remanded": "Remanded Back for Re-Scrutiny",
-        "dismissed_default": "Dismissed for Default of Appearance",
-        "delay_rejected": "Delay Condonation Rejected",
-        "final_dismissal": "Final Second Appeal Dismissal",
+        "dismissed_default": "Reject — non-appearance at the hearing",
+        "delay_rejected": "Reject — delay not condoned",
+        "final_dismissal": "Reject — Second Appeal dismissed",
     }
     # Since 17-Nov-2026 the decision is "Grant appeal" / "Reject appeal" first (radio decKind = allow / dismiss);
-    # only then does the ground select list that kind's grounds. A First Appeal offers: Grant → allowed;
-    # Reject → dismissed_upheld, dismissed_default, delay_rejected ("allowed_conditions" and "remanded" are no
-    # longer offered; their labels stay above for appeals decided before).
+    # only then does the ground select list that kind's grounds (with a "Select the ground…" placeholder when
+    # there is more than one). Before a choice it holds only "Choose Grant or Reject first" and is disabled.
     DISMISS_DISPOSALS = ("dismissed_upheld", "dismissed_default", "delay_rejected", "final_dismissal")
     FIRST_GROUNDS_OFFERED = {"allow": ("allowed",),
                              "dismiss": ("dismissed_upheld", "dismissed_default", "delay_rejected")}
+    SECOND_GROUNDS_OFFERED = {"allow": ("allowed",),
+                              "dismiss": ("dismissed_default", "delay_rejected", "final_dismissal")}
     HEARING_MODES = ("personal", "virtual")
     SECTIONS = ("1–4 · Appellant", "5 · Order appealed against", "6–8 · Grounds, facts and relief",
                 "9 · Limitation", "10 · Documents", "Hearing (one hearing at this level)")
