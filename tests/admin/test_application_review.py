@@ -816,6 +816,82 @@ def test_tc768_refusal_order(review_workflow_allowed, application_at, review_loo
         expect(review.history_entry("Division Report")).to_contain_text(HOLD)
 
 
+@aio_case("KAN-TC-769")
+@allure.story(COMPLIANCE_STORY)
+@allure.title("TC-769: Correct details opens the section with the values the agency submitted")
+def test_tc769_correction_prefilled(review_workflow_allowed, agency_with_corrections):
+    """
+    Given the agency's application has a Compliance 1 notice it has not answered
+    When  the agency opens Part A with "Correct details"
+    Then  the e-mail and mobile fields show the values the agency submitted
+    And   the note box is empty
+
+    Fails on dev (05-Nov-2026): the form opens with e-mail and mobile blank — defect #69 ("I & II Appeal" tab).
+
+    AIO: KAN-TC-769 | KAN-48 AC-3
+    """
+    corrections, _, agency, _ = agency_with_corrections(after_hearing=False, open_items=True)
+
+    with allure.step("Open Part A for correction"):
+        corrections.open()
+        corrections.open_section(HOLD)
+
+    with allure.step("Verify the submitted e-mail and mobile are filled in"):
+        expect(corrections.section_field(HOLD, "email")).to_have_value(agency.email)
+        expect(corrections.section_field(HOLD, "mobile")).to_have_value(agency.mobile)
+
+    with allure.step("Verify the note box is empty"):
+        expect(corrections.section_note(HOLD)).to_have_value("")
+
+
+@aio_case("KAN-TC-772")
+@allure.story(COMPLIANCE_STORY)
+@allure.title("TC-772: Reloading the page after saving a correction does not save it twice")
+def test_tc772_reload_after_save(review_workflow_allowed, agency_with_corrections, review_loop_data):
+    """
+    Given the agency's application has a Compliance 1 notice with Part A still to correct
+    When  the agency saves Part A with a note and then reloads the page
+    Then  the browser asks for nothing (no resubmission)
+    And   Part A still shows "Corrected" and "Submitted and locked", with no "Correct details" button
+
+    Not automated: the officer's Processing history showing one Agency Reply for the round — that needs the reply sent.
+
+    AIO: KAN-TC-772 | KAN-48 EC-2
+    """
+    corrections, _, agency, _ = agency_with_corrections(after_hearing=False, open_items=True)
+    d = review_loop_data
+    prompts = []
+    saving = [True]   # save_section answers its own confirm; anything after that is recorded and dismissed
+
+    def record(dialog):
+        if saving[0]:
+            return
+        prompts.append(dialog.message)
+        dialog.dismiss()
+
+    corrections.page.on("dialog", record)
+    try:
+        with allure.step("Save Part A with a note"):
+            corrections.open()
+            corrections.open_section(HOLD)
+            corrections.fill_blank_fields(HOLD, {"email": agency.email, "mobile": agency.mobile})
+            prompt = corrections.save_section(HOLD, d.correction_note)
+            saving[0] = False
+            assert prompt == F.CORR_SAVE_CONFIRM, prompt
+
+        with allure.step("Reload the page"):
+            corrections.page.reload()
+            expect(corrections.item_badge(HOLD)).to_have_text(F.CORR_DONE_BADGE)
+
+        with allure.step("Verify nothing was asked for and Part A is still locked"):
+            assert not prompts, f"the browser asked on reload: {prompts}"
+            expect(corrections.item_locked_note(HOLD)).to_have_text(F.CORR_LOCKED)
+            expect(corrections.correct_details_button(HOLD)).to_have_count(0)
+    finally:
+        corrections.page.remove_listener("dialog", record)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ═══════════════════════════════════════════════════════════════════════════
 # End to end — RUN_REVIEW_WORKFLOW_TESTS=true
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1177,6 +1253,62 @@ def test_tc778_compliance_1_replied(agency_at):
     with allure.step("Home: the 45-day clock is no longer paused"):
         v.home.open()
         expect(v.home.progress_card).not_to_contain_text(M.CLOCK_PAUSED)
+
+
+@aio_case("KAN-TC-771")
+@allure.story(COMPLIANCE_STORY)
+@allure.title("TC-771: After the reply is sent, Corrections shows every item locked and offers no reply")
+def test_tc771_locked_after_reply(agency_at):
+    """
+    Given the agency parked at 'compliance_1_replied' (C4: corrected and replied, not yet taken into review)
+    When  it opens Corrections
+    Then  Part A shows "Submitted and locked. This item can no longer be changed."
+    And   no "Correct details" button is offered
+    And   the reply form is not shown
+
+    AIO: KAN-TC-771 | KAN-48 AC-8 | data: map state 'compliance_1_replied'
+    """
+    v = agency_at("compliance_1_replied")
+
+    with allure.step("Open Corrections"):
+        v.corrections.open()
+
+    with allure.step("Verify Part A is locked"):
+        expect(v.corrections.item_locked_note(HOLD)).to_have_text(F.CORR_LOCKED)
+        expect(v.corrections.correct_details_button(HOLD)).to_have_count(0)
+
+    with allure.step("Verify the reply form is not shown"):
+        expect(v.corrections.reply_section).to_be_hidden()
+
+
+@aio_case("KAN-TC-770")
+@allure.story(COMPLIANCE_STORY)
+@allure.title("TC-770: The agency sees the show cause notice and the hearing details on Home and Corrections")
+def test_tc770_hearing_details_seen_by_agency(agency_at):
+    """
+    Given the agency parked at 'hearing_scheduled' (C6: show cause notice issued, hearing scheduled)
+    When  it opens Home and then Corrections
+    Then  Home shows the hearing as in person, the venue and the grounds (TC-781 checks the date and time)
+    And   Corrections shows the same venue and grounds
+
+    Fails on dev (13-Nov-2026): Corrections reads only "This round of corrections is closed." and shows no venue or
+    grounds — defect "I & II Appeal" #72. The Corrections expectation is the story's (KAN-48 AC-6), not yet confirmed
+    with the product owner.
+
+    AIO: KAN-TC-770 | KAN-48 AC-6 | data: map state 'hearing_scheduled'
+    """
+    v = agency_at("hearing_scheduled")
+
+    with allure.step("Home: the hearing, its venue and grounds"):
+        v.home.open()
+        expect(v.home.progress_card).to_contain_text(M.HEARING_IN_PERSON)
+        expect(v.home.progress_card).to_contain_text(f"Venue: {F.loop().hearing_venue}")
+        expect(v.home.progress_card).to_contain_text("Grounds:")
+
+    with allure.step("Corrections: the same venue and grounds"):
+        v.corrections.open()
+        expect(v.corrections.page.locator("body")).to_contain_text(F.loop().hearing_venue)
+        expect(v.corrections.page.locator("body")).to_contain_text("Grounds")
 
 
 @aio_case("KAN-TC-779")
