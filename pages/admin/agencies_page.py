@@ -1,217 +1,121 @@
+import re
+
 import allure
 
-from pages.admin.components.sidebar import AdminSidebar
-from pages.base_page import BasePage
-from config import ADMIN_BASE
+from pages.admin.applications_page import AdminApplicationsPage
 
 
-class AdminAgenciesPage(BasePage):
-    """Admin — All Agencies list (/module/admin/agency/list.php).
+class AdminAgenciesPage(AdminApplicationsPage):
+    """Agencies management (KAN-25) on the Officer Console's Applications list
+    (/module/admin/agency/list.php, "All applications — MPPA Officer Console").
 
-    Lists every registered agency with status filter tabs (``?status=`` query
-    param), a client-side real-time search box (hides non-matching rows via
-    ``display:none``), and per-row View / Status actions. Both actions are
-    disabled (rendered as inert spans) until the agency submits its form.
+    The old "All Agencies" list (``table.stbl`` / ``#ag-tbody``, status tabs ``?status=``, live search and the
+    Change Status modal) was replaced by the Applications list; this page object adds what the KAN-25 tests
+    read on top of ``AdminApplicationsPage`` (shared with the review-loop and District breakup tests):
 
-    The Change Status modal (``#mod-status``) offers all six statuses plus a
-    remarks textarea. Row locators are keyed by username (column 4), which is
-    unique per agency account.
+    * heading "Applications" (``.al-title``), three stage cards and five tabs (labels in ``STAGE_LABELS`` /
+      ``TAB_LABELS``, read on dev 17-Nov-2026 — the On hold tab now reads "Revert for compliance — with agency");
+    * the search form: District select and ``q`` ("Search name, registration ID, PAN, e-mail"), submitted with
+      the Search button — the list is filtered on the server, not as you type;
+    * one row per submitted (paid) application, keyed here by its 13-digit Application ID: agency
+      (``.al-name``), e-mail (``.al-meta``), district, current step badge, Review / View link and a Delete
+      button (``deleteAgency``) — the tests never click Delete.
+
+    Applications still being filled in are not listed here; they are under Registrations in progress.
     """
 
-    STATUS_FILTERS = ("all", "submitted", "approved", "rejected", "suspended")
-    MODAL_STATUSES = ("submitted", "approved", "active", "rejected", "suspended", "inactive")
+    TITLE = "Applications"
+    PAGE_TITLE = re.compile(r"^.+ — MPPA Officer Console$")
+    STAGE_LABELS = {"desktop": "Desktop scrutiny", "physical": "Physical verification",
+                    "branches": "Branch office verification"}
+    TAB_LABELS = {"all": "All applications", "on_hold": "Revert for compliance — with agency",
+                  "approved": "Approved", "rejected": "Rejected", "suspended": "Suspended / cancelled"}
+    COLUMNS = ("Application", "District", "Current step", "Compliance", "45-day period", "Action")
+    SEARCH_PLACEHOLDER = "Search name, registration ID, PAN, e-mail"
 
-    # ── Reusable components ───────────────────────────────────────────────────
-
-    @property
-    def sidebar(self) -> AdminSidebar:
-        """The shared left-nav sidebar component (#adm-sb)."""
-        return AdminSidebar(self.page)
-
-    # ── Page header ───────────────────────────────────────────────────────────
-
-    @property
-    def page_title(self):
-        # "🏢 All Agencies (27)"
-        return self.page.locator(".adm-page-title span").first
-
-    # ── Filter tabs & search ──────────────────────────────────────────────────
-
-    def filter_tab(self, status: str):
-        """status: one of STATUS_FILTERS."""
-        return self.page.locator(f"a.filter-tab[href='?status={status}']")
+    # ── Header ────────────────────────────────────────────────────────────────
 
     @property
-    def active_filter_tab(self):
-        return self.page.locator("a.filter-tab.on")
+    def heading(self):
+        return self.page.locator("#adm-main .al-title")
 
-    def filter_tab_count(self, status: str):
-        return self.filter_tab(status).locator("span")
+    @property
+    def stage_cards(self):
+        return self.page.locator("#adm-main a.al-q")
+
+    @property
+    def tabs(self):
+        return self.page.locator("#adm-main a.al-tab")
+
+    @property
+    def active_tab(self):
+        return self.page.locator("#adm-main a.al-tab.is-on")
+
+    # ── Search ────────────────────────────────────────────────────────────────
 
     @property
     def search_input(self):
-        # Client-side filter — hides rows as you type (no submit needed)
-        return self.page.locator("input.ssrch")
-
-    # ── Agencies table ────────────────────────────────────────────────────────
+        return self.page.locator("#adm-main input[name='q']")
 
     @property
-    def agencies_table(self):
-        return self.page.locator("table.stbl")
+    def search_button(self):
+        return self.page.locator("#adm-main form:has(input[name='q']) button[type='submit']")
+
+    # ── Table ─────────────────────────────────────────────────────────────────
 
     @property
     def table_headers(self):
-        return self.page.locator("table.stbl thead th")
+        return self.page.locator("#adm-main table thead th")
 
-    def table_header(self, label: str):
-        return self.page.locator(
-            f"//table[contains(@class,'stbl')]//thead//th[normalize-space(text())='{label}']"
-        )
+    def row(self, application_id: str):
+        return self.row_by_application_id(application_id)
 
-    @property
-    def agency_rows(self):
-        return self.page.locator("#ag-tbody > tr")
+    def agency_name_cell(self, application_id: str):
+        return self.row(application_id).locator(".al-name")
 
-    @property
-    def visible_agency_rows(self):
-        """Rows not hidden by the client-side search filter."""
-        return self.page.locator("#ag-tbody > tr:visible")
+    def email_cell(self, application_id: str):
+        return self.row(application_id).locator(".al-meta").first
 
-    def agency_row(self, username: str):
-        return self.page.locator(
-            f"//tbody[@id='ag-tbody']/tr[td[4][normalize-space(text())='{username}']]"
-        )
+    def district_cell(self, application_id: str):
+        return self.row(application_id).locator("td").nth(1)
 
-    def rows_with_status(self, status: str):
-        """Main rows whose status badge shows the given status text."""
-        return self.page.locator(
-            f"//tbody[@id='ag-tbody']/tr[td[9]/span[normalize-space(text())='{status}']]"
-        )
+    def current_step_badge(self, application_id: str):
+        return self.row(application_id).locator(".ui-badge").first
 
-    def viewable_rows_with_status(self, status: str):
-        """Rows in the given status whose View/Status actions are enabled
-        (i.e. the agency has submitted its form)."""
-        return self.page.locator(
-            f"//tbody[@id='ag-tbody']/tr[td[9]/span[normalize-space(text())='{status}']"
-            f" and .//a[contains(@class,'btn-view-on')]]"
-        )
+    def review_link(self, application_id: str):
+        """"Review" (or "View") — opens the application's page (agency_view.php?id=N)."""
+        return self.row(application_id).locator("a[href*='agency_view.php']")
 
-    # -- Cells within a row --
-
-    def reg_id_cell(self, username: str):
-        return self.agency_row(username).locator("td").nth(1)
-
-    def agency_name_cell(self, username: str):
-        return self.agency_row(username).locator("td").nth(2).locator("p").first
-
-    def email_cell(self, username: str):
-        return self.agency_row(username).locator("td").nth(4)
-
-    def pan_cell(self, username: str):
-        return self.agency_row(username).locator("td").nth(5)
-
-    def reg_ip_cell(self, username: str):
-        return self.agency_row(username).locator("td").nth(6)
-
-    def registered_on_cell(self, username: str):
-        return self.agency_row(username).locator("td").nth(7)
-
-    def status_badge(self, username: str):
-        return self.agency_row(username).locator("td").nth(8).locator("span")
-
-    def view_button(self, username: str):
-        # Enabled variant — a link to ../dashboard/agency_view.php?id=N
-        return self.agency_row(username).locator("a.btn-view-on")
-
-    def view_button_disabled(self, username: str):
-        return self.agency_row(username).locator("span.btn-view-off")
-
-    def status_button(self, username: str):
-        return self.agency_row(username).locator("button.btn-status-on")
-
-    def status_button_disabled(self, username: str):
-        return self.agency_row(username).locator("span.btn-status-off")
-
-    # ── Change Status modal (#mod-status) ─────────────────────────────────────
-
-    @property
-    def status_modal(self):
-        return self.page.locator("#mod-status")
-
-    @property
-    def status_modal_username(self):
-        return self.page.locator("#ms-username")
-
-    @property
-    def status_modal_select(self):
-        return self.page.locator("#ms-status")
-
-    @property
-    def status_modal_remarks(self):
-        return self.status_modal.locator("textarea[name='remarks']")
-
-    @property
-    def status_modal_update_button(self):
-        return self.status_modal.locator("button[type='submit']")
-
-    @property
-    def status_modal_cancel_button(self):
-        return self.status_modal.locator("//button[normalize-space(text())='Cancel']")
+    def delete_button(self, application_id: str):
+        """Deletes the agency (``deleteAgency``) — irreversible; located only to check it exists."""
+        return self.row(application_id).locator("button[aria-label='Delete']")
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open the All Agencies list directly")
-    def open(self):
-        self.navigate(f"{ADMIN_BASE}/agency/list.php")
-
-    @allure.step("Filter agencies by status tab: {status}")
-    def filter_by_status(self, status: str):
-        self.filter_tab(status).click()
-
-    @allure.step("Type into the real-time search box: {query}")
+    @allure.step("Search the Applications list for '{query}'")
     def search(self, query: str):
-        # Filtering happens on input — no submit button
+        """Types into the search box and clicks Search (the list reloads filtered on the server)."""
         self.search_input.fill(query)
+        self.search_button.click()
+        self.page.wait_for_load_state("networkidle")
 
-    @allure.step("Clear the search box")
+    @allure.step("Clear the search and click Search")
     def clear_search(self):
-        self.search_input.fill("")
+        self.search(query="")
 
-    @allure.step("Click 'View' for agency: {username}")
-    def click_view(self, username: str):
-        self.view_button(username).click()
-
-    @allure.step("Open the Change Status modal for agency: {username}")
-    def open_status_modal(self, username: str):
-        self.status_button(username).click()
-
-    @allure.step("Change status of '{username}' to '{new_status}'")
-    def change_status(self, username: str, new_status: str, remarks: str = ""):
-        """Changes an agency's status through the list's Change Status modal.
-        new_status: one of MODAL_STATUSES."""
-        self.open_status_modal(username)
-        self.status_modal_select.select_option(value=new_status)
-        if remarks:
-            self.status_modal_remarks.fill(remarks)
-        self.status_modal_update_button.click()
-        self.wait_for_load()
+    @allure.step("Click Review / View for application {application_id}")
+    def click_review(self, application_id: str):
+        self.review_link(application_id).click()
+        self.page.wait_for_load_state("networkidle")
 
     # ── Read helpers (queries, not assertions) ────────────────────────────────
 
-    def get_row_status(self, username: str) -> str:
-        return self.status_badge(username).text_content().strip()
+    def application_ids(self) -> list[str]:
+        """Application IDs of the listed rows, in page order."""
+        return [r["application_id"] for r in self.table_data()]
 
-    def get_username_of_row(self, row) -> str:
-        """Username (column 4) of a row locator."""
-        return row.locator("td").nth(3).text_content().strip()
-
-    def get_first_viewable_username(self, status: str) -> str:
-        """Username of the first form-submitted agency in the given status,
-        or '' when none exists."""
-        rows = self.viewable_rows_with_status(status)
-        if rows.count() == 0:
-            return ""
-        return self.get_username_of_row(rows.first)
-
-    def get_filter_tab_count(self, status: str) -> int:
-        return int(self.filter_tab_count(status).text_content().strip().replace(",", ""))
+    def ids_in_view(self, view: str) -> list[str]:
+        """Opens a stage card or tab and returns its Application IDs."""
+        self.open(view)
+        self.page.wait_for_load_state("networkidle")
+        return self.application_ids()

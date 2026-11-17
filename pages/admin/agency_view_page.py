@@ -8,21 +8,38 @@ from config import ADMIN_BASE
 
 
 class AdminAgencyViewPage(BasePage):
-    """Admin — Agency detail view (/module/admin/dashboard/agency_view.php?id=N).
+    """Admin — an application's page (/module/admin/dashboard/agency_view.php?id=N), opened with Review / View on
+    the Applications list. Locators read on dev 17-Nov-2026.
 
-    Header (Registration ID + status badge), step-by-step Form-I data in the
-    main area, and right-sidebar panels: Registration Info (8 metadata
-    fields), Completion Status (per-step badges + percentage bar) and Update
-    Status (remarks + Approve / Reject / Suspend, with an MPPA number preview
-    for submitted agencies).
+    * Header ``header.avh``: eyebrow "Application for registration · Form-I", the Registration ID as the title
+      (``h1.avh-title``, also the "Registration ID" chip), a status pill (Submitted / Approved / …), Stage,
+      District, Type and Submitted items, and the links Back to list, Download documents (ZIP) and
+      Application PDF (opens in a new tab).
+    * An approved application shows a read-only notice and no decision buttons.
+    * "Application processing" (``#wfPanel``) — the review workflow (covered by the KAN-12 review-loop tests).
+    * Form-I data, one ``.av-section`` per step (``STEP_SECTIONS``), then the Registration Info and Completion
+      Status panels.
 
-    NOTE: unlike the list page, no HTML capture of this view exists yet —
-    locators here are text-anchored best guesses from the AIO spec and the
-    admin portal's shared styles. Verify against the live page and tighten
-    selectors on first run (same approach as PartAPage's TODO locators).
+    The browser tab title is "View Agency — <Registration ID> | Admin".
     """
 
-    MPPA_PATTERN = re.compile(r"MPPA/MH/\d{4}/(\d+)")
+    TAB_TITLE = re.compile(r"^View Agency — \d{13} \| Admin$")
+    EYEBROW = "Application for registration · Form-I"
+    STEP_SECTIONS = (
+        "Step 1 · Part A — Basic Details",
+        "Step 2 · Part B — Constitution and Management Details",
+        "Step 3 · Part C — Operations & Infrastructure",
+        "Step 4 · Part E — Jurisdiction & Fee Payment",
+        "Step 5 · Part F — Certificates & Signature",
+        "Step 6 · Enclosures — Uploaded Documents",
+        "Step 7 · Self Declaration & Undertaking",
+        "Step 8 · Authorisation & Consent",
+    )
+    INFO_FIELDS = ("Reg ID", "Username", "Email", "PAN", "Registered", "Last Login", "Reg. IP", "Complete")
+    COMPLETION_STEPS = ("Part A — Basic Details", "Part B — Key Persons", "Part C — Operations",
+                        "Part E — Fee Payment", "Part F — Certificates", "Enclosures", "Declaration",
+                        "Authorisation")
+    READ_ONLY_NOTICE = "This application is approved — the certificate has been issued."
 
     # ── Reusable components ───────────────────────────────────────────────────
 
@@ -30,183 +47,175 @@ class AdminAgencyViewPage(BasePage):
     def sidebar(self) -> AdminSidebar:
         return AdminSidebar(self.page)
 
-    # ── Header ────────────────────────────────────────────────────────────────
-
-    @property
-    def page_heading(self):
-        # Page title strip with the Registration ID
-        return self.page.locator(".adm-page-title").first
-
     @property
     def content(self):
         """The main content area (agency name, registration no., stage …)."""
         return self.page.locator("#adm-main")
 
+    # ── Header ────────────────────────────────────────────────────────────────
+
     @property
-    def header_status_badge(self):
-        # TODO: verify — first status pill (.sb) in the header/title area
-        return self.page.locator(".adm-page-title .sb, .adm-page-title span[class*='sb-']").first
+    def header(self):
+        return self.page.locator("header.avh")
+
+    @property
+    def eyebrow(self):
+        return self.header.locator(".avh-eyebrow")
+
+    @property
+    def title(self):
+        """The Registration ID shown as the page heading."""
+        return self.header.locator("h1.avh-title")
+
+    @property
+    def registration_chip(self):
+        return self.header.locator(".avh-chip[title='Registration ID']")
+
+    @property
+    def status_pill(self):
+        return self.header.locator(".av-status-pill")
+
+    def header_item(self, label: str):
+        """A header fact by its bold label — 'Stage', 'District', 'Type' or 'Submitted'."""
+        return self.header.locator(".avh-item").filter(has=self.page.locator(f"b:text-is('{label}')"))
 
     @property
     def back_to_list_link(self):
-        return self.page.locator("//a[contains(normalize-space(.),'Back to List')]")
+        return self.header.locator("a[href*='agency/list.php']")
 
     @property
-    def download_zip_button(self):
-        return self.page.locator("//*[self::a or self::button][contains(normalize-space(.),'Download ZIP')]")
+    def download_zip_link(self):
+        return self.header.locator("a[href*='action=download_zip']")
 
     @property
-    def generate_pdf_button(self):
-        return self.page.locator("//*[self::a or self::button][contains(normalize-space(.),'Generate PDF')]")
+    def application_pdf_link(self):
+        return self.header.locator("a[href*='action=generate_pdf']")
 
-    # ── Alerts ────────────────────────────────────────────────────────────────
-
-    @property
-    def success_alert(self):
-        return self.page.locator(".salt-s, .alert-success")
+    # ── Read-only notice and decision area ────────────────────────────────────
 
     @property
-    def error_alert(self):
-        return self.page.locator(".salt-e, .alert-error")
-
-    # ── Registration Info sidebar ─────────────────────────────────────────────
+    def read_only_notice(self):
+        return self.content.locator(".ui-alert-info").filter(has_text="Read only")
 
     @property
-    def registration_info_panel(self):
-        return self.page.locator(
-            "//*[contains(text(),'Registration Info')]/ancestor::div[contains(@class,'scard') or contains(@class,'panel')][1]"
-        )
+    def processing_panel(self):
+        return self.page.locator("#wfPanel")
 
-    def info_field(self, label: str):
-        """A Registration Info value by its label, e.g. 'Username', 'Email',
-        'PAN', 'Last Login', 'Completion'."""
-        return self.registration_info_panel.locator(
-            f"//*[contains(normalize-space(text()),'{label}')]/following-sibling::*[1]"
-        )
+    @property
+    def processing_status(self):
+        return self.processing_panel.locator(".ui-card-sub").first
 
-    # ── Completion Status panel ───────────────────────────────────────────────
+    @property
+    def decision_buttons(self):
+        """Approve / clear / refuse / revert controls of the review workflow (none on a closed application)."""
+        return self.page.locator("#wfActions button, #wfActions input[type='submit'], "
+                                 "form[action*='agency_view'] button[name='act']")
+
+    # ── Form-I sections ───────────────────────────────────────────────────────
+
+    @property
+    def full_application(self):
+        """Under review, the Form-I steps sit in a collapsed block "Full application — approved in Desktop
+        Scrutiny (read only)"; on a closed application they are shown directly."""
+        return self.content.locator("details.av-full")
+
+    @property
+    def step_titles(self):
+        """The eight "Step N · …" headings, wherever they sit."""
+        return self.content.locator("h3").filter(has_text=re.compile(r"^\s*Step \d"))
+
+    @property
+    def section_titles(self):
+        return self.content.locator(".av-section > h3")
+
+    def section(self, title: str):
+        return self.content.locator(".av-section").filter(
+            has=self.page.locator(f"h3:text-is('{title}')"))
+
+    # ── Registration Info ─────────────────────────────────────────────────────
+
+    @property
+    def info_panel(self):
+        return self.section("Registration Info")
+
+    def info_row(self, label: str):
+        """A Registration Info row by its label (without the colon), e.g. 'Username'."""
+        return self.info_panel.locator(f"xpath=.//div[span[1][normalize-space()='{label}:']]")
+
+    @property
+    def info_labels(self):
+        return self.info_panel.locator("xpath=.//div[span][count(*)<=2]/span[1]")
+
+    # ── Completion Status ─────────────────────────────────────────────────────
 
     @property
     def completion_panel(self):
-        return self.page.locator(
-            "//*[contains(text(),'Completion Status')]/ancestor::div[contains(@class,'scard') or contains(@class,'panel')][1]"
-        )
+        return self.section("Completion Status")
 
     @property
-    def completion_percentage(self):
-        # e.g. "37%"
-        return self.completion_panel.locator("text=/\\d+\\s*%/").first
+    def completion_summary(self):
+        """First row of the panel — "N/8 steps complete" and the percentage."""
+        return self.completion_panel.locator("xpath=./div[1]/div[1]")
 
-    @property
-    def step_status_badges(self):
-        # One badge per wizard step: SUBMITTED / PENDING / COMPLETE
-        return self.completion_panel.locator(".sb, span[class*='sb-']")
-
-    # ── Form-I data area ──────────────────────────────────────────────────────
-
-    @property
-    def not_submitted_placeholders(self):
-        # Placeholder shown for steps the agency hasn't submitted yet
-        return self.page.get_by_text("Not yet submitted")
-
-    def form_step_section(self, title: str):
-        """A Form-I step section by its heading text, e.g. 'Part A'."""
-        return self.page.locator(
-            f"//*[contains(@class,'section-header') or self::h2 or self::h3][contains(normalize-space(.),'{title}')]"
-        )
-
-    # ── Update Status panel ───────────────────────────────────────────────────
-
-    @property
-    def update_status_panel(self):
-        return self.page.locator(
-            "//*[contains(text(),'Update Status')]/ancestor::div[contains(@class,'scard') or contains(@class,'panel')][1]"
-        )
-
-    @property
-    def remarks_textarea(self):
-        return self.page.locator("textarea[name='remarks']")
-
-    @property
-    def approve_button(self):
-        return self.page.locator("//button[contains(normalize-space(.),'Approve')]")
-
-    @property
-    def reject_button(self):
-        return self.page.locator("//button[contains(normalize-space(.),'Reject')]")
-
-    @property
-    def suspend_button(self):
-        return self.page.locator("//button[contains(normalize-space(.),'Suspend')]")
-
-    @property
-    def mppa_preview(self):
-        # "On approval, Reg ID will become: MPPA/MH/2026/000046"
-        return self.page.locator("//*[contains(text(),'On approval')]")
-
-    @property
-    def already_approved_warning(self):
-        # "This agency is already approved. A new MPPA number will NOT be assigned."
-        return self.page.locator("//*[contains(text(),'already approved')]")
+    def completion_row(self, step: str):
+        return self.completion_panel.locator(
+            f"xpath=./div[span[1][normalize-space()='{step}']]")
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    @allure.step("Open agency detail view for id: {agency_id}")
-    def open(self, agency_id: int):
-        self.navigate(f"{ADMIN_BASE}/dashboard/agency_view.php?id={agency_id}")
+    @allure.step("Open the application page for view id {view_id}")
+    def open(self, view_id: int):
+        self.navigate(f"{ADMIN_BASE}/dashboard/agency_view.php?id={view_id}")
 
-    @allure.step("Click '← Back to List'")
+    @allure.step("Click 'Back to list'")
     def click_back_to_list(self):
         self.back_to_list_link.click()
+        self.page.wait_for_load_state("networkidle")
 
-    @allure.step("Fill remarks")
-    def fill_remarks(self, remarks: str):
-        self.remarks_textarea.fill(remarks)
+    @allure.step("Expand 'Full application' if it is collapsed")
+    def expand_full_application(self):
+        if self.full_application.count() and not self.full_application.evaluate("d => d.open"):
+            self.full_application.locator("summary").click()
 
-    @allure.step("Click 'Approve Application' and handle any confirm dialog")
-    def approve_and_handle_alert(self, action: str = "accept") -> str:
-        return self.click_and_handle_alert(self.approve_button, action=action)
-
-    @allure.step("Click 'Reject Application' and handle any confirm dialog")
-    def reject_and_handle_alert(self, action: str = "accept") -> str:
-        return self.click_and_handle_alert(self.reject_button, action=action)
-
-    @allure.step("Click 'Suspend Agency' and handle any confirm dialog")
-    def suspend_and_handle_alert(self, action: str = "accept") -> str:
-        return self.click_and_handle_alert(self.suspend_button, action=action)
-
-    @allure.step("Click 'Download ZIP' and wait for the download")
+    @allure.step("Click 'Download documents (ZIP)' and wait for the download")
     def download_zip(self):
         """Returns the Playwright Download object."""
         with self.page.expect_download() as download_info:
-            self.download_zip_button.click()
+            self.download_zip_link.click()
         return download_info.value
 
-    @allure.step("Click 'Generate PDF'")
-    def generate_pdf(self):
-        """The PDF either opens in a new tab or downloads — returns
-        ('page', Page) or ('download', Download) accordingly."""
-        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-        try:
-            with self.page.context.expect_page(timeout=10000) as page_info:
-                self.generate_pdf_button.click()
-            return "page", page_info.value
-        except PlaywrightTimeoutError:
-            with self.page.expect_download(timeout=10000) as download_info:
-                self.generate_pdf_button.click()
-            return "download", download_info.value
+    @allure.step("Click 'Application PDF' and capture what the new tab receives")
+    def open_application_pdf(self):
+        """Clicks Application PDF (it opens a new tab) and returns ``(response, new_tab)`` — the Playwright Response
+        for the PDF request and the tab, which the caller closes. (``page.request`` is not used: on dev it does not
+        carry the officer's session and gets the login page.)"""
+        with self.page.context.expect_page() as tab_info:
+            with self.page.context.expect_event(
+                    "response", predicate=lambda r: "action=generate_pdf" in r.url) as response_info:
+                self.application_pdf_link.click()
+        return response_info.value, tab_info.value
 
     # ── Read helpers (queries, not assertions) ────────────────────────────────
 
-    def get_previewed_mppa_number(self) -> str:
-        """The full MPPA number shown in the preview block, e.g.
-        'MPPA/MH/2026/000046', or '' when no preview is shown."""
-        if self.mppa_preview.count() == 0:
-            return ""
-        match = self.MPPA_PATTERN.search(self.mppa_preview.first.text_content())
-        return match.group() if match else ""
+    def info_value(self, label: str) -> str:
+        """The value of a Registration Info row, e.g. info_value('PAN') → 'ABCDE1234L'."""
+        text = " ".join(self.info_row(label).first.text_content().split())
+        return text.split(":", 1)[1].strip() if ":" in text else text
 
-    @staticmethod
-    def mppa_sequence_number(mppa: str) -> int:
-        """The trailing sequence as an int, e.g. 'MPPA/MH/2026/000046' → 46."""
-        return int(mppa.rsplit("/", 1)[1])
+    def completion_counts(self) -> tuple[int, int, int]:
+        """(steps complete, steps total, percent) from the summary row."""
+        text = " ".join(self.completion_summary.text_content().split())
+        steps = re.search(r"(\d+)\s*/\s*(\d+)", text)
+        pct = re.search(r"(\d+)\s*%", text)
+        if not steps or not pct:
+            return (-1, -1, -1)
+        return int(steps.group(1)), int(steps.group(2)), int(pct.group(1))
+
+    def completion_statuses(self) -> dict[str, str]:
+        """{step name: status}, e.g. {'Part A — Basic Details': 'PENDING', …}."""
+        out = {}
+        for row in self.completion_panel.locator("xpath=./div[span]").all():
+            spans = [" ".join(s.split()) for s in row.locator("xpath=./span").all_text_contents()]
+            if len(spans) >= 2:
+                out[spans[0]] = spans[1]
+        return out
