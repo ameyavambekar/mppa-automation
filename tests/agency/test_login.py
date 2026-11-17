@@ -11,7 +11,6 @@ from pages.dashboard_page import DashboardPage
 from pages.home_page import HomePage
 from pages.login_page import LoginPage
 from pages.partA_page import PART_A_URL, PartAPage
-from pages.registration_page import RegistrationPage
 from test_data.login_factory import LoginData
 from utils.aio import aio_case
 
@@ -847,7 +846,7 @@ def test_tc21_rejected_applicant(rejected_agency_user_page, home_page: HomePage)
 @aio_case("KAN-TC-51")
 @allure.story("Agency Login")
 @allure.title("TC-22 (EC-5): 'New Agency? Register →' redirects to the Registration flow")
-def test_tc22_register_link(login_page: LoginPage, registration_page: RegistrationPage):
+def test_tc22_register_link(login_page: LoginPage):
     """
     Given I am on the Agency Login page
     When  I click "New Agency? Register →"
