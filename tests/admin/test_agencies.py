@@ -1,7 +1,7 @@
 """
 Agencies Management — Admin Portal (KAN-25)
 ============================================
-Covers KAN-TC-194 through KAN-TC-211 on the redesigned Officer Console (dev, 17-Nov-2026):
+Covers KAN-TC-194 through KAN-TC-210 on the redesigned Officer Console (dev, 17-Nov-2026):
 
 * the Applications list (agency/list.php) — stage cards Desktop scrutiny / Physical verification / Branch office
   verification, tabs All applications / Revert for compliance — with agency / Approved / Rejected / Suspended /
@@ -14,8 +14,9 @@ Covers KAN-TC-194 through KAN-TC-211 on the redesigned Officer Console (dev, 17-
 All tests here are read-only. The old list's Change Status modal and the agency page's Update Status panel
 (Approve / Reject / Suspend with remarks and an MPPA number preview) no longer exist: decisions now go through the
 review workflow (KAN-12, tests/admin/test_application_review.py), suspension and cancellation through Compliance
-cases (KAN-46), and certificate numbers are covered by KAN-28. TC-200…206, 209 and 211 therefore skip with the
-reason; their AIO cases need rewording or deprecating.
+cases (KAN-46), and certificate numbers are covered by KAN-28. TC-200…204, 206 and 209 therefore skip with the
+reason; their AIO cases are Deprecated (17-Nov-2026). KAN-TC-205 moved to KAN-12 and KAN-TC-211 to KAN-46, so they
+have no test here.
 
 Known failures (dev, 17-Nov-2026 — possible defects, not yet logged):
 * TC-196 / TC-197 — every submitted application's Completion Status reads 0/8 (0 %), all steps PENDING, and
@@ -362,15 +363,6 @@ def test_tc204_suspend_blocked_without_remarks():
                              where="suspension and cancellation go through Compliance cases (KAN-46)"))
 
 
-@aio_case("KAN-TC-205")
-@allure.story("Agencies Management")
-@allure.title("TC-205: Audit entry for status changes from the agency page (removed)")
-def test_tc205_status_change_audit_trail():
-    """AIO: KAN-TC-205 — there is no status change on the agency page to audit."""
-    pytest.skip(_GONE.format(what="status change on the agency page",
-                             where="decisions are audited under KAN-36 (Audit Log) and KAN-12"))
-
-
 @aio_case("KAN-TC-206")
 @allure.story("Agencies Management")
 @allure.title("TC-206: Status badge updates after a status change (removed)")
@@ -512,15 +504,3 @@ def test_tc210_reapproval_blocked(
 
     with allure.step("Verify no decision buttons are offered"):
         expect(view.decision_buttons).to_have_count(0)
-
-
-# ---------------------------------------------------------------------------
-# TC-211  Suspension after approval (moved)
-# ---------------------------------------------------------------------------
-@aio_case("KAN-TC-211")
-@allure.story("Agencies Management")
-@allure.title("TC-211: Suspending an approved agency keeps its number (moved)")
-def test_tc211_suspend_after_approval_preserves_mppa():
-    """AIO: KAN-TC-211 — suspension goes through Compliance cases now."""
-    pytest.skip(_GONE.format(what="Suspend Agency on the agency page",
-                             where="suspension is a Compliance case (KAN-46) and the certificate is KAN-28"))
