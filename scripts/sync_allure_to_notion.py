@@ -27,9 +27,10 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # ─── Optional dotenv support ─────────────────────────────────────────────────
@@ -57,35 +58,112 @@ DEFAULT_RESULTS_DIR = _PROJECT_ROOT / "reports" / "allure-results"
 DEFAULT_HISTORY_DIR = _PROJECT_ROOT / "reports" / "allure-html" / "history"
 
 # ─── Module Coverage Notion page IDs ─────────────────────────────────────────
-# One page ID per module row in the Module Coverage database.
-MODULE_PAGE_IDS: dict[str, str] = {
-    "Pre-Registration":        "383bcba1-5011-8125-b45e-fde7ded939e7",
-    "Agency Login":            "383bcba1-5011-81d1-adac-c0d0bbc8e229",
-    "Application Step 1":      "383bcba1-5011-81be-8f4d-eb0c1fae98c6",
-    "Admin Login":             "383bcba1-5011-815e-a97a-f779f53c26ac",
-    "User Management":         "383bcba1-5011-815a-a3d3-efbc7866aad3",
-    "Agencies Management":     "383bcba1-5011-8178-9a81-d84bc7cacf67",
-    "First Appeal Management": "383bcba1-5011-818e-b72e-f5c3e19348a4",
-    "License Management":      "383bcba1-5011-81a8-afb9-efe4d4af8870",
-    "Notices":                 "383bcba1-5011-8190-b587-f00aa76c6a66",
-    "Session Management":      "383bcba1-5011-8197-baa9-c650e740b0ab",
-    "Permissions Matrix":      "383bcba1-5011-81df-8424-d2c298a26690",
-    "Second Appeal Management":"383bcba1-5011-81a3-859f-f35af145a57f",
+# One row per Jira story in the Module Coverage database, keyed by story key.
+# The name is only used in the printed summary; Notion rows are found by ID.
+# KAN-24, 27, 28, 30 and 35 have no tests yet, so no run ever maps to them.
+MODULE_PAGE_IDS: dict[str, tuple[str, str]] = {
+    # Agency side
+    "KAN-6":  ("Pre-Registration",              "383bcba1-5011-8125-b45e-fde7ded939e7"),
+    "KAN-7":  ("Agency Login",                  "383bcba1-5011-81d1-adac-c0d0bbc8e229"),
+    "KAN-8":  ("Part A: Basic Details",         "383bcba1-5011-81be-8f4d-eb0c1fae98c6"),
+    "KAN-19": ("Part B: Key Persons",           "41abcba1-5011-81fd-ba65-d3b47ed1f2ef"),
+    "KAN-20": ("Part C: Operations",            "41abcba1-5011-81cb-a157-fd03168ada0d"),
+    "KAN-21": ("Part F: Certificates",          "41abcba1-5011-8190-acac-e8d2bb2b263c"),
+    "KAN-9":  ("Enclosures",                    "41abcba1-5011-815a-838f-fe868bbf79e8"),
+    "KAN-38": ("Premises Photos",               "41abcba1-5011-817e-a392-d18c3e2b28bd"),
+    "KAN-10": ("Declaration & Authorization",   "41abcba1-5011-81aa-ae8a-eb5707a251ed"),
+    "KAN-39": ("Application Preview",           "41abcba1-5011-818d-9074-d7181136fda5"),
+    "KAN-40": ("Agency Home",                   "41abcba1-5011-81d1-a54b-e411085f4737"),
+    "KAN-41": ("Notice Board",                  "41abcba1-5011-8193-9edd-c77d44a79317"),
+    "KAN-42": ("Contact Us",                    "41abcba1-5011-81f3-b4f4-ed0db2808a63"),
+    "KAN-43": ("Forgot Password",               "41abcba1-5011-81ca-b951-cdea78273c78"),
+    "KAN-37": ("Licence Renewal (agency)",      "41abcba1-5011-81a3-9ce2-d683aafa9b8f"),
+    "KAN-48": ("Compliance Loop (agency)",      "41abcba1-5011-819e-989b-fd4a31ebd250"),
+    "KAN-49": ("Appeals (agency)",              "41abcba1-5011-81fc-847d-f60155632eb4"),
+    # Officer side
+    "KAN-23": ("Admin Login",                   "383bcba1-5011-815e-a97a-f779f53c26ac"),
+    "KAN-34": ("Officers & Access",             "383bcba1-5011-815a-a3d3-efbc7866aad3"),
+    "KAN-25": ("All Agencies View",             "383bcba1-5011-8178-9a81-d84bc7cacf67"),
+    "KAN-29": ("First Appeal (officer)",        "383bcba1-5011-818e-b72e-f5c3e19348a4"),
+    "KAN-30": ("Second Appeal (officer)",       "383bcba1-5011-81a3-859f-f35af145a57f"),
+    "KAN-33": ("Licences & Certificates",       "383bcba1-5011-81a8-afb9-efe4d4af8870"),
+    "KAN-31": ("Notices Management",            "383bcba1-5011-8190-b587-f00aa76c6a66"),
+    "KAN-32": ("Session Management",            "383bcba1-5011-8197-baa9-c650e740b0ab"),
+    "KAN-35": ("Permissions Matrix",            "383bcba1-5011-81df-8424-d2c298a26690"),
+    "KAN-24": ("Admin Dashboard Overview",      "41abcba1-5011-811e-822c-cd7e99d36685"),
+    "KAN-27": ("Approved Agencies",             "41abcba1-5011-816c-9bc7-f8de65ba4e62"),
+    "KAN-28": ("Form-II Certificate",           "41abcba1-5011-8151-bc2c-f79ae47442b8"),
+    "KAN-12": ("Desktop Scrutiny Review Loop",  "41abcba1-5011-8159-9ad3-eccd03c9ab84"),
+    "KAN-36": ("Audit Log",                     "41abcba1-5011-81c1-8f25-fc0b988c06c2"),
+    "KAN-44": ("Officer Notifications",         "41abcba1-5011-8132-826b-ff95d15a9c17"),
+    "KAN-45": ("Registrations in Progress",     "41abcba1-5011-817c-b073-c89015c59e14"),
+    "KAN-46": ("Compliance Cases",              "41abcba1-5011-816d-8c19-c0e5a719da93"),
+    "KAN-47": ("District Breakup Report",       "41abcba1-5011-81fd-87dc-c559db72ff9b"),
+    "KAN-50": ("Appeals Map (officer)",         "41abcba1-5011-810f-bfdb-c892af64006c"),
+    "KAN-51": ("Renewal Applications",          "41abcba1-5011-81a0-a18d-c5b064459798"),
 }
 
-# Allure 'suite' label value → Module Coverage row name
-SUITE_TO_MODULE: dict[str, str] = {
-    "test_pre_registration":         "Pre-Registration",
-    "test_login":                    "Agency Login",
-    "test_partA":                    "Application Step 1",
-    "test_admin_login":              "Admin Login",
-    "test_admin_users":              "User Management",
-    "test_agencies":                 "Agencies Management",
-    "test_first_appeal_management":  "First Appeal Management",
-    "test_licenses":                 "License Management",
-    "test_notices":                  "Notices",
-    "test_sessions":                 "Session Management",
+# Allure 'package' label (the test module's dotted path) → story key.
+# The package is used rather than the 'suite' label because test_appeals_map
+# exists in both tests/ and tests/admin/.
+PACKAGE_TO_MODULE: dict[str, str] = {
+    "tests.test_pre_registration":              "KAN-6",
+    "tests.test_login":                         "KAN-7",
+    "tests.test_partA":                         "KAN-8",
+    "tests.test_partB":                         "KAN-19",
+    "tests.test_partC":                         "KAN-20",
+    "tests.test_partF":                         "KAN-21",
+    "tests.test_enclosures":                    "KAN-9",
+    "tests.test_premises":                      "KAN-38",
+    "tests.test_declaration":                   "KAN-10",
+    "tests.test_preview":                       "KAN-39",
+    "tests.test_agency_home":                   "KAN-40",
+    "tests.test_notice_board":                  "KAN-41",
+    "tests.test_contact":                       "KAN-42",
+    "tests.test_forgot_password":               "KAN-43",
+    "tests.test_renewal":                       "KAN-37",
+    "tests.test_first_appeal":                  "KAN-49",
+    "tests.test_second_appeal":                 "KAN-49",
+    "tests.test_appeals_map":                   "KAN-49",
+    "tests.admin.test_admin_login":             "KAN-23",
+    "tests.admin.test_admin_users":             "KAN-34",
+    "tests.admin.test_agencies":                "KAN-25",
+    "tests.admin.test_first_appeal_management": "KAN-29",
+    "tests.admin.test_licenses":                "KAN-33",
+    "tests.admin.test_notices":                 "KAN-31",
+    "tests.admin.test_sessions":                "KAN-32",
+    "tests.admin.test_application_review":      "KAN-12",  # see SPLIT_BY_CASE
+    "tests.admin.test_audit_log":               "KAN-36",
+    "tests.admin.test_notifications":           "KAN-44",
+    "tests.admin.test_drafts":                  "KAN-45",
+    "tests.admin.test_compliance":              "KAN-46",
+    "tests.admin.test_district_breakup":        "KAN-47",
+    "tests.admin.test_appeals_map":             "KAN-50",
+    "tests.admin.test_renewals":                "KAN-51",
 }
+
+# Files that serve more than one story. A test's AIO case number is read from
+# its Allure title ("TC-757: ..."); the first matching rule wins, and a test
+# that matches no rule (or has no TC number) goes to PACKAGE_TO_MODULE.
+_SHARED_REVIEW_CASES = {755, 756, 757, 758, 759, 760, 765}   # linked to KAN-12 and KAN-48
+SPLIT_BY_CASE: dict[str, list[tuple[set[int], list[str]]]] = {
+    "tests.admin.test_application_review": [
+        (_SHARED_REVIEW_CASES,  ["KAN-12", "KAN-48"]),
+        (set(range(769, 791)),  ["KAN-48"]),
+    ],
+}
+
+_TC_TITLE = re.compile(r"^TC-(\d+)\b")
+
+
+def modules_for(package: str, title: str) -> list[str]:
+    """Story keys a result counts towards; empty when the package is unmapped."""
+    for cases, keys in SPLIT_BY_CASE.get(package, []):
+        m = _TC_TITLE.match(title)
+        if m and int(m.group(1)) in cases:
+            return keys
+    module = PACKAGE_TO_MODULE.get(package)
+    return [module] if module else []
 
 # ─── Data structures ──────────────────────────────────────────────────────────
 
@@ -156,19 +234,30 @@ def aggregate(
     flaky_ids: set[str],
 ) -> dict[str, dict]:
     """
-    Group test results by module and accumulate counts + durations.
+    Group test results by story and accumulate counts + durations.
+
+    allure-results is cleaned at the start of each run_tests.cmd run, but a
+    direct pytest call appends to it, so a test may appear more than once.
+    Only its latest result (by historyId) is counted.
 
     Returns:
-        { module_name: { passed, failed, broken, skipped, flaky, durations } }
+        { story_key: { passed, failed, broken, skipped, flaky, durations } }
     """
-    modules: dict[str, dict] = defaultdict(_empty_module)
-
+    latest: dict[str, dict] = {}
     for r in result_files:
-        labels = {lbl["name"]: lbl["value"] for lbl in r.get("labels", [])}
-        suite  = labels.get("suite", "")
-        module = SUITE_TO_MODULE.get(suite)
-        if not module:
-            print(f"[DEBUG] Unmapped suite '{suite}' — skipping '{r.get('name', '')}'")
+        key = r.get("historyId") or r.get("fullName") or r.get("uuid", "")
+        if key not in latest or r.get("start", 0) > latest[key].get("start", 0):
+            latest[key] = r
+
+    modules: dict[str, dict] = defaultdict(_empty_module)
+    unmapped: dict[str, int] = defaultdict(int)
+
+    for r in latest.values():
+        labels  = {lbl["name"]: lbl["value"] for lbl in r.get("labels", [])}
+        package = labels.get("package", "")
+        keys    = modules_for(package, r.get("name", ""))
+        if not keys:
+            unmapped[package or labels.get("suite", "?")] += 1
             continue
 
         status   = r.get("status", "unknown")
@@ -176,12 +265,16 @@ def aggregate(
         stop_ms  = r.get("stop", 0)
         hist_id  = r.get("historyId", "")
 
-        m = modules[module]
-        m[status] = m.get(status, 0) + 1
-        if stop_ms > start_ms:
-            m["durations"].append(stop_ms - start_ms)
-        if hist_id in flaky_ids:
-            m["flaky"] += 1
+        for key in keys:
+            m = modules[key]
+            m[status] = m.get(status, 0) + 1
+            if stop_ms > start_ms:
+                m["durations"].append(stop_ms - start_ms)
+            if hist_id in flaky_ids:
+                m["flaky"] += 1
+
+    for package, count in sorted(unmapped.items()):
+        print(f"[WARN] Unmapped package '{package}' — {count} result(s) skipped. Add it to PACKAGE_TO_MODULE.")
 
     return modules
 
@@ -267,16 +360,17 @@ def build_notion_properties(data: dict, run_date: str) -> dict:
 # ─── Reporting ────────────────────────────────────────────────────────────────
 
 def print_summary(modules: dict[str, dict]) -> None:
-    header = f"{'Module':<32} {'Pass':>5} {'Fail':>5} {'Brkn':>5} {'Skip':>5} {'Flky':>5} {'Rate':>6} {'AvgDur':>8}  Status"
+    header = f"{'Story':<40} {'Pass':>5} {'Fail':>5} {'Brkn':>5} {'Skip':>5} {'Flky':>5} {'Rate':>6} {'AvgDur':>8}  Status"
     print("\n" + header)
     print("─" * len(header))
-    for mod in sorted(modules):
-        d = modules[mod]
+    for key in sorted(modules, key=lambda k: int(k.split("-")[1])):
+        d = modules[key]
+        label = f"{key} {MODULE_PAGE_IDS.get(key, ('?', ''))[0]}"
         total = d["passed"] + d["failed"] + d["broken"] + d["skipped"]
         rate  = f"{d['passed']/total*100:.1f}%" if total else "—"
         avg   = f"{sum(d['durations'])/len(d['durations'])/1000:.2f}s" if d["durations"] else "—"
         print(
-            f"{mod:<32} {d['passed']:>5} {d['failed']:>5} {d['broken']:>5} "
+            f"{label:<40} {d['passed']:>5} {d['failed']:>5} {d['broken']:>5} "
             f"{d['skipped']:>5} {d['flaky']:>5} {rate:>6} {avg:>8}  {run_status(d)}"
         )
     print()
@@ -292,12 +386,19 @@ def parse_args() -> argparse.Namespace:
                    help="Path to allure-html/history/ directory")
     p.add_argument("--dry-run", action="store_true",
                    help="Print aggregated metrics without calling the Notion API")
-    p.add_argument("--run-date", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    # Local date: a UTC date would be the previous day for runs before 05:30 IST.
+    p.add_argument("--run-date", default=datetime.now().strftime("%Y-%m-%d"),
                    help="Override run date (ISO-8601, e.g. 2026-06-18)")
     return p.parse_args()
 
 
 def main() -> None:
+    # The Windows console defaults to cp1252, which cannot print ─, ✓ or the
+    # Run Status emoji.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     args = parse_args()
 
     if not args.dry_run and not NOTION_API_TOKEN:
@@ -324,7 +425,7 @@ def main() -> None:
     modules = aggregate(result_files, flaky_ids)
 
     if not modules:
-        print("[WARN] No results mapped to any module. Check SUITE_TO_MODULE mapping.")
+        print("[WARN] No results mapped to any story. Check PACKAGE_TO_MODULE.")
         sys.exit(0)
 
     print_summary(modules)
@@ -338,20 +439,20 @@ def main() -> None:
     skipped = 0
     errors  = 0
 
-    for module, data in modules.items():
-        page_id = MODULE_PAGE_IDS.get(module)
-        if not page_id:
-            print(f"[WARN] No Notion page ID configured for module '{module}' — skipping.")
+    for key, data in modules.items():
+        if key not in MODULE_PAGE_IDS:
+            print(f"[WARN] No Notion page ID configured for '{key}' — skipping.")
             skipped += 1
             continue
+        name, page_id = MODULE_PAGE_IDS[key]
 
         props = build_notion_properties(data, args.run_date)
         try:
             update_notion_page(page_id, props)
-            print(f"  ✓  {module}")
+            print(f"  ✓  {key} {name}")
             updated += 1
         except requests.HTTPError as exc:
-            print(f"  ✗  {module}: {exc.response.status_code} {exc.response.text[:120]}")
+            print(f"  ✗  {key} {name}: {exc.response.status_code} {exc.response.text[:120]}")
             errors += 1
 
     print(f"\n[DONE] Updated {updated}, skipped {skipped}, errors {errors}.")
