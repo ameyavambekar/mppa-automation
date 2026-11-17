@@ -1,32 +1,10 @@
-import os
-
 import pytest
 
+from fixtures.drafts_fixtures import _admin_login, _admin_logout
 from pages.admin.agencies_page import AdminAgenciesPage
 from pages.admin.agency_view_page import AdminAgencyViewPage
-from pages.admin.login_page import AdminLoginPage
-from test_data.agencies_factory import AgenciesFactory, AgencyStatusData
-from utils.state_store import TestStateStore, UserRecord
-from config import ADMIN_LOGOUT_URL
-
-
-
-# ── Credential helpers ─────────────────────────────────────────────────────────
-
-def _super_admin_or_skip() -> UserRecord:
-    store = TestStateStore()
-    username = os.getenv("ADMIN_SUPER_USERNAME")
-    password = os.getenv("ADMIN_SUPER_PASSWORD")
-    if username and password:
-        store.record_user(role="super_admin", username=username, password=password)
-        return store.get_user_by_username(username)
-    user = store.get_any_super_admin()
-    if user is not None:
-        return user
-    pytest.skip(
-        "Set ADMIN_SUPER_USERNAME / ADMIN_SUPER_PASSWORD in .env "
-        "(or seed a super_admin in the state store)."
-    )
+from test_data.agencies_factory import (AgenciesFactory, AgencySearchData, CompletionData,
+                                        RegistrationInfoData)
 
 
 # ── Page-object fixtures ───────────────────────────────────────────────────────
@@ -43,83 +21,59 @@ def admin_agency_view_page(page) -> AdminAgencyViewPage:
 
 @pytest.fixture
 def logged_in_admin_agencies_page(page) -> AdminAgenciesPage:
-    """Logs in as super admin then navigates to the All Agencies list.
-
-    Logs the admin out on teardown: the browser context is shared across the
-    whole session, so the admin session cookie would otherwise persist and the
-    next test's ``login.open()`` would redirect straight to the dashboard,
-    breaking its login flow.
-    """
-    admin = _super_admin_or_skip()
-    login = AdminLoginPage(page)
-    login.open()
-    login.login(admin.username, admin.password)
+    """Logs in as the Super Admin and opens Applications → All applications. Logs out on teardown (the
+    browser context is shared across the session)."""
+    _admin_login(page)
     agencies = AdminAgenciesPage(page)
-    agencies.open()
+    agencies.open("all")
     yield agencies
-    try:
-        page.goto(ADMIN_LOGOUT_URL, wait_until="domcontentloaded")
-    except Exception:
-        pass
+    _admin_logout(page)
+
+
+# ── Application pickers (read-only) ────────────────────────────────────────────
+
+def _first_application(agencies: AdminAgenciesPage, view: str) -> dict:
+    """The first listed application of a tab, as a ``table_data`` row plus its review ``view_id``, or a skip."""
+    agencies.open(view)
+    rows = agencies.table_data()
+    ids = agencies.review_view_ids()
+    for row in rows:
+        if row["application_id"] in ids:
+            return {**row, "view_id": ids[row["application_id"]], "view": view}
+    pytest.skip(f"No application with a Review / View link under Applications '{view}' on dev.")
 
 
 @pytest.fixture
-def agency_status_restorer(logged_in_admin_agencies_page: AdminAgenciesPage):
-    """Restores an agency's status after a status-mutating test.
+def listed_application(logged_in_admin_agencies_page) -> dict:
+    """The first application under All applications (every listed application is submitted and paid)."""
+    app = _first_application(logged_in_admin_agencies_page, "all")
+    logged_in_admin_agencies_page.open("all")
+    return app
 
-    The test calls ``agency_status_restorer(username)`` BEFORE changing
-    anything: the agency's current status badge is captured from its list
-    row. On teardown each registered agency is set back to that status via
-    the list's Change Status modal, so status-mutating tests (TC-202,
-    TC-205, TC-206, TC-209, TC-211) leave the dev data as they found it.
-    Assigned MPPA numbers cannot be unassigned — only the status reverts.
-    """
-    ap = logged_in_admin_agencies_page
-    originals = []
 
-    def _register(username: str) -> str:
-        status = ap.get_row_status(username)
-        originals.append((username, status))
-        return status
-
-    yield _register
-
-    for username, status in originals:
-        try:
-            ap.open()
-            if ap.get_row_status(username) != status:
-                ap.change_status(username, status, AgenciesFactory.CLEANUP_REMARKS)
-        except Exception:
-            pass
+@pytest.fixture
+def approved_application(logged_in_admin_agencies_page) -> dict:
+    """The first application under the Approved tab (certificate issued)."""
+    app = _first_application(logged_in_admin_agencies_page, "approved")
+    logged_in_admin_agencies_page.open("all")
+    return app
 
 
 # ── Data fixtures ──────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def approve_with_remarks_data() -> AgencyStatusData:
-    """TC-202 — approval with optional remarks."""
-    return AgenciesFactory.approve_with_remarks()
+def agency_search_data() -> AgencySearchData:
+    """TC-207 — search by name, Application ID, e-mail and PAN; a query that matches nothing."""
+    return AgenciesFactory.search_by_each_field()
 
 
 @pytest.fixture
-def reject_blank_remarks_data() -> AgencyStatusData:
-    """TC-203 — rejection with blank remarks, expects block."""
-    return AgenciesFactory.reject_blank_remarks()
+def registration_info_data() -> RegistrationInfoData:
+    """TC-196 — expected format of each Registration Info value."""
+    return AgenciesFactory.registration_info_formats()
 
 
 @pytest.fixture
-def suspend_blank_remarks_data() -> AgencyStatusData:
-    """TC-204 — suspension with blank remarks, expects block."""
-    return AgenciesFactory.suspend_blank_remarks()
-
-
-@pytest.fixture
-def reject_with_remarks_data() -> AgencyStatusData:
-    """TC-205 — rejection with valid remarks for the audit-trail check."""
-    return AgenciesFactory.reject_with_remarks()
-
-
-@pytest.fixture
-def suspend_with_remarks_data() -> AgencyStatusData:
-    """TC-206 / TC-211 — suspension with valid remarks."""
-    return AgenciesFactory.suspend_with_remarks()
+def completion_data() -> CompletionData:
+    """TC-197 — the Completion Status panel of a submitted application."""
+    return AgenciesFactory.completion_of_submitted()
