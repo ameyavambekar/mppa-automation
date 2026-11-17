@@ -305,7 +305,7 @@ def test_tc262_save_updates_validity(
     Given an agency with an Active certificate
     When  I renew it from today for 5 years (+5 Years) with a remark
     Then  the row shows the new dates (with ✓ and '✓ approvals'), Days Left and Active
-    And   the detail row's 'Valid From / Valid Upto (approvals)' show the new dates
+    And   the detail row's 'Eff. Valid From / Eff. Valid Upto' show the new dates
     And   History shows 'Renewed' with my name and role (known defect "Super admin" #60: no entry is added)
 
     AIO: KAN-TC-262 | data: valid_renewal
@@ -335,8 +335,8 @@ def test_tc262_save_updates_validity(
     with allure.step("Verify the detail row shows the new dates (agency_approvals)"):
         lp.toggle_detail_row(agency)
         expect(lp.detail_row(agency)).to_be_visible()
-        expect(lp.detail_field(agency, "Valid From (approvals)")).to_have_text(_display(data.valid_from))
-        expect(lp.detail_field(agency, "Valid Upto (approvals)")).to_have_text(_display(data.valid_upto))
+        expect(lp.detail_field(agency, "Eff. Valid From")).to_have_text(_display(data.valid_from))
+        expect(lp.detail_field(agency, "Eff. Valid Upto")).to_have_text(_display(data.valid_upto))
 
     with allure.step("Verify History shows 'Renewed'"):
         lp.open_history(agency)
@@ -704,8 +704,8 @@ def test_tc628_row_details(logged_in_admin_licenses_page: AdminLicensesPage):
     Given an agency with an Active certificate
     When  I click its row
     Then  the detail row opens with Registration No., Agency Status, Email, PAN, Approval Date,
-          Valid From / Valid Upto (approvals), Days Remaining, Approved By, Remarks and the two buttons,
-          matching the row
+          Eff. Valid From / Eff. Valid Upto, Days Remaining and the two buttons, matching the row
+          (dev, 17-Nov-2026: 'Valid From / Valid Upto (approvals)' renamed, 'Approved By' and 'Remarks' removed)
     When  I click the row again
     Then  the detail row closes
 
@@ -722,8 +722,7 @@ def test_tc628_row_details(logged_in_admin_licenses_page: AdminLicensesPage):
         expect(lp.detail_row(agency)).to_be_visible()
 
     with allure.step("Verify the details"):
-        for key in ("Agency Status", "Email", "PAN", "Approval Date", "Valid From (approvals)",
-                    "Valid Upto (approvals)", "Approved By", "Remarks"):
+        for key in ("Agency Status", "Email", "PAN", "Approval Date", "Eff. Valid From", "Eff. Valid Upto"):
             expect(lp.detail_field(agency, key)).to_have_count(1)
         expect(lp.detail_field(agency, "Registration No.")).to_have_text(registration)
         expect(lp.detail_field(agency, "Email")).to_have_text(re.compile(r"\S+@\S+\.\S+"))
@@ -748,26 +747,28 @@ def test_tc629_view_application(logged_in_admin_licenses_page: AdminLicensesPage
     """
     Given an agency with an Active certificate
     When  I click View on its row, and View Full Application in its details
-    Then  the agency's full application opens ('View Agency — <agency> | Admin') each time
+    Then  the agency's full application opens ('View Agency — <Registration No.> | Admin', the Registration
+          No. as its heading) each time
 
     AIO: KAN-TC-629 | data: first Active row
     """
     lp = logged_in_admin_licenses_page
     agency = lp.agencies_with_status("active")[0]
     agency_id = lp.agency_id(agency)
+    registration = lp.registration_no(agency).text_content().strip()
 
     with allure.step(f"Click View for '{agency}'"):
         lp.open_application_view(agency)
         expect(lp.page).to_have_url(re.compile(rf"/dashboard/agency_view\.php\?id={agency_id}$"))
-        expect(lp.page).to_have_title(f"View Agency — {agency} | Admin")
-        expect(lp.page.get_by_role("heading", name=agency, exact=True).first).to_be_visible()
+        expect(lp.page).to_have_title(f"View Agency — {registration} | Admin")
+        expect(lp.page.get_by_role("heading", name=registration, exact=True).first).to_be_visible()
 
     with allure.step("Go back, open the details and click View Full Application"):
         lp.open(status="all")
         lp.toggle_detail_row(agency)
         lp.detail_view_application_link(agency).click()
         expect(lp.page).to_have_url(re.compile(rf"/dashboard/agency_view\.php\?id={agency_id}$"))
-        expect(lp.page).to_have_title(f"View Agency — {agency} | Admin")
+        expect(lp.page).to_have_title(f"View Agency — {registration} | Admin")
 
 
 # ---------------------------------------------------------------------------

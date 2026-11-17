@@ -970,7 +970,9 @@ def test_tc25_double_login(logged_in_agency_page, part_a_page: PartAPage, second
         page_2.wait_for_load_state("networkidle")
 
         with allure.step("Verify second session reached the Form-I wizard or shows a session-conflict message"):
-            on_wizard = page_2.url.startswith(PART_A_URL)
+            # Login resumes at the agency's current wizard step (e.g. premises.php), not always Part A
+            # (dev, 17-Nov-2026), so any Form-I page counts as the wizard.
+            on_wizard = page_2.url.startswith(f"{FORMS_BASE}/")
             conflict_msg = page_2.locator(
                 "//div[contains(text(),'logged out') or contains(text(),'new session')]"
             )
@@ -984,7 +986,7 @@ def test_tc25_double_login(logged_in_agency_page, part_a_page: PartAPage, second
     with allure.step("Check Browser 1 state — either still active or notified of displacement"):
         page_1.reload()
         page_1.wait_for_load_state("networkidle")
-        still_on_wizard = page_1.url.startswith(PART_A_URL)
+        still_on_wizard = page_1.url.startswith(f"{FORMS_BASE}/")
         displaced_msg = page_1.locator(
             "//div[contains(text(),'logged out') or contains(text(),'new session')]"
         )

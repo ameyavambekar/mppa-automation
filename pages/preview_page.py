@@ -47,8 +47,9 @@ class PreviewPage(BasePage):
                      "Auth. Signatory", "Designation", "Aadhaar (Signatory)", "Google Maps")
     PERSON_LABELS = ("PAN", "Aadhaar", "Nationality", "Mobile", "Address", "DIN/DPIN")
     # Portal 2.1.0 (17-Nov-2026): "Placement Type" became "Area of Placement Operations".
+    # "Other Services" was added after Service Mode on dev (17-Nov-2026, portal 2.1.0)
     PART_C_LABELS = ("Area of Placement Operations", "Sectors", "Digital Platform", "Training", "Mobilization",
-                     "Service Mode", "Type of Agency", "Charges displayed")
+                     "Service Mode", "Other Services", "Type of Agency", "Charges displayed")
     # Part F certificate rows: (number label, date label) → Part F certificate key (see PartFPage.CERTIFICATES)
     CERTIFICATE_ROWS = {("Contract Labour Cert", "Contract Labour Date"): "cl",
                         ("Emigration Cert", "Emigration Date"): "em",
@@ -56,6 +57,16 @@ class PreviewPage(BasePage):
                         ("LIN Number", "LIN Date"): "lin"}
     # Since portal 2.1.0 the signature is uploaded on Part F and shown there ("Signature" · View).
     PART_F_LABELS = (*(label for pair in CERTIFICATE_ROWS for label in pair), "Application Date", "Place", "Signature")
+    # A certificate document saved on Part F gets its own row after Place (dev, 17-Nov-2026). Only "Security Doc"
+    # has been seen so far; the other certificates' labels are not known yet.
+    DOCUMENT_LABELS = {"sec": "Security Doc"}
+
+    @classmethod
+    def part_f_labels(cls, documents=()) -> list[str]:
+        """The Part F row labels for an agency with these certificate documents on file (keys of
+        ``DOCUMENT_LABELS``, e.g. ['sec'])."""
+        docs = [cls.DOCUMENT_LABELS[c] for c in cls.DOCUMENT_LABELS if c in documents]
+        return [*cls.PART_F_LABELS[:-1], *docs, cls.PART_F_LABELS[-1]]
     # Since portal 2.1.0 only the two mandatory documents (plus any optional ones uploaded); the address proof
     # card reads "Office Address Proof — <type>".
     ENCLOSURE_TITLES = ("PAN Card of the Agency", "Office Address Proof")

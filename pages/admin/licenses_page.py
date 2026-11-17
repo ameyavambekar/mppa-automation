@@ -231,9 +231,9 @@ class AdminLicensesPage(BasePage):
         return self.license_row(agency_name).locator("xpath=following-sibling::tr[1]")
 
     def detail_field(self, agency_name: str, key: str):
-        """A detail value by its label, e.g. 'Registration No.', 'Agency Status', 'Email', 'PAN',
-        'Approval Date', 'Valid From (approvals)', 'Valid Upto (approvals)', 'Days Remaining',
-        'Approved By', 'Remarks'."""
+        """A detail value by its label: 'Registration No.', 'Agency Status', 'Email', 'PAN', 'Approval Date',
+        'Eff. Valid From', 'Eff. Valid Upto', 'Days Remaining' (dev, 17-Nov-2026 — 'Valid From / Valid Upto
+        (approvals)' were renamed and 'Approved By' and 'Remarks' removed)."""
         return self.detail_row(agency_name).locator(
             f"//div[@class='df'][div[@class='dk' and normalize-space(text())='{key}']]/div[@class='dv']"
         )

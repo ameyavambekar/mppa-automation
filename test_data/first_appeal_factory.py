@@ -204,7 +204,7 @@ class AppealOutcomeData:
 class AppealOutcomeFactory:
 
     MIN_REASONS = 50
-    NO_DISPOSAL = "Select the appellate order (disposal)."
+    NO_DISPOSAL = "Choose Grant appeal or Reject appeal."   # was "Select the appellate order (disposal)." before 17-Nov-2026
     SHORT_REASONS = "Write the reasons of the order (at least 50 characters)."
     CONFIRM = "Pass this order?\n\n{label}\n{desc}"
     IMPACT_DEFAULT = "Choose an option to see its effect on the application."
@@ -228,6 +228,22 @@ class AppealOutcomeFactory:
         """Dismiss the appeal and uphold the refusal — the agency can then file a Second Appeal."""
         return AppealOutcomeData(disposal="dismissed_upheld", reasons=AppealOutcomeFactory._REASONS,
                                  scenario_label="dismissed_upheld")
+
+    @staticmethod
+    def no_disposal() -> AppealOutcomeData:
+        return AppealOutcomeData(disposal="", reasons=AppealOutcomeFactory._REASONS, scenario_label="no_disposal",
+                                 expected_error=AppealOutcomeFactory.NO_DISPOSAL)
+
+    @staticmethod
+    def blank_reasons() -> AppealOutcomeData:
+        return AppealOutcomeData(disposal="dismissed_upheld", reasons="", scenario_label="blank_reasons",
+                                 expected_error=AppealOutcomeFactory.SHORT_REASONS)
+
+    @staticmethod
+    def short_reasons() -> AppealOutcomeData:
+        """49 characters — one short of the minimum."""
+        return AppealOutcomeData(disposal="dismissed_upheld", reasons=("QA automation reasons " * 3)[:49],
+                                 scenario_label="short_reasons", expected_error=AppealOutcomeFactory.SHORT_REASONS)
 
     # Reasons for each appellate order (first or second appeal), each well over the 50-character minimum
     _ORDER_REASONS = {
@@ -365,19 +381,3 @@ class SecondAppealFactory:
             documents={slot: file_path for slot in ("ra_order", "fa1_order", "other")},
             scenario_label="second_appeal_valid_with_documents",
         )
-
-    @staticmethod
-    def no_disposal() -> AppealOutcomeData:
-        return AppealOutcomeData(disposal="", reasons=AppealOutcomeFactory._REASONS, scenario_label="no_disposal",
-                                 expected_error=AppealOutcomeFactory.NO_DISPOSAL)
-
-    @staticmethod
-    def blank_reasons() -> AppealOutcomeData:
-        return AppealOutcomeData(disposal="dismissed_upheld", reasons="", scenario_label="blank_reasons",
-                                 expected_error=AppealOutcomeFactory.SHORT_REASONS)
-
-    @staticmethod
-    def short_reasons() -> AppealOutcomeData:
-        """49 characters — one short of the minimum."""
-        return AppealOutcomeData(disposal="dismissed_upheld", reasons=("QA automation reasons " * 3)[:49],
-                                 scenario_label="short_reasons", expected_error=AppealOutcomeFactory.SHORT_REASONS)
