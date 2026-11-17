@@ -216,24 +216,17 @@ class RegistrationPage(BasePage):
 
     @property
     def password_helper(self):
-        """Strength label ('Very Weak' … 'Strong' / 'No spaces allowed.')."""
+        """
+        Rules hint, then the live strength line once typing starts:
+        'Password strength: <Very Weak|Weak|Fair|Good|Strong> — add <missing rules>',
+        or 'Spaces are not allowed in the password'. Replaced the #pwRules checklist (17-Nov-2026).
+        """
         return self.page.locator("#pwdHint")
 
     @property
     def password_strength_bar(self):
+        """Fill of the strength meter; inline style width steps 20% per strength level (0px for spaces)."""
         return self.page.locator("#pwdStrengthBar")
-
-    @property
-    def password_rules_list(self):
-        """Checklist of password rules below the strength bar."""
-        return self.page.locator("#pwRules")
-
-    def password_rule(self, rule: str):
-        """
-        Single rule in the checklist; gets class 'ok' once satisfied.
-        rule: 'len' | 'up' | 'low' | 'num' | 'sym' | 'sp'
-        """
-        return self.page.locator(f"#pwRules li[data-r='{rule}']")
 
     @property
     def password_show_toggle(self):
@@ -254,39 +247,6 @@ class RegistrationPage(BasePage):
     @property
     def confirm_password_show_toggle(self):
         return self.page.locator("//input[@id='confirmPassword']//following-sibling::button")
-
-    # Legacy complexity check aliases mapped to the #pwRules checklist items
-    @property
-    def password_length_error(self):
-        return self.password_rule("len")
-
-    @property
-    def password_length_correct(self):
-        return self.password_rule("len")
-
-    @property
-    def password_uppercase_error(self):
-        return self.password_rule("up")
-
-    @property
-    def password_uppercase_correct(self):
-        return self.password_rule("up")
-
-    @property
-    def password_number_error(self):
-        return self.password_rule("num")
-
-    @property
-    def password_number_correct(self):
-        return self.password_rule("num")
-
-    @property
-    def password_symbol_error(self):
-        return self.password_rule("sym")
-
-    @property
-    def password_symbol_correct(self):
-        return self.password_rule("sym")
 
     # ── Section 2 — Contact & Identity Verification ──────────────────────────
 

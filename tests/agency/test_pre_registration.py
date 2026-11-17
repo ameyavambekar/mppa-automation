@@ -47,7 +47,9 @@ pytestmark = [
     allure.feature("MPPA Pre-Registration"),
 ]
 
-RULE_OK = re.compile(r"\bok\b")   # class added to a #pwRules item once satisfied
+def _bar_width(width: str) -> re.Pattern:
+    """Matches the #pwdStrengthBar inline style for a given width ('40%', '0px')."""
+    return re.compile(rf"width:\s*{re.escape(width)}")
 
 
 def _fill_credentials_and_contact(registration_page, data):
@@ -169,10 +171,10 @@ def test_tc04_username_already_taken_shows_inline_error(
     Given a user is already registered in the system,
     And I am on the Pre-Registration page,
     When I enter an already registered username in the Username field,
-    Then the inline error "Username taken"
+    Then the inline error "This username is already taken — choose another"
     is displayed (triggered by the async uniqueness-check API call).
 
-    Notion ref: TC-04
+    Notion ref: TC-04 | Data: username_already_taken (EC-9)
     """
     data = username_already_taken_data
     registration_page.ensure_on_registration_page()
@@ -194,7 +196,7 @@ def test_tc04_username_already_taken_shows_inline_error(
             registration_page.fill_username(data.username)
 
         with allure.step("Wait for async uniqueness check and assert duplicate error"):
-            expect(registration_page.username_helper).to_contain_text("Username taken")
+            expect(registration_page.username_helper).to_contain_text(data.expected_error)
     finally:
         registration_page.page.unroute("**/register_process.php*")
 
@@ -210,34 +212,41 @@ def test_tc05_password_strength_indicator_updates(registration_page):
     """
     Given I am on the Pre-Registration page,
     When I type progressively stronger passwords into the Password field,
-    Then the strength indicator (#pwdHint) updates from Weak → Fair → Strong
-    in real-time, the rule checklist (#pwRules) ticks off each satisfied rule,
-    and the Confirm Password field shows 'Passwords match' when both fields
-    contain identical valid values.
+    Then the strength line (#pwdHint) updates from Weak → Fair → Strong
+    in real-time, naming the rules still missing at each level, the strength
+    bar (#pwdStrengthBar) grows with it, and the Confirm Password field shows
+    'Passwords match' when both fields contain identical valid values.
+
+    The six-item #pwRules checklist was removed from the page (17-Nov-2026);
+    the missing rules are now listed in the strength line instead.
 
     Notion ref: TC-06 (AC-1)
     """
     registration_page.ensure_on_registration_page()
     expect(registration_page.username_input).to_be_visible()
 
-    with allure.step("Assert the password rule checklist lists all six rules"):
-        expect(registration_page.password_rules_list.locator("li")).to_have_count(6)
+    with allure.step("Before typing, assert the hint lists the password rules and the bar is empty"):
+        expect(registration_page.password_helper).to_contain_text(
+            "Minimum 8 characters, with upper and lower case letters, a number and a special character"
+        )
+        expect(registration_page.password_strength_bar).not_to_have_attribute("style", _bar_width("20%"))
 
-    with allure.step("Enter a weak password; assert strength shows 'Weak'"):
+    with allure.step("Enter a weak password; assert 'Weak' and the missing rules are named"):
         registration_page.fill_password("password")
-        expect(registration_page.password_helper).to_contain_text("Weak")
-        expect(registration_page.password_rule("up")).not_to_have_class(RULE_OK)
+        expect(registration_page.password_helper).to_contain_text("Password strength: Weak")
+        expect(registration_page.password_helper).to_contain_text("add a capital letter, a number, a special character")
+        expect(registration_page.password_strength_bar).to_have_attribute("style", _bar_width("40%"))
 
-    with allure.step("Extend to include a digit; assert strength updates to 'Fair'"):
+    with allure.step("Extend to include a digit; assert 'Fair' and the number rule is no longer listed"):
         registration_page.fill_password("password1")
-        expect(registration_page.password_helper).to_contain_text("Fair")
-        expect(registration_page.password_rule("num")).to_have_class(RULE_OK)
+        expect(registration_page.password_helper).to_contain_text("Password strength: Fair")
+        expect(registration_page.password_helper).not_to_contain_text("a number")
+        expect(registration_page.password_strength_bar).to_have_attribute("style", _bar_width("60%"))
 
-    with allure.step("Add uppercase and symbol; assert strength shows 'Strong' and every rule is met"):
+    with allure.step("Add uppercase and symbol; assert 'Strong' with no missing rules and a full bar"):
         registration_page.fill_password("Password1@")
-        expect(registration_page.password_helper).to_contain_text("Strong")
-        for rule in ("len", "up", "low", "num", "sym", "sp"):
-            expect(registration_page.password_rule(rule)).to_have_class(RULE_OK)
+        expect(registration_page.password_helper).to_have_text("Password strength: Strong")
+        expect(registration_page.password_strength_bar).to_have_attribute("style", _bar_width("100%"))
 
     with allure.step("Enter matching Confirm Password; assert 'Passwords match'"):
         registration_page.fill_confirm_password("Password1@")
@@ -258,44 +267,33 @@ def test_tc06_password_missing_complexity_shows_error(registration_page,password
     When I enter a password that violates complexity rules
     (no uppercase | no number | no symbol | too short | spaces),
     Then the password helper (#pwdHint) fails to reach Strong
-    and the matching rule in the checklist (#pwRules) stays unticked.
-    """
-    no_uppercase = password_no_uppercase_data
-    no_symbol = password_no_symbol_data
-    no_number = password_no_number_data
-    short_password = short_password_data
+    and names the violated rule ("add a capital letter", "add a number", …);
+    a password with spaces shows "Spaces are not allowed in the password"
+    and empties the strength bar.
 
+    Notion ref: TC-07 | Data: password_no_uppercase, password_no_number,
+    password_no_symbol, password_too_short
+    """
     registration_page.ensure_on_registration_page()
     expect(registration_page.username_input).to_be_visible()
 
-    with allure.step("Enter password with spaces; assert space error and 'no spaces' rule unmet"):
+    with allure.step("Enter password with spaces; assert space error and empty strength bar"):
         registration_page.fill_password("Pass word1@")
-        expect(registration_page.password_helper).to_contain_text("No spaces allowed")
-        expect(registration_page.password_rule("sp")).not_to_have_class(RULE_OK)
+        expect(registration_page.password_helper).to_have_text("Spaces are not allowed in the password")
+        expect(registration_page.password_strength_bar).to_have_attribute("style", _bar_width("0px"))
         registration_page.clear_password()
 
-    with allure.step("Enter a password without uppercase; assert not Strong and uppercase rule unmet"):
-        registration_page.fill_password(no_uppercase)
-        expect(registration_page.password_helper).not_to_contain_text("Strong")
-        expect(registration_page.password_uppercase_error).not_to_have_class(RULE_OK)
-        registration_page.clear_password()
-
-    with allure.step("Enter a password without number; assert not Strong and number rule unmet"):
-        registration_page.fill_password(no_number)
-        expect(registration_page.password_helper).not_to_contain_text("Strong")
-        expect(registration_page.password_number_error).not_to_have_class(RULE_OK)
-        registration_page.clear_password()
-
-    with allure.step("Enter a password without symbol; assert not Strong and symbol rule unmet"):
-        registration_page.fill_password(no_symbol)
-        expect(registration_page.password_helper).not_to_contain_text("Strong")
-        expect(registration_page.password_symbol_error).not_to_have_class(RULE_OK)
-        registration_page.clear_password()
-
-    with allure.step("Enter a short password; assert not Strong and length rule unmet"):
-        registration_page.fill_password(short_password)
-        expect(registration_page.password_helper).not_to_contain_text("Strong")
-        expect(registration_page.password_length_error).not_to_have_class(RULE_OK)
+    for data in (
+        password_no_uppercase_data,
+        password_no_number_data,
+        password_no_symbol_data,
+        short_password_data,
+    ):
+        with allure.step(f"{data.scenario_label}: enter '{data.password}'; assert not Strong and '{data.expected_error}' shown"):
+            registration_page.fill_password(data.password)
+            expect(registration_page.password_helper).not_to_contain_text("Strong")
+            expect(registration_page.password_helper).to_contain_text(data.expected_error)
+            registration_page.clear_password()
 
 
 # =============================================================================

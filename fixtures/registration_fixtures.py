@@ -64,25 +64,25 @@ def ec5_show_hide_data():
 
 @pytest.fixture
 def password_no_uppercase_data():
-    """TC-06 — Password without uppercase letter"""
-    return AgencyRegistrationFactory.password_no_uppercase().password
+    """TC-06 — Password without uppercase letter; expected_error is the #pwdHint fragment."""
+    return AgencyRegistrationFactory.password_no_uppercase()
 
 @pytest.fixture
 def password_no_number_data():
-    """TC-06 — Password without number"""
-    return AgencyRegistrationFactory.password_no_number().password
+    """TC-06 — Password without number; expected_error is the #pwdHint fragment."""
+    return AgencyRegistrationFactory.password_no_number()
 
 
 @pytest.fixture
 def password_no_symbol_data():
-    """TC-06 — Password without special symbol"""
-    return AgencyRegistrationFactory.password_no_symbol().password
+    """TC-06 — Password without special symbol; expected_error is the #pwdHint fragment."""
+    return AgencyRegistrationFactory.password_no_symbol()
 
 
 @pytest.fixture
 def short_password_data():
-    """TC-06 — Password without special symbol"""
-    return AgencyRegistrationFactory.password_too_short().password
+    """TC-06 — Password shorter than 8 characters; expected_error is the #pwdHint fragment."""
+    return AgencyRegistrationFactory.password_too_short()
 
 
 # ── Section 2: Contact & Identity fixtures (TC-10 to TC-18) ──────────────────

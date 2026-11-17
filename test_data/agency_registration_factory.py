@@ -280,7 +280,7 @@ class AgencyRegistrationFactory:
         """EC-9: Username already exists — inline error on blur."""
         data = cls.valid()
         data.username = "anayvarghese"
-        data.expected_error = "❌ Username taken"
+        data.expected_error = "This username is already taken"
         data.scenario_label = "EC-9: username already taken"
         return data
 
@@ -301,7 +301,7 @@ class AgencyRegistrationFactory:
         pw = _PasswordGenerator.too_short()
         data.password = pw
         data.confirm_password = pw
-        data.expected_error = "Password must be at least 8 characters."
+        data.expected_error = "add more characters"        # missing-rule fragment in #pwdHint
         data.scenario_label = "FV: password too short"
         return data
 
@@ -312,7 +312,7 @@ class AgencyRegistrationFactory:
         pw = _PasswordGenerator.no_uppercase()
         data.password = pw
         data.confirm_password = pw
-        data.expected_error = "Password must contain at least one uppercase letter."
+        data.expected_error = "add a capital letter"        # missing-rule fragment in #pwdHint
         data.scenario_label = "FV: password missing uppercase"
         return data
 
@@ -323,7 +323,7 @@ class AgencyRegistrationFactory:
         pw = _PasswordGenerator.no_number()
         data.password = pw
         data.confirm_password = pw
-        data.expected_error = "Password must contain at least one number."
+        data.expected_error = "add a number"                # missing-rule fragment in #pwdHint
         data.scenario_label = "FV: password missing number"
         return data
 
@@ -334,7 +334,7 @@ class AgencyRegistrationFactory:
         pw = _PasswordGenerator.no_symbol()
         data.password = pw
         data.confirm_password = pw
-        data.expected_error = "Password must contain at least one special character."
+        data.expected_error = "add a special character"     # missing-rule fragment in #pwdHint
         data.scenario_label = "FV: password missing symbol"
         return data
 
