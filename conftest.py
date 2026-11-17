@@ -73,6 +73,7 @@ pytest_plugins = [
     "fixtures.application_review_fixtures",
     "fixtures.compliance_map_fixtures",
     "fixtures.renewal_fixtures",
+    "fixtures.certificates_fixtures",
 ]
 
 

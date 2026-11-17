@@ -50,9 +50,12 @@ def _expect_empty(premises: PremisesPage, key: str) -> None:
 @allure.title("TC-475: Premises Photos shows the heading, location note, Head office cards and navigation buttons")
 def test_tc475_page_layout(premises_page: PremisesPage, logged_in_premises_page):
     """
-    Given I have uploaded all six mandatory documents
+    Given I have uploaded every mandatory document
     When  I open the Premises Photos step
     Then  the heading, subtitle, progress bar, note, Head office cards and the two buttons are shown
+
+    Portal 2.1.0 (17-Nov-2026): six cards — signboard, outside view, inside view, classroom (with its
+    question), working area (now a required photo with no question) and the new service charges display board.
 
     Notion: KAN-TC-475 | KAN-38 AC-1
     """
@@ -96,12 +99,13 @@ def test_tc475_page_layout(premises_page: PremisesPage, logged_in_premises_page)
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-476")
 @allure.story(STORY)
-@allure.title("TC-476: Premises Photos opens with every card empty and both questions unanswered")
+@allure.title("TC-476: Premises Photos opens with every card empty and the classroom question unanswered")
 def test_tc476_default_state(premises_page: PremisesPage, logged_in_premises_page):
     """
     Given no photo has been saved and no question answered
     When  I open the Premises Photos step
-    Then  every card shows "No photo yet" with a "Required" badge and no location, and both questions are unanswered
+    Then  every card shows "No photo yet" with a "Required" badge and no location, and the classroom question
+          is unanswered (the working area has no question since portal 2.1.0)
 
     Notion: KAN-TC-476 | KAN-38 AC-2
     """
@@ -211,12 +215,14 @@ def test_tc479_location_denied(premises_page: PremisesPage, logged_in_premises_p
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-480")
 @allure.story(STORY)
-@allure.title("TC-480: Answering the classroom and working-area questions shows or hides their photos")
+@allure.title("TC-480: Answering the classroom question shows or hides its photo")
 def test_tc480_conditional_photos(premises_page: PremisesPage, logged_in_premises_page):
     """
-    Given both questions are unanswered
-    When  I answer No, then Yes for the classroom, and Yes for the working area with a photo, then reload
-    Then  No hides the photo as "Not applicable", Yes shows it as "Required", and both answers and the photo are kept
+    Given the classroom question is unanswered
+    When  I answer No, then Yes, save a classroom photo, then reload
+    Then  No hides the photo as "Not applicable", Yes shows it as "Required", and the answer and photo are kept
+
+    Since portal 2.1.0 (17-Nov-2026) only the classroom has a question; the working area is a required photo.
 
     Notion: KAN-TC-480 | KAN-38 AC-6
     """
@@ -234,16 +240,14 @@ def test_tc480_conditional_photos(premises_page: PremisesPage, logged_in_premise
         _expect_empty(premises_page, "classroom")
         expect(premises_page.badge("classroom")).to_have_text(PremisesPage.BADGE_REQUIRED)
 
-    with allure.step("Answer Yes for the working area and save a photo"):
-        premises_page.answer("working_area", True)
-        _save_photo(premises_page, user, "working_area", PremisesFactory.PHOTO_JPG)
+    with allure.step("Save a classroom photo"):
+        _save_photo(premises_page, user, "classroom", PremisesFactory.PHOTO_JPG)
 
-    with allure.step("Reload — both answers and the photo are kept"):
+    with allure.step("Reload — the answer and the photo are kept"):
         page.reload()
         page.wait_for_load_state("networkidle")
         expect(premises_page.answer_radio("classroom", True)).to_be_checked()
-        expect(premises_page.answer_radio("working_area", True)).to_be_checked()
-        expect(premises_page.photo("working_area")).to_be_visible()
+        expect(premises_page.photo("classroom")).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +261,8 @@ def test_tc481_save_and_continue(
 ):
     """
     Given location access is allowed
-    When  I save the three required photos, answer No to both questions and click "Save & continue to Declaration"
+    When  I save the five required photos, answer No to the classroom question and click
+          "Save & continue to Declaration"
     Then  the Declaration step opens
 
     Notion: KAN-TC-481 | KAN-38 AC-7 | data: required_only
@@ -288,10 +293,11 @@ def test_tc481_save_and_continue(
 @allure.title("TC-482: \"Save & continue to Declaration\" is refused while a required photo or answer is missing")
 def test_tc482_save_refused_when_incomplete(premises_page: PremisesPage, logged_in_premises_page):
     """
-    Given only the signboard photo is saved and both questions are unanswered
+    Given only the signboard photo is saved and the classroom question is unanswered
     When  I click "Save & continue to Declaration"
-    Then  I stay on Premises Photos with "Head office: answer both questions and add every required photo
-          before continuing." and the button can be clicked again
+    Then  I stay on Premises Photos with "Head office: answer the classroom question and add every required
+          photo (including the working area and the service charges board) before continuing." and the button
+          can be clicked again
 
     Notion: KAN-TC-482 | KAN-38 AC-7
     """
@@ -319,7 +325,7 @@ def test_tc483_back_to_documents(premises_page: PremisesPage, logged_in_premises
     """
     Given I am on the Premises Photos step
     When  I click "Back: Documents", then "Next: Premises Photos →"
-    Then  the Documents step shows 6/6 uploaded, and Premises Photos opens again
+    Then  the Documents step shows every mandatory document uploaded (2/2), and Premises Photos opens again
 
     Notion: KAN-TC-483 | KAN-38 AC-8
     """
@@ -329,9 +335,9 @@ def test_tc483_back_to_documents(premises_page: PremisesPage, logged_in_premises
     with allure.step("Click 'Back: Documents'"):
         premises_page.click_back_to_documents()
 
-    with allure.step("Verify the Documents step shows 6/6 uploaded"):
+    with allure.step("Verify the Documents step shows 2/2 uploaded"):
         expect(page).to_have_url(re.compile(rf"{re.escape(ENCLOSURES_URL)}"))
-        expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
+        expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(len(EnclosuresPage.MANDATORY)))
 
     with allure.step("Click 'Next: Premises Photos →' — Premises Photos opens again"):
         enclosures.next_premises_photos_link.click()
@@ -451,10 +457,9 @@ def test_tc487_yes_to_no_after_photo(
         expect(premises_page.badge("classroom")).to_have_text(PremisesPage.BADGE_NOT_APPLICABLE)
         expect(premises_page.location("classroom")).to_have_text("")
 
-    with allure.step("Save the required photos, answer No for the working area and save & continue"):
+    with allure.step("Save the required photos and save & continue"):
         for key, path in premises_required_only_data.photos.items():
             _save_photo(premises_page, user, key, path)
-        premises_page.answer("working_area", False)
         premises_page.click_finish()
 
     with allure.step("Verify the classroom card did not block the step"):
@@ -494,3 +499,63 @@ def test_tc488_outside_maharashtra(premises_page: PremisesPage, logged_in_premis
         premises_page.open()
         _expect_empty(premises_page, "interior")
         expect(premises_page.badge("interior")).to_have_text(PremisesPage.BADGE_REQUIRED)
+
+
+# ---------------------------------------------------------------------------
+# TC-850  Service charges display board photo — saves every photo
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-850")
+@allure.story(STORY)
+@allure.title("TC-850: The service charges display board photo is required before continuing to Declaration")
+def test_tc850_charges_board_required(
+    premises_page: PremisesPage, logged_in_premises_page, premises_required_only_data: PremisesData
+):
+    """
+    Given location access is allowed and no photo is saved
+    When  I save every required photo except the service charges display board, answer No to the classroom
+          question and click "Save & continue to Declaration", then save the board photo and click it again
+    Then  the first try is refused with the missing-photos message; after the board photo is saved
+          ("Uploaded" with my location) the Declaration step opens
+
+    Portal 2.1.0 (17-Nov-2026) added the service charges display board card.
+
+    Notion: KAN-TC-850 | KAN-38 | data: required_only
+    """
+    page, user = logged_in_premises_page
+    data = premises_required_only_data
+    key = "charges_board"
+    title, _, _ = PremisesPage.PHOTOS[key]
+
+    with allure.step("Verify the service charges display board card"):
+        expect(premises_page.card_title(key)).to_contain_text(title)
+        expect(premises_page.card_title(key)).to_contain_text("*")
+        expect(premises_page.card_hint(key)).to_have_text(PremisesPage.CHARGES_BOARD_HINT)
+        expect(premises_page.badge(key)).to_have_text(PremisesPage.BADGE_REQUIRED)
+        _expect_empty(premises_page, key)
+        expect(premises_page.take_photo_button(key)).to_have_text("Take photo")
+        expect(premises_page.choose_label(key)).to_contain_text("Choose from device")
+        expect(premises_page.file_input(key)).to_have_attribute("accept", re.compile(r"image/jpeg.*image/png"))
+
+    for other, path in data.photos.items():
+        if other == key:
+            continue
+        with allure.step(f"Save the '{other}' photo"):
+            _save_photo(premises_page, user, other, path)
+
+    for question, yes in data.answers.items():
+        with allure.step(f"Answer '{question}': {'Yes' if yes else 'No'}"):
+            premises_page.answer(question, yes)
+
+    with allure.step("Click 'Save & continue to Declaration' — refused while the board photo is missing"):
+        premises_page.click_finish()
+        expect(premises_page.message_box).to_have_text(PremisesPage.MISSING_PHOTOS_ERROR)
+        expect(page).to_have_url(ON_PREMISES)
+        expect(premises_page.badge(key)).to_have_text(PremisesPage.BADGE_REQUIRED)
+
+    with allure.step("Choose a photo of the service charges board"):
+        _save_photo(premises_page, user, key, data.photos[key])
+
+    with allure.step("Click 'Save & continue to Declaration' — the Declaration step opens"):
+        premises_page.click_finish()
+        page.wait_for_url(re.compile(r"/forms/declaration"), timeout=15000)
+        _record(user, "completed")

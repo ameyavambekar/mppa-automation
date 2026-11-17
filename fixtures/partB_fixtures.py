@@ -65,8 +65,8 @@ def part_b_login_as(page):
             if "legal_constitution" in user.step_data.get("part_a", {}) or user.steps.get("part_b") == "completed":
                 continue
             part_b = _login_and_open_part_b(page, user)
-            # Greedy up to the last ')' — "Limited Liability Partnership (LLP)" has its own.
-            shown = re.search(r"based on your agency type: (.+)\)", part_b.category_banner.inner_text())
+            # Banner since portal 2.1.0: "Legal constitution: <type> · persons to enter: <persons>"
+            shown = re.search(r"Legal constitution: (.+?) · persons to enter", part_b.category_banner.inner_text())
             if shown is None:
                 continue
             store.mark_form_step_status(username=user.username, step="part_a", status="completed",

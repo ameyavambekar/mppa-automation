@@ -54,7 +54,7 @@ def _already_touched(premises: PremisesPage, store: TestStateStore, user) -> boo
 
 
 def _open_untouched_premises(page):
-    """Logs in as an agency with all six documents uploaded and Premises Photos never touched,
+    """Logs in as an agency with every mandatory document uploaded and Premises Photos never touched,
     building one when none is left. Returns the user."""
     store = TestStateStore()
     for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c", "part_f", "enclosures"]):
@@ -89,7 +89,7 @@ def location_access(page) -> LocationAccess:
 
 @pytest.fixture
 def logged_in_premises_page(page, location_access):
-    """Yields (page, user) on Premises Photos for an agency with all six documents uploaded
+    """Yields (page, user) on Premises Photos for an agency with every mandatory document uploaded
     and Premises Photos never touched (no photo, no answer). Location access is allowed
     (Pune). Users who have touched the step are never used; when none is left, a new
     agency is built (see ``utils.agency_builder``)."""
@@ -120,7 +120,7 @@ def logged_in_premises_camera_page(playwright_instance, request):
 
 @pytest.fixture
 def premises_required_only_data() -> PremisesData:
-    """TC-481: the three required photos, both questions No."""
+    """TC-481: the five required photos, the classroom question No."""
     return PremisesFactory.required_only()
 
 

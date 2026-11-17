@@ -41,10 +41,11 @@ class PremisesFactory:
 
     @staticmethod
     def required_only() -> PremisesData:
-        """TC-481: the three required photos, both conditional questions answered No."""
+        """TC-481: the required photos (five since portal 2.1.0), the classroom question answered No."""
         return PremisesData(
-            photos={"signboard": CERTIFICATE_JPG, "exterior": CERTIFICATE_JPG, "interior": CERTIFICATE_PNG},
-            answers={"classroom": False, "working_area": False},
+            photos={"signboard": CERTIFICATE_JPG, "exterior": CERTIFICATE_JPG, "interior": CERTIFICATE_PNG,
+                    "working_area": CERTIFICATE_JPG, "charges_board": CERTIFICATE_PNG},
+            answers={"classroom": False},
             scenario_label="required_only",
         )
 

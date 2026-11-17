@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from urllib.parse import urljoin
 
 import allure
 
@@ -220,6 +221,16 @@ class AdminApprovedAgenciesPage(BasePage):
     @allure.step("Open the Approved Agencies dashboard directly")
     def open(self):
         self.navigate(f"{ADMIN_BASE}/agency/approve.php")
+
+    def certificate_links(self) -> list[dict]:
+        """``{agency, href}`` for every "📜 Cert" link on the page, read only (the page must be open)."""
+        links = self.page.locator("a.btn-v", has_text="Cert")
+        found = []
+        for i in range(links.count()):
+            link = links.nth(i)
+            name = link.locator("xpath=ancestor::tr[1]").locator("td").nth(1).inner_text().splitlines()[0].strip()
+            found.append({"agency": name, "href": urljoin(self.page.url, link.get_attribute("href"))})
+        return found
 
     @allure.step("Filter approved agencies by status: {status}")
     def filter_by_status(self, status: str):

@@ -101,8 +101,11 @@ def test_tc122_blank_save_shows_all_errors(part_c_page: PartCPage, logged_in_par
     """
     Given nothing is entered on Part C
     When  I click "Save Part C & Continue"
-    Then  the save is blocked with inline errors on Type of Placement, Service Mode and Sectors Served
-    And   the summary box lists all three and Type of Placement gets the focus
+    Then  the save is blocked with inline errors on Area of Placement Operations, the area declaration,
+          Service Mode and Sectors Served
+    And   the summary box lists all four and the first area radio gets the focus
+
+    Portal 2.1.0 (17-Nov-2026) replaced the Type of Placement select with the area radios and the declaration.
 
     Notion: KAN-TC-122 | KAN-20 AC-6 | data: none
     """
@@ -115,39 +118,46 @@ def test_tc122_blank_save_shows_all_errors(part_c_page: PartCPage, logged_in_par
     with allure.step("Click 'Save Part C & Continue'"):
         part_c_page.click_submit()
 
-    with allure.step("Verify the three inline errors"):
+    with allure.step("Verify the four inline errors"):
         expect(part_c_page.field_error("placement_type")).to_have_text(PartCPage.PLACEMENT_TYPE_REQUIRED_ERROR)
+        expect(part_c_page.area_declaration_error).to_have_text(PartCPage.AREA_DECLARATION_REQUIRED_ERROR)
         expect(part_c_page.field_error("service_mode")).to_have_text(PartCPage.SERVICE_MODE_REQUIRED_ERROR)
         expect(part_c_page.sectors_error).to_have_text(PartCPage.SECTORS_REQUIRED_ERROR)
         expect(part_c_page.sectors_grid).to_have_class(re.compile(r"\bgrp-invalid\b"))
-        expect(part_c_page.field_errors).to_have_count(3)
+        expect(part_c_page.field_errors).to_have_count(4)
 
     with allure.step("Verify the summary box and the focus"):
         _expect_blocked(page, part_c_page, PartCPage.PLACEMENT_TYPE_REQUIRED_ERROR,
-                        PartCPage.SERVICE_MODE_REQUIRED_ERROR, PartCPage.SECTORS_REQUIRED_ERROR)
-        expect(part_c_page.placement_type_select).to_be_focused()
+                        PartCPage.AREA_DECLARATION_REQUIRED_ERROR, PartCPage.SERVICE_MODE_REQUIRED_ERROR,
+                        PartCPage.SECTORS_REQUIRED_ERROR)
+        expect(part_c_page.placement_type_radio(PartCPage.PLACEMENT_TYPES[0])).to_be_focused()
 
 
 # ---------------------------------------------------------------------------
-# TC-124  Type of Placement is mandatory
+# TC-124  Area of Placement Operations is mandatory
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-124")
 @allure.story(STORY)
-@allure.title("TC-124: Leaving Type of Placement unselected blocks saving")
+@allure.title("TC-124: Leaving Area of Placement Operations unselected blocks saving")
 def test_tc124_placement_type_required(part_c_page: PartCPage, logged_in_part_c_page, part_c_minimal_data: PartCData):
     """
-    Given every other mandatory field is filled
-    When  I save with Type of Placement at "-- Select --", then select a type
-    Then  the save is blocked with "Please select the type of placement." and the error clears
+    Given every other mandatory field is filled and the area declaration is ticked
+    When  I save with no Area of Placement Operations chosen, then choose one
+    Then  the save is blocked with "Please select the Area of Placement Operations."
+    And   choosing an area clears the error and shows its registration fee
 
-    Notion: KAN-TC-124 | data: minimal without placement type
+    Since portal 2.1.0 the area is a radio choice (Within Maharashtra / Across India / India and Overseas)
+    instead of the Type of Placement select.
+
+    Notion: KAN-TC-124 | data: minimal without an area
     """
     page, user = logged_in_part_c_page
     data = part_c_minimal_data
 
-    with allure.step("Fill every mandatory field except Type of Placement"):
-        _fill(part_c_page, data)
-        part_c_page.placement_type_select.select_option(value="")
+    with allure.step("Fill every mandatory field except the area"):
+        _fill(part_c_page, PartCData(**{**data.__dict__, "placement_type": ""}))
+        for area in PartCPage.PLACEMENT_TYPES:
+            expect(part_c_page.placement_type_radio(area)).not_to_be_checked()
 
     with allure.step("Click 'Save Part C & Continue'"):
         part_c_page.click_submit()
@@ -156,9 +166,10 @@ def test_tc124_placement_type_required(part_c_page: PartCPage, logged_in_part_c_
         expect(part_c_page.field_error("placement_type")).to_have_text(PartCPage.PLACEMENT_TYPE_REQUIRED_ERROR)
         _expect_blocked(page, part_c_page, PartCPage.PLACEMENT_TYPE_REQUIRED_ERROR)
 
-    with allure.step(f"Select '{data.placement_type}' — the error disappears"):
+    with allure.step(f"Choose '{data.placement_type}' — the error disappears and its fee is shown"):
         part_c_page.select_placement_type(data.placement_type)
-        expect(part_c_page.field_error("placement_type")).to_have_count(0)
+        expect(part_c_page.field_error("placement_type")).to_be_hidden()
+        expect(part_c_page.area_block).to_contain_text(PartCPage.applicable_fee_text(data.placement_type))
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +446,7 @@ def test_tc138_back_to_part_b(part_c_page: PartCPage, logged_in_part_c_page):
 
     with allure.step("Verify Part B opens with the saved key person"):
         expect(page).to_have_url(re.compile(rf"{re.escape(PART_B_URL)}"))
-        expect(part_b.title).to_have_text("Step 2 — Part B: Key Persons")
+        expect(part_b.title).to_have_text(PartBPage.TITLE)
         expect(part_b.full_name_input(0)).not_to_have_value("")
 
 
@@ -467,7 +478,8 @@ def test_tc142_full_save_restored(part_c_page: PartCPage, logged_in_part_c_page,
         _reopen(page, part_c_page)
 
     with allure.step("Verify Placement Services"):
-        expect(part_c_page.placement_type_select).to_have_value(data.placement_type)
+        expect(part_c_page.placement_type_radio(data.placement_type)).to_be_checked()
+        expect(part_c_page.area_declaration_checkbox).to_be_checked()
         expect(part_c_page.service_mode_select).to_have_value(data.service_mode)
         for sector in data.sectors:
             expect(part_c_page.sector_checkbox(sector)).to_be_checked()
@@ -527,6 +539,13 @@ def test_tc444_page_layout(part_c_page: PartCPage, logged_in_part_c_page):
             "Placement Services", "Service Charges", "Online & Digital Platform",
             "Training Centre", "Mobilization Centre", "Other Services",
         ])
+        expect(part_c_page.section_descriptions).to_have_text(list(PartCPage.SECTION_DESCRIPTIONS))
+
+    with allure.step("Verify the three area cards with their registration fees, and the declaration"):
+        for area, fee in PartCPage.PLACEMENT_FEES.items():
+            expect(part_c_page.placement_type_card(area)).to_contain_text(area)
+            expect(part_c_page.placement_type_card(area)).to_contain_text(fee)
+        expect(part_c_page.area_block).to_contain_text(PartCPage.AREA_DECLARATION)
 
     with allure.step("Verify the save button"):
         expect(part_c_page.submit_button).to_have_text("Save Part C & Continue")
@@ -548,8 +567,10 @@ def test_tc445_default_state(part_c_page: PartCPage, logged_in_part_c_page):
     """
     page, user = logged_in_part_c_page
 
-    with allure.step("Verify the dropdowns show '-- Select --'"):
-        expect(part_c_page.placement_type_select).to_have_value("")
+    with allure.step("Verify no area is chosen, the declaration is unticked and Service Mode shows '-- Select --'"):
+        for area in PartCPage.PLACEMENT_TYPES:
+            expect(part_c_page.placement_type_radio(area)).not_to_be_checked()
+        expect(part_c_page.area_declaration_checkbox).not_to_be_checked()
         expect(part_c_page.service_mode_select).to_have_value("")
 
     with allure.step("Verify no checkbox is ticked"):
@@ -939,15 +960,15 @@ def test_tc455_other_services_needs_letters(
 def test_tc456_live_validation(part_c_page: PartCPage, logged_in_part_c_page):
     """
     Given nothing is entered on Part C
-    When  I leave Type of Placement empty, type one character in Training Sectors, then a second
+    When  I leave Area of Placement Operations empty, type one character in Training Sectors, then a second
     Then  only the touched fields show errors, and the Training Sectors error clears while typing
 
     Notion: KAN-TC-456 | KAN-20 AC-7
     """
     page, user = logged_in_part_c_page
 
-    with allure.step("Focus Type of Placement and leave it empty"):
-        part_c_page.touch(part_c_page.placement_type_select)
+    with allure.step("Focus Area of Placement Operations and leave it empty"):
+        part_c_page.touch(part_c_page.placement_type_radio(PartCPage.PLACEMENT_TYPES[0]))
         expect(part_c_page.field_error("placement_type")).to_have_text(PartCPage.PLACEMENT_TYPE_REQUIRED_ERROR)
         expect(part_c_page.field_error("service_mode")).to_have_count(0)
         expect(part_c_page.sectors_error).to_have_count(0)
@@ -1132,10 +1153,11 @@ def test_tc461_saved_part_c_read_only(part_c_page: PartCPage, logged_in_part_c_p
         for index in range(fields.count()):
             expect(fields.nth(index)).to_be_disabled()
 
-    with allure.step("Verify Type of Placement keeps its saved value and can't be changed"):
+    with allure.step("Verify the area keeps its saved value and can't be changed"):
         saved_values = fields.evaluate_all("els => els.map(e => e.type === 'checkbox' || e.type === 'radio' ? e.checked : e.value)")
-        expect(part_c_page.placement_type_select).not_to_have_value("")
-        expect(part_c_page.placement_type_select).to_be_disabled()
+        expect(part_c_page.placement_type_radio(part_c_minimal_data.placement_type)).to_be_checked()
+        for area in PartCPage.PLACEMENT_TYPES:
+            expect(part_c_page.placement_type_radio(area)).to_be_disabled()
 
     with allure.step("Click 'Edit this section'"):
         part_c_page.make_editable()

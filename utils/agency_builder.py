@@ -15,8 +15,8 @@ Stages, in order: "registered", "part_a", "part_b", "part_c", "part_f",
 training?" = No and Service Mode "Online Only" unless ``offline=True`` ("Offline Only", which
 makes Part F ask for the office premises document); the Part C state-store snapshot records
 ``{"service_mode": …, "offline": …}``. Its Part F has every certificate answered No, "enclosures" uploads
-the six mandatory documents (6/6), and "premises" saves the three required photos
-(location Pune) with both Yes / No questions answered No, and "declaration" uploads
+the mandatory documents (2/2 since portal 2.1.0), and "premises" saves the required photos (five since 2.1.0)
+(location Pune) with the classroom question answered No, and "declaration" uploads
 both signed forms, which opens Preview.
 
 The builder leaves the browser logged out; callers log in as the returned user.
@@ -48,6 +48,7 @@ from test_data.partB_factory import PartBFactory
 from test_data.partC_factory import PartCFactory
 from test_data.partF_factory import PartFFactory
 from test_data.premises_factory import PremisesFactory
+from utils.file_manager import SIGNATURE_TRANSPARENT_PNG
 from utils.state_store import TestStateStore, UserRecord
 
 STAGES = ("registered", "part_a", "part_b", "part_c", "part_f", "enclosures", "premises", "declaration")
@@ -193,14 +194,20 @@ class AgencyBuilder:
         self.store.mark_form_step_status(username=user.username, step="part_a", status="completed",
                                          data=PartAFactory.state_store_data(data))
 
-    @allure.step("Save Part B with one Director")
+    @allure.step("Save Part B with two Directors and two members")
     def save_part_b(self, user: UserRecord) -> None:
-        person = PartBFactory.valid_director()
+        # Since portal 2.1.0 (17-Nov-2026) a Private Limited Company needs at least 2 directors and
+        # "Number of Members / Shareholders" of at least 2.
         part_b = PartBPage(self.page)
         part_b.open()
         self.page.wait_for_load_state("networkidle")
-        part_b.fill_key_person(0, person.full_name, person.aadhaar, person.mobile, person.address,
-                               din=person.din, pan=person.pan)
+        part_b.fill_members_count(2)
+        for n, person in enumerate((PartBFactory.valid_director(), PartBFactory.second_valid_director())):
+            if n:
+                part_b.click_add_person()
+            index = part_b.person_indexes()[-1]
+            part_b.fill_key_person(index, person.full_name, person.aadhaar, person.mobile, person.address,
+                                   din=person.din, pan=person.pan)
         part_b.click_submit()
         # A successful save lands on Part C (partC.php?prev_saved=1).
         self.page.wait_for_url(f"{FORMS_BASE}/partC.php**", timeout=15000)
@@ -225,17 +232,19 @@ class AgencyBuilder:
         part_f.open()
         self.page.wait_for_load_state("networkidle")
         part_f.select_place(PartFFactory.PLACE)
+        # Required since portal 2.1.0 (17-Nov-2026): a PNG signature with a transparent background
+        part_f.set_signature(SIGNATURE_TRANSPARENT_PNG)
         part_f.click_submit()
         expect(part_f.success_message).to_have_text(PartFPage.SAVED_MESSAGE)
         self.store.mark_form_step_status(username=user.username, step="part_f", status="completed")
 
-    @allure.step("Upload the six mandatory documents")
+    @allure.step("Upload the mandatory documents")
     def upload_documents(self, user: UserRecord) -> None:
         enclosures = EnclosuresPage(self.page)
         enclosures.open()
         self.page.wait_for_load_state("networkidle")
         enclosures.upload_documents(EnclosuresFactory.all_mandatory().documents)
-        expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(6))
+        expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(len(EnclosuresPage.MANDATORY)))
         self.store.mark_form_step_status(username=user.username, step="enclosures", status="completed")
 
     @allure.step("Save Premises Photos with the three required photos")

@@ -26,7 +26,7 @@ def _already_uploaded(enclosures: EnclosuresPage, store: TestStateStore, user) -
     records them so the user is skipped from now on."""
     if enclosures.uploaded_count() == 0 and not any(enclosures.is_uploaded(n) for n in EnclosuresPage.DOCUMENTS):
         return False
-    status = "completed" if enclosures.uploaded_count() == 6 else "in_progress"
+    status = "completed" if enclosures.uploaded_count() == len(EnclosuresPage.MANDATORY) else "in_progress"
     store.mark_form_step_status(username=user.username, step="enclosures", status=status)
     return True
 
@@ -43,7 +43,7 @@ def enclosures_page(page) -> EnclosuresPage:
 @pytest.fixture
 def logged_in_enclosures_page(page):
     """Yields (page, user) on the Documents step for a user whose Part F is saved and
-    who has never uploaded a document, so every row is empty and the counter is 0/6.
+    who has never uploaded a document, so every row is empty and the counter is 0/2.
     Users with uploads are never used; when none is left, a new agency is built (see
     ``utils.agency_builder``)."""
     store = TestStateStore()
@@ -63,7 +63,7 @@ def logged_in_enclosures_page(page):
 
 @pytest.fixture
 def enclosures_all_mandatory_data() -> DocumentUploads:
-    """TC-380 / TC-395: documents 1–6."""
+    """TC-380 / TC-395: the mandatory documents (1 and 2)."""
     return EnclosuresFactory.all_mandatory()
 
 
@@ -81,20 +81,26 @@ def enclosures_replacement_data() -> DocumentUploads:
 
 @pytest.fixture
 def enclosures_optional_only_data() -> DocumentUploads:
-    """TC-383: optional documents 7 and 8."""
+    """TC-383: optional documents 3 and 4."""
     return EnclosuresFactory.optional_only()
 
 
 @pytest.fixture
-def enclosures_first_three_data() -> DocumentUploads:
-    """TC-396: documents 1–3."""
-    return EnclosuresFactory.first_three()
+def enclosures_partial_data() -> DocumentUploads:
+    """TC-396: documents 1 and 3."""
+    return EnclosuresFactory.partial()
 
 
 @pytest.fixture
 def enclosures_several_at_once_data() -> DocumentUploads:
-    """TC-473: documents 1, 2 and 7."""
+    """TC-473: documents 1, 2 and 4."""
     return EnclosuresFactory.several_at_once()
+
+
+@pytest.fixture
+def enclosures_address_proof_data() -> DocumentUploads:
+    """KAN-TC-851: document 2 with and without its type."""
+    return EnclosuresFactory.address_proof()
 
 
 @pytest.fixture

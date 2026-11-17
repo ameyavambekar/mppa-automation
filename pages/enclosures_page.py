@@ -6,7 +6,7 @@ from config import FORMS_BASE
 from pages.base_page import BasePage
 
 ENCLOSURES_URL = f"{FORMS_BASE}/enclosures.php"
-# Below 6/6, the Premises Photos step sends the user back here with this query.
+# Until every mandatory document is uploaded, the Premises Photos step sends the user back here with this query.
 ENCLOSURES_LOCKED_STEP_URL = f"{ENCLOSURES_URL}?error=complete_enclosures_first"
 PREMISES_URL = f"{FORMS_BASE}/premises.php"
 
@@ -14,47 +14,55 @@ PREMISES_URL = f"{FORMS_BASE}/premises.php"
 class EnclosuresPage(BasePage):
     """Page object for Step 5 — Upload Documents (Enclosures) (forms/enclosures.php).
 
-    Eight document rows numbered 1–8 in three groups. Each row has a PDF-only
-    file chooser (``input[name='file<N>']`` — the field numbers skip 2, 8 and 9,
-    see ``DOCUMENTS``). Documents 1–6 are mandatory, 7–8 optional. Per-document
-    locators take the 1-based number shown on the page.
+    Since portal 2.1.0 (17-Nov-2026): four document rows numbered 1–4 in two groups. Each row has a
+    PDF-only file chooser (``input[name='file<N>']`` — see ``DOCUMENTS`` for the field names). Documents
+    1–2 are mandatory, 3–4 optional; the office address proof (2) has a type select (``doctype3``)
+    above its chooser. Per-document locators take the 1-based number shown on the page.
 
     A chosen file is checked straight away (PDF, 10 KB – 2 MB); an invalid one
     is removed and an error appears under its row. "Upload Documents" uploads
     every chosen file and reloads the step with "<N> file(s) uploaded
     successfully."; with nothing chosen it shows ``NO_FILES_MESSAGE``. The
-    "Mandatory Documents — N/6 uploaded" counter only changes after uploading.
+    "Mandatory Documents — N/2 uploaded" counter only changes after uploading.
     An uploaded row shows ✓ in place of its number, the file name and a
     "View ↗" link; choosing a new file and uploading replaces it.
 
-    At 6/6 a "Next: Premises Photos →" link (premises.php) appears. Below 6/6,
+    At 2/2 a "Next: Premises Photos →" link (premises.php) appears. Below 2/2,
     premises.php sends the user back here (?error=complete_enclosures_first).
     """
 
     # number → (file field name, title, mandatory)
+    # Portal 2.1.0 (17-Nov-2026) cut the step to four rows: two mandatory (PAN card; office address proof,
+    # whose type is chosen first in ``doctype3``) and two optional. The premises photograph, signatory and
+    # key-person documents and the specimen signature are gone (the signature moved to Part F).
     DOCUMENTS = {
         1: ("file1", "PAN Card of the Agency", True),
         2: ("file3", "Office Address Proof", True),
-        3: ("file4", "Office / Premises Photograph", True),
-        4: ("file5", "Authorised Signatory — Signature & PAN in Letterhead", True),
-        5: ("file6", "Address Proof of Key Persons", True),
-        6: ("file7", "Specimen Signature of Authorised Signatory", True),
-        7: ("file10", "Training Programme / Affiliation Certificate", False),
-        8: ("file11", "Any Other Relevant Documents", False),
+        3: ("file10", "Training Programme / Affiliation Certificate", False),
+        4: ("file11", "Any Other Relevant Documents", False),
     }
-    MANDATORY = (1, 2, 3, 4, 5, 6)
-    GROUPS = ("Core Documents", "Key Persons", "Other")
+    MANDATORY = (1, 2)
+    GROUPS = ("Core Documents", "Other")
+    ADDRESS_PROOF_TYPES = ("Electricity (Light) Bill", "Rent / Leave and Licence Agreement",
+                           "Property Ownership Document (Index-II / Property Tax Receipt)")
 
     # Client-side texts
     TITLE = "Step 5 — Upload Documents (Enclosures)"
-    SUBTITLE = "All uploads centralised here — PDF only · minimum 10 KB, maximum 2 MB per file"
+    SUBTITLE = "PDF only · minimum 10 KB, maximum 2 MB per file"
     FILE_HINT = "PDF only · 10 KB – 2 MB"
-    NOTE = ("Every document must be uploaded in PDF format only, with a size between 10 KB and 2 MB per file. "
-            "JPG / PNG images and files above 2 MB will not be accepted.")
+    NOTE = "Documents must be uploaded as PDF (10 KB – 2 MB each)."
+    NOTE_PHOTOS = ("Office photographs are taken in the next step (Premises Photos) — including the working area "
+                   "and the service-charges display board.")
+    ADDRESS_PROOF_HELP = "Choose the document type, then upload it."
+    ADDRESS_PROOF_PLACEHOLDER = "— Select type of address proof —"
     NOT_PDF_ERROR = "Only PDF files are allowed."
-    TOO_SMALL_ERROR = "File is smaller than 10 KB — upload a clear, complete scan."
-    TOO_LARGE_ERROR = "File is larger than 2 MB — please upload a smaller PDF."
+    # Reworded in portal 2.1.0 (17-Nov-2026)
+    TOO_SMALL_ERROR = "File is too small — upload a clear, complete file."
+    TOO_LARGE_ERROR = "File is larger than 2 MB."
     NO_FILES_MESSAGE = "No files selected."
+    # Server message when document 2 is uploaded with no type chosen in ``doctype3`` (dev, 17-Nov-2026);
+    # the file is not saved.
+    ADDRESS_PROOF_TYPE_REQUIRED = "Office Address Proof: choose the type of document from the list."
 
     @staticmethod
     def uploaded_message(count: int) -> str:
@@ -62,7 +70,7 @@ class EnclosuresPage(BasePage):
 
     @staticmethod
     def counter_text(count: int) -> str:
-        return f"{count}/6 uploaded"
+        return f"{count}/{len(EnclosuresPage.MANDATORY)} uploaded"
 
     # ── Page headings & wizard chrome ─────────────────────────────────────────
 
@@ -103,18 +111,28 @@ class EnclosuresPage(BasePage):
 
     @property
     def next_premises_photos_link(self):
-        """'Next: Premises Photos →' (premises.php) — shown once all six mandatory documents are uploaded."""
+        """'Next: Premises Photos →' (premises.php) — shown once every mandatory document is uploaded."""
         return self.page.get_by_role("link", name="Next: Premises Photos →").first
 
     @property
     def note(self):
-        """'Note: Every document must be uploaded in PDF format only …' with the tip."""
+        """'Note: Documents must be uploaded as PDF …' with the line about the Premises Photos step."""
         return self.page.locator("//div[strong[normalize-space()='Note:']]")
 
     @property
     def mandatory_counter(self):
-        """'<N>/6 uploaded' next to 'Mandatory Documents'."""
-        return self.page.locator("span", has_text=re.compile(r"^\s*\d+/6 uploaded\s*$"))
+        """'<N>/<mandatory> uploaded' next to 'Mandatory Documents'."""
+        return self.page.locator("span", has_text=re.compile(rf"^\s*\d+/{len(self.MANDATORY)} uploaded\s*$"))
+
+    @property
+    def address_proof_type_select(self):
+        """Type of the office address proof (ADDRESS_PROOF_TYPES), chosen before its file."""
+        return self.page.locator("select[name='doctype3']")
+
+    @property
+    def address_proof_help(self):
+        """'Choose the document type, then upload it.' above the address proof type select."""
+        return self.address_proof_type_select.locator("xpath=preceding-sibling::p[1]")
 
     @property
     def progress_fill(self):
@@ -199,9 +217,16 @@ class EnclosuresPage(BasePage):
         self.upload_button.click()
         self.page.wait_for_load_state("networkidle")
 
+    @allure.step("Office address proof type: {proof_type}")
+    def select_address_proof_type(self, proof_type: str):
+        self.address_proof_type_select.select_option(value=proof_type)
+
     @allure.step("Upload documents {documents}")
-    def upload_documents(self, documents: dict):
-        """Chooses ``{number: path}`` and clicks 'Upload Documents'."""
+    def upload_documents(self, documents: dict, address_proof_type: str = ADDRESS_PROOF_TYPES[0]):
+        """Chooses ``{number: path}`` and clicks 'Upload Documents'. When the office address proof (2) is
+        among them, its type is chosen first (``address_proof_type``)."""
+        if 2 in documents and address_proof_type:
+            self.select_address_proof_type(address_proof_type)
         for number, path in documents.items():
             self.choose_document(number, path)
         self.click_upload()

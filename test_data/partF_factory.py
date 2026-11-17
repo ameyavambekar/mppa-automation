@@ -22,8 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, SIGNATURE_PNG, UNDERSIZED_FILE,
-                                UNDERSIZED_SIGNATURE, VALID_CERTIFICATE)
+from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, SIGNATURE_PNG, SIGNATURE_TRANSPARENT_PNG,
+                                UNDERSIZED_FILE, UNDERSIZED_SIGNATURE, VALID_CERTIFICATE)
 
 
 @dataclass
@@ -44,7 +44,8 @@ class CertificateData:
 class PartFData:
     place: str = ""
     certificates: dict[str, CertificateData] = field(default_factory=dict)   # PartFPage.CERTIFICATES ids answered Yes
-    signature: Optional[str] = None             # file path
+    # Since portal 2.1.0 the signature is required, so every scenario carries a valid one unless it sets another.
+    signature: Optional[str] = SIGNATURE_TRANSPARENT_PNG    # file path
     premises: Optional[str] = None              # file path — offline service modes only
     # Scenario-specific values
     invalid_values: list[str] = field(default_factory=list)   # bad values a negative scenario enters, in order
@@ -82,7 +83,7 @@ class PartFFactory:
                 "epf": CertificateData("MHBAN0012345000", _date("20/08/2018"), VALID_CERTIFICATE),
                 "esic": CertificateData("31000123450001001", _date("20/08/2018"), VALID_CERTIFICATE),
             },
-            signature=SIGNATURE_PNG,
+            signature=SIGNATURE_TRANSPARENT_PNG,
             scenario_label="all_six",
         )
 
@@ -155,11 +156,20 @@ class PartFFactory:
 
     @staticmethod
     def undersized_signature() -> PartFData:
-        """TC-575: every certificate No, a 72-byte PNG signature."""
+        """TC-575: every certificate No, a 72-byte 8 × 8 PNG signature (below 150 × 40 pixels)."""
         return PartFData(
             place=PartFFactory.PLACE,
             signature=UNDERSIZED_SIGNATURE,
             scenario_label="undersized_signature",
+        )
+
+    @staticmethod
+    def opaque_signature() -> PartFData:
+        """KAN-TC-849: every certificate No, a 320 × 120 PNG with a white background (RGB, no alpha channel)."""
+        return PartFData(
+            place=PartFFactory.PLACE,
+            signature=SIGNATURE_PNG,
+            scenario_label="opaque_signature",
         )
 
     # ── As-you-type input rules (TC-467) ──────────────────────────────────────

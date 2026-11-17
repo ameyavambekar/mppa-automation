@@ -62,7 +62,7 @@ class PartCFactory:
     def minimal() -> PartCData:
         """TC-120 / TC-136: mandatory fields only, every Yes/No question left at No."""
         return PartCData(
-            placement_type="Domestic",
+            placement_type="Within Maharashtra",
             service_mode="Online Only",
             sectors=["IT / Software"],
             service_models=["b2b"],
@@ -95,7 +95,7 @@ class PartCFactory:
     def full() -> PartCData:
         """TC-142: every section filled — all sectors incl. Other, all three Yes blocks, website."""
         return PartCData(
-            placement_type="Both Domestic & International",
+            placement_type="India and Overseas",
             service_mode="Both Online & Offline",
             sectors=list(PartCPage.SECTORS),
             sector_other="Fintech & Payments",

@@ -32,7 +32,12 @@ class PartCPage(BasePage):
     Part C reopens with "Edit this section" (?edit=1) — see ``make_editable``.
     """
 
-    PLACEMENT_TYPES = ("Domestic", "International", "Both Domestic & International")
+    # "Area of Placement Operations" radios (portal 2.1.0, 17-Nov-2026; was a Domestic / International
+    # select) → registration fee shown on each card
+    PLACEMENT_TYPES = ("Within Maharashtra", "Across India", "India and Overseas")
+    PLACEMENT_FEES = {"Within Maharashtra": "₹2,000", "Across India": "₹4,000", "India and Overseas": "₹10,000"}
+    AREA_DECLARATION = ("I declare that the selected area of operation represents the geographical scope of "
+                        "placement activities proposed to be undertaken by the agency.")
     SERVICE_MODES = ("Online Only", "Offline Only", "Both Online & Offline")
     TRAINING_MODES = ("Online", "Offline", "Hybrid")
     SECTORS = (
@@ -52,7 +57,21 @@ class PartCPage(BasePage):
     CHARGES_DISPLAYED_HINT = "Rule 7(2): service charges must be displayed outside the office and on the website."
 
     # Inline field errors (also listed as "• <message>" in the summary box)
-    PLACEMENT_TYPE_REQUIRED_ERROR = "Please select the type of placement."
+    PLACEMENT_TYPE_REQUIRED_ERROR = "Please select the Area of Placement Operations."
+    AREA_DECLARATION_REQUIRED_ERROR = "Tick the declaration about the area of operation."
+    SECTION_DESCRIPTIONS = (
+        "Area of operation, constitution details and the sectors you place candidates in.",
+        "Who pays your service charges, and whether the charges are displayed.",
+        "Website, app or social media used for placement.",
+        "Only if your agency trains candidates.",
+        "Only if your agency has a centre for mobilising candidates.",
+        "Any other placement-related services and your website (optional).",
+    )
+
+    @staticmethod
+    def applicable_fee_text(placement_type: str) -> str:
+        """Line shown under the area radios once one is chosen."""
+        return f"Applicable registration fee: {PartCPage.PLACEMENT_FEES[placement_type]} plus applicable taxes"
     PLACEMENT_TYPE_INVALID_ERROR = "Invalid placement type selected."
     SERVICE_MODE_REQUIRED_ERROR = "Please select the service mode."
     SERVICE_MODE_INVALID_ERROR = "Invalid service mode selected."
@@ -143,15 +162,24 @@ class PartCPage(BasePage):
 
     @property
     def section_headings(self):
-        """'Placement Services', 'Service Charges', … 'Other Services', in page order."""
-        return self.form.locator(".sec")
+        """'Placement Services', 'Service Charges', … 'Other Services', in page order (``section.pc-sec``
+        headers since portal 2.1.0; each header also has a numbered badge and a one-line description)."""
+        return self.form.locator("section.pc-sec > header h3")
+
+    @property
+    def section_descriptions(self):
+        return self.form.locator("section.pc-sec > header p")
 
     # ── Inline errors ─────────────────────────────────────────────────────────
 
     def field_error(self, name: str):
         """Inline ``p.fld-err`` for the field named ``name`` (e.g. 'placement_type',
         'training_capacity', 'has_digital_platform'). Use ``sectors_error`` and
-        ``sector_other_error`` for the sector fields."""
+        ``sector_other_error`` for the sector fields. Since portal 2.1.0 the area radios and their
+        declaration share one block, so 'placement_type' is the area error only (see
+        ``area_declaration_error``)."""
+        if name == "placement_type":
+            return self.placement_type_error
         return self.page.locator(
             f"//*[@name='{name}']/ancestor::div[contains(@class,'fld')][1]/p[contains(@class,'fld-err')]"
         )
@@ -170,8 +198,45 @@ class PartCPage(BasePage):
 
     @property
     def placement_type_select(self):
-        """PLACEMENT_TYPES, required."""
+        """The old Type of Placement select — gone since portal 2.1.0 (17-Nov-2026); see
+        ``placement_type_radio``. Kept until the Part C tests are reworked."""
         return self.page.locator("select[name='placement_type']")
+
+    def placement_type_radio(self, placement_type: str):
+        """'Area of Placement Operations' radio, one of PLACEMENT_TYPES."""
+        return self.page.locator(f"input[name='placement_type'][value='{placement_type}']")
+
+    @property
+    def placement_type_radios(self):
+        return self.page.locator("input[name='placement_type']")
+
+    @property
+    def checked_placement_type(self):
+        """The chosen area radio — none until an area is chosen."""
+        return self.page.locator("input[name='placement_type']:checked")
+
+    @property
+    def area_block(self):
+        """The 'Area of Placement Operations *' block: the three radio cards (each with its fee), the
+        applicable-fee line once one is chosen, the declaration and their errors."""
+        return self.page.locator("#areaFld")
+
+    def placement_type_card(self, placement_type: str):
+        """The radio card '<area> / Registration fee ₹N + applicable taxes'."""
+        return self.placement_type_radio(placement_type).locator("xpath=ancestor::label[1]")
+
+    @property
+    def placement_type_error(self):
+        return self.area_block.locator("p.fld-err").filter(has_text="Area of Placement Operations")
+
+    @property
+    def area_declaration_error(self):
+        return self.area_block.locator("p.fld-err").filter(has_text="declaration")
+
+    @property
+    def area_declaration_checkbox(self):
+        """AREA_DECLARATION, required, under the area radios."""
+        return self.page.locator("input[name='area_declaration']")
 
     @property
     def service_mode_select(self):
@@ -373,9 +438,19 @@ class PartCPage(BasePage):
         field.fill("")
         field.press_sequentially(text)
 
-    @allure.step("Select Type of Placement: {placement_type}")
+    @staticmethod
+    def _choose(radio):
+        """Selects a Yes/No radio. Since portal 2.1.0 the input is invisible (opacity 0,
+        pointer-events none) inside its ``<label>`` button, so the label is clicked."""
+        radio.locator("xpath=ancestor::label[1]").click()
+
+    @allure.step("Select Area of Placement Operations: {placement_type}")
     def select_placement_type(self, placement_type: str):
-        self.placement_type_select.select_option(value=placement_type)
+        self.placement_type_radio(placement_type).check()
+
+    @allure.step("Tick the area-of-operation declaration")
+    def tick_area_declaration(self):
+        self.area_declaration_checkbox.check()
 
     @allure.step("Select Service Mode: {service_mode}")
     def select_service_mode(self, service_mode: str):
@@ -400,11 +475,11 @@ class PartCPage(BasePage):
 
     @allure.step("Service charges displayed: {displayed}")
     def select_charges_displayed(self, displayed: bool):
-        self.charges_displayed_radio("yes" if displayed else "no").check()
+        self._choose(self.charges_displayed_radio("yes" if displayed else "no"))
 
     @allure.step("Uses a digital platform: {uses}")
     def select_digital_platform(self, uses: bool):
-        self.digital_platform_radio("1" if uses else "0").check()
+        self._choose(self.digital_platform_radio("1" if uses else "0"))
 
     @allure.step("Fill Online Platform Details")
     def fill_digital_platform_details(self, details: str):
@@ -413,7 +488,7 @@ class PartCPage(BasePage):
 
     @allure.step("Provides training: {provided}")
     def select_training(self, provided: bool):
-        self.training_radio("1" if provided else "0").check()
+        self._choose(self.training_radio("1" if provided else "0"))
 
     @allure.step("Select Training Mode: {mode}")
     def select_training_mode(self, mode: str):
@@ -440,7 +515,7 @@ class PartCPage(BasePage):
 
     @allure.step("Has a mobilization centre: {provided}")
     def select_mobilization(self, provided: bool):
-        self.mobilization_radio("1" if provided else "0").check()
+        self._choose(self.mobilization_radio("1" if provided else "0"))
 
     @allure.step("Mobilization address same as registered office: {same}")
     def set_mobilization_address_same(self, same: bool = True):
@@ -490,7 +565,9 @@ class PartCPage(BasePage):
         - With ``training`` / ``mobilization`` True, a None address ticks the
           "same as registered office" box instead of filling the address.
         """
-        self.select_placement_type(placement_type)
+        if placement_type:
+            self.select_placement_type(placement_type)
+        self.tick_area_declaration()
         self.select_service_mode(service_mode)
         for sector in sectors:
             self.set_sector(sector, True)
