@@ -1,0 +1,4 @@
+[     255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/favicon.ico:0
+[   39265ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/serve_seeker_photo.php?id=2:0
+[   39266ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/serve_seeker_photo.php?id=1:0
+[  469052ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/module/admin/agencies/index.php:0

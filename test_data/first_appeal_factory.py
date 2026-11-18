@@ -260,10 +260,6 @@ class AppealOutcomeFactory:
     _ORDER_REASONS = {
         "allowed": "the refusal order did not consider the corrected Part A details already on record, so it "
                    "is set aside and the application is to be approved.",
-        "allowed_conditions": "the application is approved on condition that the agency files its updated Part A "
-                              "details with the Registering Authority within 15 days.",
-        "remanded": "the record does not show a fresh verification of Part A; the case is sent back to the "
-                    "District for re-scrutiny after a paper verification.",
         "dismissed_upheld": "the appellant's grounds were examined against the record; the Part A deficiency "
                             "named in the refusal order was not cured, so the refusal stands.",
         "dismissed_default": "the appellant did not appear for the hearing on the date fixed and gave no valid "

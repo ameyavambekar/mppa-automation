@@ -39,12 +39,10 @@ class AdminAppealsPage(BasePage):
     REJECTION_COLUMNS = ["Agency", "District", "Rejected", "Reason given to the agency", "Appeal (Division)",
                          "Second appeal (Commissionerate)", ""]
     # Ground of the order (disposal) of a first appeal: value → label, as the page's DISPOSAL.first lists it
-    # (dev, 17-Nov-2026). The saved remarks start with "<label> — ". "allowed_conditions" and "remanded" are no
-    # longer offered; they keep their old labels for appeals decided before 17-Nov-2026.
+    # (dev, 17-Nov-2026). The saved remarks start with "<label> — ". "Appeal Allowed with Conditions" and
+    # "Remanded Back for Re-Scrutiny" are no longer offered at either level (their cases were deprecated 18-Nov-2026).
     FIRST_DISPOSALS = {
         "allowed": "Grant — appeal allowed, order set aside",
-        "allowed_conditions": "Appeal Allowed with Conditions",
-        "remanded": "Remanded Back for Re-Scrutiny",
         "dismissed_upheld": "Reject — refusal upheld on merits",
         "dismissed_default": "Reject — non-appearance at the hearing",
         "delay_rejected": "Reject — delay not condoned",
@@ -53,8 +51,6 @@ class AdminAppealsPage(BasePage):
     # No "refusal upheld" here — the Commissionerate's dismissal is final (Sec 7(3)).
     SECOND_DISPOSALS = {
         "allowed": "Grant — appeal allowed, order set aside",
-        "allowed_conditions": "Appeal Allowed with Conditions",
-        "remanded": "Remanded Back for Re-Scrutiny",
         "dismissed_default": "Reject — non-appearance at the hearing",
         "delay_rejected": "Reject — delay not condoned",
         "final_dismissal": "Reject — Second Appeal dismissed",

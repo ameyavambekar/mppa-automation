@@ -17,10 +17,12 @@ parked agency is skipped — run with RUN_MAP_STATE_TESTS=true to generate one f
 IRREVERSIBLE on dev and slow: a whole review loop to the refusal order first, then the appeal and the appellate
 order; a new agency is built and paid when no untouched submission is left.
 
-Every state was generated on dev on 06-Nov-2026 (one agency each) and all 10 cases are Published.
+Every state was generated on dev on 06-Nov-2026 (one agency each). The A5 states 'allowed with conditions' and
+'remanded' (KAN-TC-794, 795) were dropped on 18-Nov-2026: dev no longer offers those orders, and the cases are
+deprecated. KAN-49's AC-3 (remanded) went with them, so the later criteria moved down by one.
 
 Known defects (defect sheet "MPPA", logged 06-Nov-2026): "I & II Appeal" #70 — FORM-IV is still offered after a
-First Appeal is rejected for delay, although the order reads "Case permanently closed." (TC-798 fails on it);
+First Appeal is rejected for delay, although the order closes the case (TC-798 fails on it);
 "Agency homepage" #83 — Home still invites "one appeal" to the Division while the First Appeal is pending or after
 it is dismissed (not asserted). Earlier: "I & II Appeal" #64 (no confirmation e-mail after filing), #66 (My
 Application still invites an appeal after filing), #68 (no e-mail about the appellate order).
@@ -158,46 +160,6 @@ def test_tc793_first_appeal_allowed(agency_at):
     _expect_first_appeal_decided(v, "allowed")
 
 
-@aio_case("KAN-TC-794")
-@allure.story(STORY)
-@allure.title("TC-794: A5 — First Appeal allowed with conditions: approved, with the conditions to comply with")
-def test_tc794_first_appeal_allowed_conditions(agency_at):
-    """
-    Given the agency parked at 'first_appeal_allowed_conditions' (A5: appeal allowed with conditions)
-    When  it opens My Application, Home and FORM-III
-    Then  My Application shows APPROVED, Home shows "Registered", and FORM-III shows the order with its conditions
-
-    AIO: KAN-TC-794 | KAN-49 AC-2 | data: map state 'first_appeal_allowed_conditions'
-    """
-    v = agency_at("first_appeal_allowed_conditions")
-    _expect_status(v, M.MY_APP_APPROVED)
-    with allure.step("Home: registered"):
-        v.home.open()
-        expect(v.home.status_badge).to_have_text(M.BADGE_REGISTERED)
-    _expect_first_appeal_decided(v, "allowed_conditions")
-
-
-@aio_case("KAN-TC-795")
-@allure.story(STORY)
-@allure.title("TC-795: A5 — First Appeal remanded: the application is back in desktop scrutiny")
-def test_tc795_first_appeal_remanded(agency_at):
-    """
-    Given the agency parked at 'first_appeal_remanded' (A5: appeal remanded for re-scrutiny)
-    When  it opens My Application, Home and FORM-III
-    Then  My Application shows SUBMITTED, Home shows Stage 1 — Desktop Scrutiny under review, and FORM-III shows
-          the decided appeal
-
-    AIO: KAN-TC-795 | KAN-49 AC-3 | data: map state 'first_appeal_remanded'
-    """
-    v = agency_at("first_appeal_remanded")
-    _expect_status(v, M.MY_APP_SUBMITTED)
-    with allure.step("Home: back in Stage 1"):
-        v.home.open()
-        expect(v.home.status_badge).to_have_text(M.BADGE_UNDER_REVIEW)
-        expect(v.home.next_step_heading).to_have_text(M.NEXT_UNDER_REVIEW_1)
-    _expect_first_appeal_decided(v, "remanded")
-
-
 @aio_case("KAN-TC-796")
 @allure.story(STORY)
 @allure.title("TC-796: A5 — First Appeal dismissed, refusal upheld: FORM-IV opens with the order details locked")
@@ -209,7 +171,7 @@ def test_tc796_first_appeal_dismissed(agency_at):
     And   FORM-III shows "Your First Appeal — Rejected" with the order number and the authority's remarks
     And   FORM-IV offers the form with the First Appellate order filled in and locked
 
-    AIO: KAN-TC-796 | KAN-49 AC-4 | data: map state 'first_appeal_dismissed'
+    AIO: KAN-TC-796 | KAN-49 AC-3 | data: map state 'first_appeal_dismissed'
     """
     v = agency_at("first_appeal_dismissed")
     appeal = _first_appeal(v)
@@ -238,7 +200,7 @@ def test_tc797_first_appeal_dismissed_default(agency_at):
     When  it opens My Application and FORM-III
     Then  My Application shows REJECTED, and FORM-III shows the decided appeal, no longer pending
 
-    AIO: KAN-TC-797 | KAN-49 AC-5 | data: map state 'first_appeal_dismissed_default'
+    AIO: KAN-TC-797 | KAN-49 AC-4 | data: map state 'first_appeal_dismissed_default'
     """
     v = agency_at("first_appeal_dismissed_default")
     _expect_status(v, M.MY_APP_REJECTED)
@@ -255,10 +217,10 @@ def test_tc798_first_appeal_delay_rejected(agency_at):
     When  it opens My Application, FORM-III and FORM-IV
     Then  My Application shows REJECTED, FORM-III shows the decided appeal and FORM-IV offers no form
 
-    Fails on dev (06-Nov-2026): FORM-IV still offers the Second Appeal form, although the order's effect reads
-    "… Case permanently closed." — defect "I & II Appeal" #70.
+    Fails on dev (06-Nov-2026): FORM-IV still offers the Second Appeal form, although the order closes the case
+    ("Filed beyond 60 days without sufficient cause. Case closed.") — defect "I & II Appeal" #70.
 
-    AIO: KAN-TC-798 | KAN-49 AC-5 | data: map state 'first_appeal_delay_rejected'
+    AIO: KAN-TC-798 | KAN-49 AC-4 | data: map state 'first_appeal_delay_rejected'
     """
     v = agency_at("first_appeal_delay_rejected")
     _expect_status(v, M.MY_APP_REJECTED)
@@ -278,7 +240,7 @@ def test_tc799_second_appeal_pending(agency_at):
     Then  FORM-IV shows the Second Appeal "Pending decision" instead of the form and "Appeals remaining: 0 of 2"
     And   My Application shows REJECTED
 
-    AIO: KAN-TC-799 | KAN-49 AC-6 | data: map state 'second_appeal_pending'
+    AIO: KAN-TC-799 | KAN-49 AC-5 | data: map state 'second_appeal_pending'
     """
     v = agency_at("second_appeal_pending")
     with allure.step("FORM-IV: the Second Appeal pending, no appeal left"):
@@ -299,7 +261,7 @@ def test_tc800_second_appeal_decided(agency_at):
     Then  FORM-IV shows the Second Appeal decided (no longer pending) and offers no form
     And   My Application shows REJECTED
 
-    AIO: KAN-TC-800 | KAN-49 AC-7 | data: map state 'second_appeal_decided'
+    AIO: KAN-TC-800 | KAN-49 AC-6 | data: map state 'second_appeal_decided'
     """
     v = agency_at("second_appeal_decided")
     with allure.step("FORM-IV: decided, no form"):

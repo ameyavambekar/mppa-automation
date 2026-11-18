@@ -16,7 +16,9 @@ page id and appeal ids) and left there; the tests only read. ``officer_at(state)
 stands there. A state with no parked application is skipped — run with RUN_MAP_STATE_TESTS=true to generate one
 first. Generating an appeal state is IRREVERSIBLE on dev and slow (a whole review loop to the refusal order first).
 
-Every state was generated on dev on 06-Nov-2026 (one application each) and all 10 cases are Published.
+Every state was generated on dev on 06-Nov-2026 (one application each). The A5 states 'allowed with conditions'
+and 'remanded' (KAN-TC-822, 823) were dropped on 18-Nov-2026: dev no longer offers those orders, and the cases
+are deprecated.
 
 Known defects: "I & II Appeal" #68 (no e-mail to the agency about the appellate order) — not asserted here.
 """
@@ -148,42 +150,6 @@ def test_tc821_first_appeal_allowed(officer_at):
     o = officer_at("first_appeal_allowed")
     _expect_decided(o, "first", "allowed")
     _expect_application_approved(o)
-
-
-@aio_case("KAN-TC-822")
-@allure.story(STORY)
-@allure.title("TC-822: A5 — First Appeal allowed with conditions: decided, application approved")
-def test_tc822_first_appeal_allowed_conditions(officer_at):
-    """
-    Given the application parked at 'first_appeal_allowed_conditions' (A5)
-    When  the officer opens First Appeals — Division and the application's review page
-    Then  the appeal is decided ("Appeal Allowed with Conditions") and the application is approved
-
-    AIO: KAN-TC-822 | KAN-50 AC-3 | data: map state 'first_appeal_allowed_conditions'
-    """
-    o = officer_at("first_appeal_allowed_conditions")
-    _expect_decided(o, "first", "allowed_conditions")
-    _expect_application_approved(o)
-
-
-@aio_case("KAN-TC-823")
-@allure.story(STORY)
-@allure.title("TC-823: A5 — First Appeal remanded: decided, application back in desktop scrutiny")
-def test_tc823_first_appeal_remanded(officer_at):
-    """
-    Given the application parked at 'first_appeal_remanded' (A5)
-    When  the officer opens First Appeals — Division and the application's review page
-    Then  the appeal is decided ("Remanded Back for Re-Scrutiny") and the review page is back in Stage 1 — Desktop
-          Scrutiny and no longer read-only
-
-    AIO: KAN-TC-823 | KAN-50 AC-3 | data: map state 'first_appeal_remanded'
-    """
-    o = officer_at("first_appeal_remanded")
-    _expect_decided(o, "first", "remanded")
-    with allure.step("Review page: back in Stage 1"):
-        review = o.open_review()
-        expect(review.stage_subtitle).to_contain_text("Stage 1 — Desktop Scrutiny")
-        expect(review.read_only_banner).to_have_count(0)
 
 
 @aio_case("KAN-TC-824")

@@ -110,11 +110,6 @@ MAP_STATES: dict[str, MapState] = {s.key: s for s in (
        "first_appeal", appeal="first"),
     _s("first_appeal_allowed", "A5", "First Appeal allowed — order set aside", _FIRST_APPEAL + ("decide_first:allowed",),
        "approved", appeal="first", disposal="allowed"),
-    _s("first_appeal_allowed_conditions", "A5", "First Appeal allowed with conditions",
-       _FIRST_APPEAL + ("decide_first:allowed_conditions",), "approved", appeal="first",
-       disposal="allowed_conditions"),
-    _s("first_appeal_remanded", "A5", "First Appeal remanded for re-scrutiny", _FIRST_APPEAL + ("decide_first:remanded",),
-       "desktop_scrutiny", appeal="first", disposal="remanded"),
     _s("first_appeal_dismissed", "A5", "First Appeal dismissed — refusal upheld", _FIRST_DISMISSED, "first_appeal",
        appeal="first", disposal="dismissed_upheld"),
     _s("first_appeal_dismissed_default", "A5", "First Appeal dismissed for default of appearance",
@@ -213,12 +208,10 @@ class ComplianceMapFactory:
     APPEAL_HEARING_STAGE = "Hearing stage"                  # row status once the appeal hearing is scheduled
     # documented — the order's effect, as the page shows it under the disposal select (AppealOutcomeFactory.IMPACT)
     ORDER_EFFECT = {
-        "allowed": "approved",                 # "Status becomes APPROVED and the certificate is issued."
-        "allowed_conditions": "approved",      # "Approved; … comply with the conditions … within 15 days."
-        "remanded": "desktop_scrutiny",        # "Case sent back to the District to re-evaluate …"
-        "dismissed_upheld": "rejected",        # "District refusal confirmed. Opens the 60-day window …"
+        "allowed": "approved",                 # "… The application is APPROVED and the registration certificate is issued."
+        "dismissed_upheld": "rejected",        # "The order is confirmed … (First Appeal: the 60-day window for the Second Appeal opens.)"
         "dismissed_default": "rejected",
-        "delay_rejected": "rejected",          # "… Case permanently closed."
+        "delay_rejected": "rejected",          # "Filed beyond 60 days without sufficient cause. Case closed."
         "final_dismissal": "rejected",         # "Second Appeal rejected. Case closed permanently under Sec 7(3)."
     }
 
