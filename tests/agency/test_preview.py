@@ -180,11 +180,12 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
         }
         sectors = [box.get_attribute("value") for box in part_c.sector_checkboxes.all() if box.is_checked()]
 
-    with allure.step("Read the Place saved in Part F"):
+    with allure.step("Read the Place and the certificate documents saved in Part F"):
         part_f = PartFPage(page)
         part_f.open()
         page.wait_for_load_state("networkidle")
         place = part_f.place_select.input_value()
+        documents = [c for c in PreviewPage.DOCUMENT_LABELS if part_f.has_saved_document(c)]
 
     with allure.step("Open the Preview step"):
         preview_page.open()
@@ -204,7 +205,7 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
             expect(preview_page.value(PreviewPage.PART_C, "Sectors")).to_contain_text(sector)
 
     with allure.step("Verify the Part F section"):
-        expect(preview_page.row_labels(PreviewPage.PART_F)).to_have_text(list(PreviewPage.PART_F_LABELS))
+        expect(preview_page.row_labels(PreviewPage.PART_F)).to_have_text(PreviewPage.part_f_labels(documents))
         expect(preview_page.value(PreviewPage.PART_F, "Place")).to_have_text(place)
         expect(preview_page.value(PreviewPage.PART_F, "Application Date")).to_have_text(DATE)
         expect(preview_page.value(PreviewPage.PART_F, "Signature")).to_have_text(PreviewPage.VIEW_LABEL)

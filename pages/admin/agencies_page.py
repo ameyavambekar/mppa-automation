@@ -28,8 +28,7 @@ class AdminAgenciesPage(AdminApplicationsPage):
     PAGE_TITLE = re.compile(r"^.+ — MPPA Officer Console$")
     STAGE_LABELS = {"desktop": "Desktop scrutiny", "physical": "Physical verification",
                     "branches": "Branch office verification"}
-    TAB_LABELS = {"all": "All applications", "on_hold": "Revert for compliance — with agency",
-                  "approved": "Approved", "rejected": "Rejected", "suspended": "Suspended / cancelled"}
+    TAB_LABELS = {v: AdminApplicationsPage.VIEWS[v] for v in ("all", "on_hold", "approved", "rejected", "suspended")}
     COLUMNS = ("Application", "District", "Current step", "Compliance", "45-day period", "Action")
     SEARCH_PLACEHOLDER = "Search name, registration ID, PAN, e-mail"
 

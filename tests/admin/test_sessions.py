@@ -14,6 +14,10 @@ open themselves in a second browser (``agency_session``).
 Kill All (TC-251, TC-256) ends EVERY open agency session on dev, so those two
 run only with RUN_KILL_ALL_TESTS=true (``kill_all_allowed``).
 
+Removed from the portal (dev, 17-Nov-2026): the "Kill All Active (N)" button and its kill_all form are gone; the
+only kill action left is the row's Kill. TC-251, TC-252 and TC-256 skip with that reason, TC-715 no longer looks
+for the button and TC-249 no longer checks its count.
+
 Only agencies with a submitted application (they land on home.php) are listed;
 a user still in the Form-I wizard never gets a session row, so ``agency_session``
 logs in one of those. A Live row shows "Online" in Logout / End, a Stale one "—".
@@ -55,6 +59,10 @@ KILL_ALL = re.compile(r"Kill All Active \((\d+)\)")
 
 def _tiles(sp: AdminSessionsPage) -> dict:
     return {t: sp.get_stat_chip_count(t) for t in sp.TYPE_FILTERS}
+
+
+KILL_ALL_GONE = ('The "Kill All Active (N)" button was removed from Active sessions (dev, 17-Nov-2026); only the '
+                 "row Kill is left. AIO case needs rewording or deprecating.")
 
 
 def _kill_all_n(sp: AdminSessionsPage) -> int:
@@ -243,8 +251,8 @@ def test_tc249_kill_one_session(logged_in_admin_sessions_page: AdminSessionsPage
     When  I click Kill on their session and Cancel "Terminate this session?"
     Then  nothing changes
     When  I click Kill again and OK
-    Then  the session is Ended now with a killed reason and no Kill button, the tiles and Kill All count
-          move by one, and the Audit log records the kill
+    Then  the session is Ended now with a killed reason and no Kill button, the tiles move by one,
+          and the Audit log records the kill
 
     AIO: KAN-TC-249 | KAN-32 AC-7 | data: {kill_single_session_data.scenario_label}
     """
@@ -255,8 +263,8 @@ def test_tc249_kill_one_session(logged_in_admin_sessions_page: AdminSessionsPage
         handle = agency_session()
         target = _own_open_row(sp, handle.username)
         sid = target["session_id"]
-        tiles, n = _tiles(sp), _kill_all_n(sp)
-        allure.attach(f"session {sid}: {target}\ntiles {tiles}, Kill All {n}", name="before")
+        tiles = _tiles(sp)
+        allure.attach(f"session {sid}: {target}\ntiles {tiles}", name="before")
 
     with allure.step("Click Kill and Cancel the prompt"):
         assert sp.kill_row(sp.row_by_session_id(sid), action="dismiss") == data.expected_dialog_fragment
@@ -272,11 +280,10 @@ def test_tc249_kill_one_session(logged_in_admin_sessions_page: AdminSessionsPage
         assert row["status"] == data.expected_status and row["action"] == "—" and not row["killable"], row
         assert abs(sp.parse_time(row["end"]) - F.now_ist()) <= timedelta(minutes=F.DURATION_TOLERANCE_MINUTES)
 
-    with allure.step("Verify the tiles and Kill All count"):
+    with allure.step("Verify the tiles"):
         after = _tiles(sp)
         assert after["ended"] == tiles["ended"] + 1, (tiles, after)
         assert after["live"] + after["stale"] == tiles["live"] + tiles["stale"] - 1, (tiles, after)
-        assert _kill_all_n(sp) == n - 1
 
     with allure.step("Verify the reason shows it was killed"):
         assert data.expected_reason in row["reason"].lower(), row["reason"]
@@ -349,6 +356,7 @@ def test_tc251_kill_all(kill_all_allowed, logged_in_admin_sessions_page: AdminSe
 
     AIO: KAN-TC-251 | KAN-32 AC-9 | data: {kill_all_confirmation_data.scenario_label} | RUN_KILL_ALL_TESTS=true
     """
+    pytest.skip(KILL_ALL_GONE)
     sp = logged_in_admin_sessions_page
     data = kill_all_confirmation_data
 
@@ -394,6 +402,7 @@ def test_tc252_kill_all_cancel(logged_in_admin_sessions_page: AdminSessionsPage,
 
     AIO: KAN-TC-252 | KAN-32 AC-9 | data: {kill_all_confirmation_data.scenario_label}
     """
+    pytest.skip(KILL_ALL_GONE)
     sp = logged_in_admin_sessions_page
     data = kill_all_confirmation_data
     if sp.killable_rows.count() == 0:
@@ -564,6 +573,7 @@ def test_tc256_no_open_sessions(kill_all_allowed, logged_in_admin_sessions_page:
 
     AIO: KAN-TC-256 | KAN-32 EC-5 | data: {kill_all_disabled_data.scenario_label} | RUN_KILL_ALL_TESTS=true
     """
+    pytest.skip(KILL_ALL_GONE)
     sp = logged_in_admin_sessions_page
 
     with allure.step("Make sure no session is open"):
@@ -592,7 +602,8 @@ def test_tc715_page_loads_from_sidebar(logged_in_admin_sessions_page: AdminSessi
     Given I am on the Officer Console dashboard
     When  I click "Active sessions" under Administration
     Then  Session Management opens with the link highlighted, the heading and clock, five tiles (Total
-          selected), the tabs (All selected), the search box, Kill All Active (N) and the list
+          selected), the tabs (All selected), the search box and the list
+          (no "Kill All Active (N)" button since 17-Nov-2026)
 
     AIO: KAN-TC-715 | KAN-32 AC-1
     """
@@ -608,7 +619,7 @@ def test_tc715_page_loads_from_sidebar(logged_in_admin_sessions_page: AdminSessi
         expect(sp.page_title).to_have_text(re.compile(rf"^{F.HEADING} · Page 1 of \d+$"))
         expect(sp.clock).to_have_text(re.compile(r"^\d{2} [A-Z][a-z]{2} \d{4} · \d{2}:\d{2}$"))
 
-    with allure.step("Verify the tiles, tabs, search and Kill All"):
+    with allure.step("Verify the tiles, tabs and search"):
         expect(sp.stat_tiles).to_have_count(5)
         expect(sp.selected_stat_chip).to_contain_text("Total")
         expect(sp.unique_users_tile).to_contain_text("Unique Users")
@@ -616,7 +627,6 @@ def test_tc715_page_loads_from_sidebar(logged_in_admin_sessions_page: AdminSessi
         expect(sp.active_filter_tab).to_have_text("All")
         expect(sp.search_input).to_have_attribute("placeholder", F.SEARCH_PLACEHOLDER)
         expect(sp.search_button).to_be_visible()
-        expect(sp.kill_all_button).to_have_text(re.compile(r"^\s*Kill All Active \(\d+\)\s*$"))
 
     with allure.step("Verify the list"):
         expect(sp.sessions_table).to_be_visible()

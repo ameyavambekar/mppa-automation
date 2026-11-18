@@ -101,8 +101,13 @@ def _pending_first_appeal(ap: AdminAppealsPage, documents: int = None) -> dict |
 def pending_first_appeal(logged_in_admin_appeals_page, second_browser) -> dict:
     """A first appeal awaiting decision that carries all five documents (APPEALS data, plus the
     ``seeded`` dict when it had to be filed). Reuses one already on the portal; files one — using up a
-    refused agency — only when none is pending. Leaves the First Appeals view open."""
+    refused agency — only when none is pending. Skips when the First Appeals view lists no appeal at all
+    (the page embeds ``APPEALS = []``). Leaves the First Appeals view open."""
     ap = logged_in_admin_appeals_page
+    ap.open_view("first")
+    if not ap.appeals_data():
+        pytest.skip("No First Appeal on dev (First Appeals lists none) — seed with 'python -m utils.seed_appeals' "
+                    "(files appeals for refused agencies; irreversible, ask first).")
     appeal = _pending_first_appeal(ap, documents=5)
     if appeal is None:
         seeded = _seed_first_appeal(second_browser, FirstAppealFactory.valid_with_documents(file_manager.VALID_CERTIFICATE))

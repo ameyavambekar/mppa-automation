@@ -214,8 +214,8 @@ def test_tc363_record_outcome_persists(appeal_decisions_allowed, logged_in_admin
                                        pending_first_appeal: dict, dismissed_upheld_data: AppealOutcomeData):
     """
     Given a first appeal awaits a decision
-    When  I choose 'Appeal Dismissed — Refusal Upheld', write the reasons and save, accepting
-          'Pass this order? … <disposal> … <effect>'
+    When  I choose Reject appeal and 'Reject — refusal upheld on merits', write the reasons and save, accepting
+          'REJECT this appeal? … <ground> … <effect>'
     Then  the appeal leaves Awaiting decision and its status is no longer Pending
     And   the pop-up shows a Decision section with the result, an order number, the date and officer, and the
           reasons, and no decision form
@@ -237,7 +237,7 @@ def test_tc363_record_outcome_persists(appeal_decisions_allowed, logged_in_admin
     with allure.step("Save and accept the confirmation"):
         before = datetime.now(IST).replace(tzinfo=None, second=0, microsecond=0)
         message = ap.save_order("accept")
-        assert message == O.CONFIRM.format(label=label, desc=O.IMPACT[d.disposal]), message
+        assert message == O.confirm(d.disposal, label), message
 
     with allure.step("Verify the appeal left Awaiting decision"):
         ap.open_view("queue")

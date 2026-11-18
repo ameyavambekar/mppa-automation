@@ -168,7 +168,7 @@ AGENCY_STATUSES = (
 )
 DRAFT_STATUSES = ("filling_form", "ready_to_pay", "draft_expired")
 # status_data["review"] for a stage: the Applications "Under review" / "Compliance — with agency" /
-# "Show cause / hearing" steps (the last two are the "On hold — with agency" list)
+# "Show cause / hearing" steps (the last two are the "Revert for compliance — with agency" list, ?view=on_hold)
 REVIEW_STATES = ("under_review", "with_agency", "show_cause")
 # A licence renewal application, as the officer's Renewal applications page shows it
 # (Pending decision → Renewed / Rejected).

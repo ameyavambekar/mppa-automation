@@ -13,7 +13,8 @@ class AdminApplicationsPage(BasePage):
 
     Header: three stage cards (``a.al-q``, ``is-on`` when active, count ``.al-q-n``) — Desktop scrutiny
     (Stage 1), Physical verification and Branch office verification (Stage 2) — and the tabs (``a.al-tab``)
-    All applications, On hold — with agency, Approved, Rejected and Suspended / cancelled, each linking to
+    All applications, Revert for compliance — with agency (``on_hold``; "On hold — with agency" before
+    17-Nov-2026), Approved, Rejected and Suspended / cancelled, each linking to
     ``?view=<view>`` (see ``VIEWS``). A stage view adds step links (``a.al-step``) by review state,
     ``&s=<step>`` (see ``REVIEW_STEPS``), and a District filter.
 
@@ -28,7 +29,7 @@ class AdminApplicationsPage(BasePage):
     # ?view= value → stage card / tab label
     VIEWS = {"desktop": "Desktop scrutiny", "physical": "Physical verification",
              "branches": "Branch office verification", "all": "All applications",
-             "on_hold": "On hold — with agency", "approved": "Approved", "rejected": "Rejected",
+             "on_hold": "Revert for compliance — with agency", "approved": "Approved", "rejected": "Rejected",
              "suspended": "Suspended / cancelled"}
     STAGE_VIEWS = ("desktop", "physical", "branches")
     # &s= value → step link label (stage views only)
@@ -112,7 +113,8 @@ class AdminApplicationsPage(BasePage):
         finds that one application.
 
         Dev, 06-Nov-2026: a list holding an application that was given a post-hearing window (Compliance 2,
-        "Grant Window") fails to load ("The list could not be loaded (Ref …)") — Desktop scrutiny, On hold and
+        "Grant Window") fails to load ("The list could not be loaded (Ref …)") — Desktop scrutiny, On hold (now
+        "Revert for compliance — with agency") and
         All applications — and such an application is not found even by its own ID ("Super admin" #89). Searching
         by Application ID still finds every other application."""
         self.navigate(f"{ADMIN_APPLICATIONS_URL}?view={view}" + (f"&s={step}" if step else "")

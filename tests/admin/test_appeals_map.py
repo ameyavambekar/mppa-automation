@@ -244,19 +244,31 @@ def test_tc827_second_appeal_pending(officer_at):
     Given the application parked at 'second_appeal_pending' (A6)
     When  the officer opens Appeals › Second Appeals — Commissionerate and the appeal
     Then  its row shows Status "Pending" and it can be decided
-    And   its disposals include "Final Second Appeal Dismissal" and not "Appeal Dismissed — Refusal Upheld"
+    And   the ground list is disabled until Grant appeal or Reject appeal is chosen
+    And   Reject appeal offers "Reject — Second Appeal dismissed" but not "Reject — refusal upheld on merits", and
+          Grant appeal offers only "Grant — appeal allowed, order set aside" (dev, 17-Nov-2026)
+
+    Choosing Grant or Reject only fills the ground list; nothing is saved.
 
     AIO: KAN-TC-827 | KAN-50 AC-4 | data: map state 'second_appeal_pending'
     """
     o = officer_at("second_appeal_pending")
+    ap = o.appeals
     with allure.step("Second Appeals — Commissionerate: the appeal is pending"):
         n, entry, row = _appeal(o, "second")
         assert row["status"] == M.APPEAL_PENDING, row
         assert entry.get("can_decide") and not entry.get("decided"), entry
-    with allure.step("Review & decide: the second appellate disposals"):
-        o.appeals.open_appeal(n)
-        options = o.appeals.disposal_select.locator("option").evaluate_all("os => os.map(o => o.value)")
-        assert "final_dismissal" in options and "dismissed_upheld" not in options, options
+    with allure.step("Review & decide: the ground list waits for Grant or Reject"):
+        ap.open_appeal(n)
+        expect(ap.disposal_select).to_be_disabled()
+    for kind, grounds in ap.SECOND_GROUNDS_OFFERED.items():
+        with allure.step(f"Choose {'Reject' if kind == 'dismiss' else 'Grant'} appeal: the second appellate grounds"):
+            ap.decision_kind_radio(kind).check()
+            expect(ap.disposal_select).to_be_enabled()
+            options = [v for v in ap.disposal_select.locator("option").evaluate_all("os => os.map(o => o.value)") if v]
+            assert options == list(grounds), options
+            labels = [ap.SECOND_DISPOSALS[g] for g in grounds]
+            expect(ap.disposal_select.locator("option[value]:not([value=''])")).to_have_text(labels)
 
 
 @aio_case("KAN-TC-828")

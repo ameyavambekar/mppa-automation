@@ -26,6 +26,11 @@ Known failures on dev (04-Nov-2026), each at the last check of its test (MPPA de
   TC-712  a 200-character title with HTML, quotes and Marathi is refused with a raw
           "DB Error: SQLSTATE[22001] … Data too long for column 'title'" (#71)
   TC-713  the page title is "Manage Notices — Placement Agency Regulation Portal" (#76)
+
+Removed from the portal (dev, 17-Nov-2026): the redesigned Officer Console has no Notices page. The old URL
+redirects to the dashboard, /module/admin/notices/ is 403 (index.php and manage.php 404), no sidebar, dashboard,
+Legacy admin tools, System health or Notifications link mentions notices, and the public /module/notices.php
+redirects to the home page. Every test here skips (``pytestmark``) until the page comes back; the code is kept.
 """
 
 import re
@@ -40,6 +45,11 @@ from pages.admin.login_page import AdminLoginPage
 from pages.admin.notices_page import NOTICES_URL, AdminNoticesPage
 from test_data.notices_factory import NoticeData, NoticesFactory
 from utils.aio import aio_case
+
+pytestmark = pytest.mark.skip(
+    reason="Admin Notices was removed from the Officer Console (dev, 17-Nov-2026): the manage page redirects to "
+           "the dashboard, no menu links to notices, and the public /module/notices.php redirects to the home page. "
+           "KAN-31 cases need rewording or deprecating.")
 
 STORY = "Notices Management"
 CLOCK = re.compile(r"^\d{2} [A-Z][a-z]{2} \d{4} · \d{2}:\d{2}$")

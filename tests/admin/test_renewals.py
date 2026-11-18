@@ -285,6 +285,9 @@ def test_tc837_application_action(decided_renewals):
     When  I click Application on it
     Then  the agency's View Agency page opens in the same tab with the same agency name and registration no.
 
+    Known defect "Super admin" #95: an agency approved since 18-Nov-2026 gets its name in the tab title instead
+    of the registration no., so this fails while such an agency's renewal is listed first.
+
     Notion: KAN-TC-837 | KAN-51 AC-6
     """
     renewals, rows = decided_renewals
@@ -297,7 +300,8 @@ def test_tc837_application_action(decided_renewals):
     with allure.step("Verify the View Agency page of that agency"):
         agency_id = AdminRenewalsPage.agency_id(row["application"])
         expect(page).to_have_url(re.compile(rf"/admin/dashboard/agency_view\.php\?id={agency_id}$"))
-        expect(page).to_have_title(re.compile(rf"^View Agency — {re.escape(row['agency'])}\b"))
+        # The tab title carries the registration no. since 17-Nov-2026 ("View Agency — <reg> | Admin").
+        expect(page).to_have_title(re.compile(rf"^View Agency — {re.escape(row['reg'])} \| Admin$"))
         view = AdminAgencyViewPage(page)
         expect(view.content).to_contain_text(row["agency"])
         expect(view.content).to_contain_text(row["reg"])

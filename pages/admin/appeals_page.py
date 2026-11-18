@@ -38,25 +38,35 @@ class AdminAppealsPage(BasePage):
     APPEAL_COLUMNS = ["#", "Agency", "District", "Appeal", "Filed", "Decision due", "Hearing", "Status", ""]
     REJECTION_COLUMNS = ["Agency", "District", "Rejected", "Reason given to the agency", "Appeal (Division)",
                          "Second appeal (Commissionerate)", ""]
-    # appellate order (disposal) of a first appeal: value → label
+    # Ground of the order (disposal) of a first appeal: value → label, as the page's DISPOSAL.first lists it
+    # (dev, 17-Nov-2026). The saved remarks start with "<label> — ". "allowed_conditions" and "remanded" are no
+    # longer offered; they keep their old labels for appeals decided before 17-Nov-2026.
     FIRST_DISPOSALS = {
-        "allowed": "Appeal Allowed — Order Set Aside",
+        "allowed": "Grant — appeal allowed, order set aside",
         "allowed_conditions": "Appeal Allowed with Conditions",
         "remanded": "Remanded Back for Re-Scrutiny",
-        "dismissed_upheld": "Appeal Dismissed — Refusal Upheld",
-        "dismissed_default": "Dismissed for Default of Appearance",
-        "delay_rejected": "Delay Condonation Rejected",
+        "dismissed_upheld": "Reject — refusal upheld on merits",
+        "dismissed_default": "Reject — non-appearance at the hearing",
+        "delay_rejected": "Reject — delay not condoned",
     }
-    # appellate order of a second appeal (the page's DISPOSAL.second, dev 06-Nov-2026): value → label.
+    # Ground of the order of a second appeal (the page's DISPOSAL.second, dev 17-Nov-2026): value → label.
     # No "refusal upheld" here — the Commissionerate's dismissal is final (Sec 7(3)).
     SECOND_DISPOSALS = {
-        "allowed": "Appeal Allowed — Order Set Aside",
+        "allowed": "Grant — appeal allowed, order set aside",
         "allowed_conditions": "Appeal Allowed with Conditions",
         "remanded": "Remanded Back for Re-Scrutiny",
-        "dismissed_default": "Dismissed for Default of Appearance",
-        "delay_rejected": "Delay Condonation Rejected",
-        "final_dismissal": "Final Second Appeal Dismissal",
+        "dismissed_default": "Reject — non-appearance at the hearing",
+        "delay_rejected": "Reject — delay not condoned",
+        "final_dismissal": "Reject — Second Appeal dismissed",
     }
+    # Since 17-Nov-2026 the decision is "Grant appeal" / "Reject appeal" first (radio decKind = allow / dismiss);
+    # only then does the ground select list that kind's grounds (with a "Select the ground…" placeholder when
+    # there is more than one). Before a choice it holds only "Choose Grant or Reject first" and is disabled.
+    DISMISS_DISPOSALS = ("dismissed_upheld", "dismissed_default", "delay_rejected", "final_dismissal")
+    FIRST_GROUNDS_OFFERED = {"allow": ("allowed",),
+                             "dismiss": ("dismissed_upheld", "dismissed_default", "delay_rejected")}
+    SECOND_GROUNDS_OFFERED = {"allow": ("allowed",),
+                              "dismiss": ("dismissed_default", "delay_rejected", "final_dismissal")}
     HEARING_MODES = ("personal", "virtual")
     SECTIONS = ("1–4 · Appellant", "5 · Order appealed against", "6–8 · Grounds, facts and relief",
                 "9 · Limitation", "10 · Documents", "Hearing (one hearing at this level)")
@@ -204,8 +214,13 @@ class AdminAppealsPage(BasePage):
         return self.page.locator("#hHint")
 
     # appellate order
+    def decision_kind_radio(self, kind: str):
+        """'Grant appeal' (kind 'allow') or 'Reject appeal' ('dismiss') — chosen before the ground (dev, 17-Nov-2026)."""
+        return self.page.locator(f"#aplModal input[name='decKind'][value='{kind}']")
+
     @property
     def disposal_select(self):
+        """'Ground of the order' — disabled until Grant or Reject is chosen; then lists that kind's grounds."""
         return self.page.locator("#decReason")
 
     @property
@@ -248,8 +263,17 @@ class AdminAppealsPage(BasePage):
 
     @allure.step("Choose the appellate order '{disposal}'")
     def choose_disposal(self, disposal: str):
-        """disposal: a FIRST_DISPOSALS value."""
+        """disposal: a FIRST_DISPOSALS / SECOND_DISPOSALS value. Picks Grant or Reject first (``DECISION_KIND``),
+        which enables the ground select; '' chooses nothing."""
+        if not disposal:
+            return
+        self.decision_kind_radio(self.decision_kind(disposal)).check()
         self.disposal_select.select_option(disposal)
+
+    @classmethod
+    def decision_kind(cls, disposal: str) -> str:
+        """'dismiss' (Reject appeal) or 'allow' (Grant appeal) for an appellate order value."""
+        return "dismiss" if disposal in cls.DISMISS_DISPOSALS else "allow"
 
     @allure.step("Write the reasons of the order")
     def fill_reasons(self, text: str):
@@ -317,8 +341,12 @@ class AdminAppealsPage(BasePage):
     # ── Reading (no assertions) ───────────────────────────────────────────────
 
     def appeals_data(self) -> dict:
-        """The page's embedded ``APPEALS`` (appeal id as str → its data)."""
-        return self.page.evaluate("() => (typeof APPEALS === 'undefined') ? {} : APPEALS")
+        """The page's embedded ``APPEALS`` (appeal id as str → its data). With no appeals the page embeds
+        ``APPEALS = []`` (a list, not an object), which is returned as an empty dict."""
+        data = self.page.evaluate("() => (typeof APPEALS === 'undefined') ? {} : APPEALS")
+        if isinstance(data, list):
+            return {str(a["id"]): a for a in data if isinstance(a, dict) and "id" in a}
+        return data or {}
 
     def view_table_data(self) -> list[dict]:
         """Every row of the open view read in one go: agency, application_id (the 13-digit ID in the row)
