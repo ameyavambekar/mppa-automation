@@ -787,6 +787,10 @@ def test_tc80_data_after_session_timeout(
 
     Notion: KAN-TC-80 | KAN-8 EC-2 | data: session_timeout_partial
     Note:   waits 20 minutes inside the test.
+    Known defect: "Login" #38 (18-Nov-2026) — after the idle logout, logging in
+            again in the same browser opens auth/user_manual.php instead of the
+            Form-I wizard, until the cookies are cleared. The test fails on that
+            step with a message naming the page it landed on.
     """
     page, user = logged_in_part_a_page
     data = part_a_session_timeout_data
@@ -807,7 +811,15 @@ def test_tc80_data_after_session_timeout(
 
     with allure.step("Log in again with valid credentials"):
         login.login(user.username, user.password)
-        page.wait_for_url(f"{FORMS_BASE}/**", timeout=15000)
+        page.wait_for_url(lambda url: "/auth/login.php" not in url, timeout=15000)
+        page.wait_for_load_state("load")
+
+    with allure.step("Verify the re-login opens the Form-I wizard (not the User Manual)"):
+        assert page.url.startswith(f"{FORMS_BASE}/"), (
+            f"After the idle timeout, logging in again opened {page.url} instead of the Form-I "
+            "wizard. Known defect 'Login' #38: the re-login lands on auth/user_manual.php on "
+            "every retry in the same browser until the cookies are cleared."
+        )
 
     with allure.step("Open Step 1 — Part A"):
         part_a_page.open()
