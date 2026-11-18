@@ -1,4 +1,15 @@
+"""Agency Login (story KAN-7, module/agency/auth/login.php).
+
+Rewritten 18-Nov-2026 with the story. Known defects on the "Login" tab of the MPPA defect sheet:
+  * #33 — login.php shows the login form to a logged-in agency: TC-24 (KAN-TC-53) fails.
+  * #34 — the session-expired banner says "05 minutes": TC-11 (KAN-TC-39) fails.
+  * #35 — idle logout after 15 min although the page says 20 min after login (TC-11 waits for the real logout).
+  * #36 — failed logins (TC-02, TC-03, TC-10) count towards a lockout that blocks every agency username from
+    the network for 10 minutes; TC-10 triggers it on purpose and TC-11 waits it out (wait_before).
+  * #37 — a Form-I page opened without a session goes to register.php, not login.php?reason=not_logged_in.
+"""
 import re
+import time
 
 import allure
 import pytest
@@ -7,21 +18,46 @@ from playwright.sync_api import expect
 from config import FORMS_BASE
 from conftest import login_page
 from pages.admin.login_page import ADMIN_LOGIN_URL, AdminLoginPage
+from pages.agency_home_page import AGENCY_HOME_URL, AgencyHomePage
 from pages.dashboard_page import DashboardPage
+from pages.forgot_password_page import FORGOT_PASSWORD_URL
 from pages.home_page import HomePage
 from pages.login_page import LoginPage
 from pages.partA_page import PART_A_URL, PartAPage
 from test_data.login_factory import LoginData
+from utils.agency_builder import fresh_agency
 from utils.aio import aio_case
+from utils.state_store import TestStateStore
 
 
 # Login submissions TC-02 allows before giving up on an OCR-misread CAPTCHA.
 NONEXISTENT_USER_CAPTCHA_ATTEMPTS = 8
 
+INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
+LOCKOUT_MESSAGE = "Too many failed login attempts. Please wait 10 minutes."
+
+# Idle logout seen on dev: "Stay logged in" bar 2 min before the end, logout after 15 min (KAN-TC-39).
+IDLE_WARNING_WAIT_MS = 16 * 60 * 1000
+IDLE_LOGOUT_WAIT_MS = 10 * 60 * 1000
+
 
 # Reason for tests whose AIO case was set to Deprecated (Agency Home page removed).
 HOME_PAGE_REMOVED = ("covers the Agency Home page / dashboard, which login no longer shows "
                      "to incomplete registrations")
+DASHBOARD_REMOVED = ("KAN-TC-{} Deprecated 18-Nov-2026: the post-login dashboard no longer exists; login opens "
+                     "the Form-I wizard or Agency Home (KAN-40)")
+
+
+def _paid_agency_login(login_page: LoginPage, use_application_id: bool = False):
+    """Logs in a store agency that has paid (it has an Application ID), by username or by Application ID.
+    Returns the agency once login lands on Agency Home; skips when none can log in."""
+    for agency in TestStateStore().get_agency_users_with_application():
+        login_page.open()
+        login_page.login(agency.application_id if use_application_id else agency.username, agency.password)
+        login_page.page.wait_for_load_state("networkidle")
+        if login_page.page.url.startswith(AGENCY_HOME_URL):
+            return agency
+    pytest.skip("No paid agency in the state store could log in — pay for one first (e.g. KAN-TC-513).")
 
 
 # ---------------------------------------------------------------------------
@@ -53,9 +89,10 @@ def test_tc01_valid_login(login_page: LoginPage, part_a_page: PartAPage, valid_l
         expect(part_a_page.deadline_banner).to_be_visible()
         expect(part_a_page.deadline_banner).to_contain_text("to complete all steps and pay")
 
-    with allure.step("Save & Log out to clean up session"):
+    with allure.step("Save & Log out — the login page says the agency was logged out"):
         part_a_page.save_and_logout()
         expect(login_page.login_title).to_be_visible()
+        expect(login_page.logged_out_message).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -90,17 +127,13 @@ def test_tc02_nonexistent_username(login_page: LoginPage, nonexistent_user_data:
             pytest.fail(f"CAPTCHA was rejected on all {NONEXISTENT_USER_CAPTCHA_ATTEMPTS} attempts — "
                         "OCR could not read it, so the credentials were never checked.")
 
-    with allure.step("Verify error message is displayed"):
-        expect(login_page.error_message).to_be_visible()
+    with allure.step(f"Verify the error reads '{INVALID_CREDENTIALS_MESSAGE}'"):
+        expect(login_page.error_message).to_have_text(INVALID_CREDENTIALS_MESSAGE)
 
-    with allure.step("Verify error text indicates login failure"):
-        error_text = login_page.error_message.text_content()
-        assert any(err in error_text for err in ["Invalid", "failed"]), (
-            f"Expected error message indicating login failure, got: '{error_text}'"
-        )
-
-    with allure.step("Verify username field still holds the entered value"):
+    with allure.step("Verify the username is kept and the password and CAPTCHA are cleared"):
         expect(login_page.username_input).to_have_value(nonexistent_user_data.username)
+        expect(login_page.password_input).to_have_value("")
+        expect(login_page.captcha_input).to_have_value("")
 
 
 # ---------------------------------------------------------------------------
@@ -124,17 +157,13 @@ def test_tc03_invalid_password(login_page: LoginPage, invalid_password_data: Log
     with allure.step(f"Submit login as '{invalid_password_data.username}' with wrong password"):
         login_page.login(invalid_password_data.username, invalid_password_data.password)
 
-    with allure.step("Verify error message is displayed"):
-        expect(login_page.error_message).to_be_visible()
+    with allure.step(f"Verify the error reads '{INVALID_CREDENTIALS_MESSAGE}'"):
+        expect(login_page.error_message).to_have_text(INVALID_CREDENTIALS_MESSAGE)
 
-    with allure.step("Verify error text indicates login failure"):
-        error_text = login_page.error_message.text_content()
-        assert any(err in error_text for err in ["Invalid", "failed"]), (
-            f"Expected error message indicating login failure, got: '{error_text}'"
-        )
-
-    with allure.step("Verify username field still holds the entered value"):
+    with allure.step("Verify the username is kept and the password and CAPTCHA are cleared"):
         expect(login_page.username_input).to_have_value(invalid_password_data.username)
+        expect(login_page.password_input).to_have_value("")
+        expect(login_page.captcha_input).to_have_value("")
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +200,9 @@ def test_tc04_wrong_captcha(login_page: LoginPage, wrong_captcha_data: LoginData
         login_page.click_login_and_handle_alert()
         expect(login_page.wrong_captcha_message).to_be_visible()
 
-    with allure.step("Verify CAPTCHA input field is cleared"):
+    with allure.step("Verify the username is kept and the password and CAPTCHA inputs are cleared"):
+        expect(login_page.username_input).to_have_value(wrong_captcha_data.username)
+        expect(login_page.password_input).to_have_value("")
         expect(login_page.captcha_input).to_have_value("")
 
     with allure.step("Verify a new CAPTCHA has been generated"):
@@ -428,44 +459,58 @@ def test_tc10_account_lockout(login_page: LoginPage, lockout_test_data: LoginDat
             with allure.step(f"Failed attempt {attempt}/10"):
                 login_page.login(lockout_test_data.username, lockout_test_data.password)
 
-    with allure.step("Verify account-locked message is shown after failed attempts"):
-        expect(login_page.account_locked_message).to_be_visible()
-        assert "Too many failed login attempts" in login_page.account_locked_message.text_content()
+    with allure.step(f"Verify the lockout message '{LOCKOUT_MESSAGE}'"):
+        expect(login_page.account_locked_message).to_have_text(LOCKOUT_MESSAGE)
 
 @pytest.mark.wait_before(610)
 # ---------------------------------------------------------------------------
-# TC-11  AC-4  Session Auto-Expiry After 20 Minutes of Inactivity
+# TC-11  AC-8  Idle session ends and the login page says why
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-39")
-#@pytest.mark.skip(reason="Requires 20-minute idle wait — run manually when validating session timeout.")
 @allure.story("Agency Login")
-@allure.title("TC-11 (AC-4): Session expires after 20 minutes of inactivity")
+@allure.title("TC-11 (AC-8): Idle session ends after 15 minutes and the login page says why")
 def test_tc11_session_expiry(login_page: LoginPage, part_a_page: PartAPage, valid_login_data: LoginData):
     """
-    Given I am logged in and on Step 1 — Part A
-    When  I remain idle for 20 minutes
-    And   I then interact with the portal (reload the page)
-    Then  the session is terminated and I am redirected to the login page
-    And   a warning reads "Your session expired after N minutes. Please log in again."
+    Given I am logged in on Step 1 — Part A
+    When  I do not touch the page
+    Then  a "Stay logged in" bar appears 2 minutes before the end of the session
+    And   the page goes to login.php?reason=session_expired by itself (15 minutes on dev)
+    And   the banner "Your session expired after <N> minutes. Please log in again." gives the real idle time
 
-    Notion: TC-11 | AC-4 | AIO: KAN-TC-39 | data: valid_agency_user
+    Fails on dev on the banner, which says 05 minutes (defect Login #34). Whether the timeout should be
+    15 minutes idle or 20 after login is still open (defect Login #35); the test measures the real one.
+    The waits use Playwright's own timeouts, so the page gets no input events while it waits.
+
+    AIO: KAN-TC-39 | data: valid_agency_user
     """
-    import time
+    page = login_page.page
 
     with allure.step("Login and arrive at Step 1 — Part A"):
         login_page.open()
         login_page.login(valid_login_data.username, valid_login_data.password)
         expect(part_a_page.save_and_logout_link).to_be_visible()
+        last_activity = time.monotonic()
 
-    with allure.step("Wait 20 minutes (1200 seconds) without any interaction"):
-        time.sleep(1200)
+    with allure.step("Leave the page alone until the 'Stay logged in' bar appears"):
+        expect(page.locator("#ssmBtn")).to_be_visible(timeout=IDLE_WARNING_WAIT_MS)
+        warned_after = (time.monotonic() - last_activity) / 60
+        allure.attach(f"{warned_after:.1f} idle minutes", "Stay logged in bar shown after",
+                      allure.attachment_type.TEXT)
 
-    with allure.step("Interact with the portal — reload the page"):
-        login_page.reload()
+    with allure.step("Keep leaving it alone until the page goes to the login page by itself"):
+        page.wait_for_url(re.compile(r"login\.php\?reason=session_expired"), timeout=IDLE_LOGOUT_WAIT_MS)
+        idle_minutes = (time.monotonic() - last_activity) / 60
+        allure.attach(f"{idle_minutes:.1f} idle minutes", "Logged out after", allure.attachment_type.TEXT)
 
-    with allure.step("Verify session-expired message is shown on login page"):
+    with allure.step("Verify the session-expired banner gives the real idle time"):
         expect(login_page.session_expired_message).to_be_visible()
-        assert "Please log in again." in login_page.session_expired_message.text_content()
+        banner = login_page.session_expired_message.text_content().strip()
+        assert banner.endswith("Please log in again."), f"Unexpected banner: '{banner}'"
+        shown = int(re.search(r"after (\d+) minutes", banner).group(1))
+        assert abs(shown - round(idle_minutes)) <= 1, (
+            f"Banner says {shown} minutes but the session ended after {idle_minutes:.1f} idle minutes "
+            f"(defect Login #34): '{banner}'"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +711,7 @@ def test_tc16_login_ui_elements(login_page: LoginPage):
 # TC-17  "TRACK NOW →" on the Track Application card opens the Track Application Status pop-up
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-45")
+@pytest.mark.deprecated(reason=DASHBOARD_REMOVED.format(45))
 @allure.story("Track Application Status")
 @allure.title("TC-17 TRACK NOW → on the Track Application card opens the Track Application Status modal")
 def test_tc17_track_application_status(fresh_agency_user_home_page,home_page:HomePage):
@@ -732,7 +778,7 @@ def test_tc18_notice_board(fresh_agency_user_home_page, home_page: HomePage):
 # TC-19  EC-10  Notice Board Shows Placeholder When No Notices Exist
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-47")
-@pytest.mark.skip(reason="Requires Super Admin to unpublish all notices first — run in a controlled environment.")
+@pytest.mark.deprecated(reason=DASHBOARD_REMOVED.format(47))
 @allure.story("Portal Dashboard")
 @allure.title("TC-19 (EC-10): Notice Board shows placeholder when no active notices are published")
 def test_tc19_notice_board_empty(fresh_agency_user_home_page, home_page: HomePage):
@@ -811,33 +857,32 @@ def test_tc20_quick_links(fresh_agency_user_home_page, home_page: HomePage, page
 # TC-21  AC-9  Rejected Applicant Can Log In and View Remarks
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-49")
-@allure.story("Portal Home")
-@allure.title("TC-21 (AC-9): Rejected applicant logs in and sees rejection status, remarks, and appeal option")
-def test_tc21_rejected_applicant(rejected_agency_user_page, home_page: HomePage):
+@allure.story("Agency Login")
+@allure.title("TC-21 (AC-4): Refused applicant logs in and lands on Agency Home with the appeal option")
+def test_tc21_rejected_applicant(page, agency_login):
     """
-    Given an agency account whose application was rejected
-    When  they log in
-    Then  the dashboard shows a REJECTED status badge
-    And   a link/option to view rejection remarks is visible
-    And   an appeal option (Form-III) is visible
+    Given an agency whose application was refused (state store status 'rejected')
+    When  it logs in
+    Then  login lands on Agency Home (module/home.php)
+    And   the Appeals card offers "File First Appeal" (or "View First Appeal" once filed)
 
-    Notion: TC-20 | AC-9 | data: rejected_agency_user (REJECTED_AGENCY_USERNAME env var)
+    Skips when the store has no refused agency (seed with: python -m utils.seed_appeals --refused 1).
+    The appeal content itself is checked by KAN-49 (tests/agency/test_first_appeal.py).
+
+    AIO: KAN-TC-49 | data: state store agency 'rejected'
     """
-    rejected_agency_user_page
+    home = AgencyHomePage(page)
 
-    with allure.step("Verify login succeeded — logout button is visible"):
-        expect(home_page.logout_button).to_be_visible()
+    with allure.step("Log in as a refused agency"):
+        agency_login("rejected")
 
-    with allure.step("Verify application status badge shows REJECTED"):
-        expect(home_page.application_status_badge).to_be_visible()
-        badge_text = home_page.application_status_badge.text_content().upper()
-        assert "REJECTED" in badge_text, f"Expected REJECTED badge, got: '{badge_text}'"
+    with allure.step("Verify login landed on Agency Home"):
+        expect(page).to_have_url(re.compile(re.escape(AGENCY_HOME_URL)))
+        expect(home.agency_name).to_be_visible()
 
-    #with allure.step("Verify rejection remarks option is accessible"):
-
-    with allure.step("Verify appeal option (Form-III) is visible"):
-        expect(home_page.submit_appeal_card).to_be_visible()
-    home_page.logout()
+    with allure.step("Verify the Appeals card offers the First Appeal"):
+        expect(home.appeals_card).to_be_visible()
+        expect(home.first_appeal_links.first).to_have_text(re.compile(r"(File|View) First Appeal"))
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -944,6 +989,10 @@ def test_tc24_browser_back(fresh_agency_user_page, part_a_page: PartAPage):
         expect(page).to_have_url(re.compile(re.escape(PART_A_URL)))
         expect(part_a_page.save_and_logout_link).to_be_visible()
 
+    with allure.step("Open login.php directly — the agency is sent to its current page, not the login form"):
+        LoginPage(page).open()
+        expect(page).to_have_url(re.compile(re.escape(FORMS_BASE)))
+
     part_a_page.save_and_logout()
 
 # ---------------------------------------------------------------------------
@@ -1003,6 +1052,7 @@ def test_tc25_double_login(logged_in_agency_page, part_a_page: PartAPage, second
 # TC-26  EC-6  Dashboard — No Application Started Yet Shows Progress 0%
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-56")
+@pytest.mark.deprecated(reason=DASHBOARD_REMOVED.format(56))
 @allure.story("Portal Dashboard")
 @allure.title("TC-26 (EC-6): Dashboard — No Application Started Yet Shows Progress 0%")
 def test_tc26_no_application_started(fresh_agency_user_home_page, home_page: HomePage):
@@ -1025,5 +1075,193 @@ def test_tc26_no_application_started(fresh_agency_user_home_page, home_page: Hom
     home_page.logout()
 
 
+# ---------------------------------------------------------------------------
+# AC-10  "Forgot Password?" opens the Forgot Password page (nothing is submitted there)
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-50")
+@allure.story("Agency Login")
+@allure.title("KAN-TC-50 (AC-10): 'Forgot Password?' opens the Forgot Password page")
+def test_forgot_password_link(login_page: LoginPage):
+    """
+    Given I am on the Agency Login page
+    When  I click "Forgot Password?"
+    Then  forgot_password.php opens with the heading "Forgot your password?" (story KAN-43)
+    """
+    with allure.step("Open the Agency Login page"):
+        login_page.open()
+
+    with allure.step("Click 'Forgot Password?'"):
+        expect(login_page.forgot_password_link).to_have_text("Forgot Password?")
+        login_page.forgot_password_link.click()
+
+    with allure.step("Verify the Forgot Password page opens"):
+        expect(login_page.page).to_have_url(re.compile(re.escape(FORGOT_PASSWORD_URL)))
+        expect(login_page.page.locator(".fp-head h1")).to_have_text("Forgot your password?")
 
 
+# ---------------------------------------------------------------------------
+# AC-2  Login with the registered e-mail
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-852")
+@allure.story("Agency Login")
+@allure.title("KAN-TC-852 (AC-2): Login with the registered e-mail instead of the username")
+def test_login_with_email(login_page: LoginPage, part_a_page: PartAPage):
+    """
+    Given an agency that has not started Form-I
+    When  it logs in with its registered e-mail, password and CAPTCHA
+    Then  Step 1 — Part A opens, as with a username login
+    And   Save & Log out returns to the login page with the logged-out banner
+    """
+    user = fresh_agency(login_page.page)
+
+    with allure.step("Open the Agency Login page"):
+        login_page.open()
+
+    with allure.step("Verify the e-mail is kept unchanged in the Username field"):
+        login_page.fill_username(user.email)
+        expect(login_page.username_input).to_have_value(user.email)
+
+    with allure.step("Log in with the registered e-mail"):
+        login_page.login(user.email, user.password)
+
+    with allure.step("Verify Step 1 — Part A opens"):
+        expect(part_a_page.page).to_have_url(re.compile(re.escape(PART_A_URL)))
+        expect(part_a_page.save_and_logout_link).to_be_visible()
+
+    with allure.step("Save & Log out"):
+        part_a_page.save_and_logout()
+        expect(login_page.logged_out_message).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# AC-3  A paid application opens Agency Home
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-853")
+@allure.story("Agency Login")
+@allure.title("KAN-TC-853 (AC-3): Agency with a paid application lands on Agency Home after login")
+def test_paid_agency_lands_on_home(login_page: LoginPage):
+    """
+    Given an agency whose application is paid (it has an Application ID)
+    When  it logs in with its username
+    Then  Agency Home (module/home.php) opens with its name, Application ID and a status badge
+    And   logging out returns to the login page with the logged-out banner
+    """
+    page = login_page.page
+    home = AgencyHomePage(page)
+
+    with allure.step("Log in as a paid agency with its username"):
+        agency = _paid_agency_login(login_page)
+
+    with allure.step("Verify Agency Home with the agency's details"):
+        expect(page).to_have_url(re.compile(re.escape(AGENCY_HOME_URL)))
+        expect(home.agency_name).to_be_visible()
+        expect(home.application_id).to_contain_text(agency.application_id)
+        expect(home.status_badge).to_be_visible()
+        expect(page.get_by_role("link", name="Save & Log out")).to_have_count(0)
+
+    with allure.step("Log out"):
+        home.logout()
+        expect(login_page.logged_out_message).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# AC-2  Login with the Application ID
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-854")
+@allure.story("Agency Login")
+@allure.title("KAN-TC-854 (AC-2): Login with the Application ID instead of the username")
+def test_login_with_application_id(login_page: LoginPage):
+    """
+    Given an agency whose application is paid (13-digit Application ID)
+    When  it logs in with the Application ID, password and CAPTCHA
+    Then  Agency Home opens with the same Application ID
+    """
+    page = login_page.page
+    home = AgencyHomePage(page)
+
+    with allure.step("Log in as a paid agency with its Application ID"):
+        agency = _paid_agency_login(login_page, use_application_id=True)
+
+    with allure.step("Verify Agency Home shows that Application ID"):
+        expect(page).to_have_url(re.compile(re.escape(AGENCY_HOME_URL)))
+        expect(home.application_id).to_contain_text(agency.application_id)
+
+    with allure.step("Log out"):
+        home.logout()
+        expect(login_page.logged_out_message).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# EC-8  Login fields clean and limit what is typed (nothing is submitted)
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-855")
+@allure.story("Agency Login")
+@allure.title("KAN-TC-855 (EC-8): Login fields clean and limit what is typed")
+def test_login_fields_clean_input(login_page: LoginPage):
+    """
+    Username drops spaces and characters other than letters, digits and _ @ . + - and stops at 100;
+    Password stops at 64 and refuses paste; Captcha is upper-cased, letters and digits only, max 6.
+    Paste is first shown to work in Username, so an empty Password really means the paste was blocked.
+    """
+    page = login_page.page
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+
+    with allure.step("Open the Agency Login page"):
+        login_page.open()
+
+    with allure.step("Type a username with spaces and special characters"):
+        login_page.username_input.press_sequentially("  ab c#$%_d@e.f+g-h<>!")
+        expect(login_page.username_input).to_have_value("abc_d@e.f+g-h")
+
+    with allure.step("Type 120 characters into Username — it stops at 100"):
+        login_page.username_input.fill("")
+        login_page.username_input.press_sequentially("a" * 120)
+        expect(login_page.username_input).to_have_value("a" * 100)
+
+    with allure.step("Type 70 characters into Password — it stops at 64"):
+        login_page.password_input.press_sequentially("a" * 70)
+        expect(login_page.password_input).to_have_value("a" * 64)
+
+    with allure.step("Paste into Username works, paste into Password is blocked"):
+        page.evaluate("navigator.clipboard.writeText('Secure@1234')")
+        login_page.username_input.fill("")
+        login_page.username_input.focus()
+        page.keyboard.press("ControlOrMeta+V")
+        expect(login_page.username_input).to_have_value("Secure@1234")
+        login_page.password_input.fill("")
+        login_page.password_input.focus()
+        page.keyboard.press("ControlOrMeta+V")
+        expect(login_page.password_input).to_have_value("")
+
+    with allure.step("Type a lower-case CAPTCHA with symbols"):
+        login_page.captcha_input.press_sequentially("ab-c1 2d9z")
+        expect(login_page.captcha_input).to_have_value("ABC12D")
+
+
+# ---------------------------------------------------------------------------
+# AC-9  The login page shows the banner for ?reason=
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-856")
+@allure.story("Agency Login")
+@allure.title("KAN-TC-856 (AC-9): Login page shows the banner for the reason the agency was sent there")
+def test_login_reason_banners(login_page: LoginPage):
+    """
+    login.php?reason=logged_out / password_reset / not_logged_in shows its banner; an unknown or no reason
+    shows none. (session_expired is covered by TC-11 / KAN-TC-39.)
+    """
+    banners = [
+        (LoginPage.REASON_LOGGED_OUT, login_page.alert_success, LoginPage.LOGGED_OUT_MESSAGE),
+        (LoginPage.REASON_PASSWORD_RESET, login_page.alert_success, LoginPage.PASSWORD_RESET_MESSAGE),
+        (LoginPage.REASON_NOT_LOGGED_IN, login_page.alert_info, LoginPage.NOT_LOGGED_IN_MESSAGE),
+    ]
+    for reason, banner, text in banners:
+        with allure.step(f"?reason={reason} shows '{text}'"):
+            login_page.open(reason)
+            expect(login_page.reason_alert).to_have_count(1)
+            expect(banner).to_have_text(text)
+
+    for reason in ("bogus", None):
+        with allure.step(f"?reason={reason} shows no banner"):
+            login_page.open(reason)
+            expect(login_page.login_title).to_be_visible()
+            expect(login_page.reason_alert).to_have_count(0)
