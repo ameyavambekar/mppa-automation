@@ -29,6 +29,7 @@ reports/
 test-results/
 playwright-report/
 playwright/.cache/
+.playwright-mcp/
 
 # Test state store (local SQLite — built per environment, not committed)
 state/test_state.db
