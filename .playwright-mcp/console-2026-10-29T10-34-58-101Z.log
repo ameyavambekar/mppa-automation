@@ -1,1 +1,0 @@
-[  230704ms] [ERROR] Pattern attribute value [^<>{}"'%;()&+]* is not a valid regular expression: Uncaught SyntaxError: Failed to execute 'checkValidity' on 'HTMLInputElement': Invalid regular expression: /[^<>{}"'%;()&+]*/v: Invalid character in character class @ :0

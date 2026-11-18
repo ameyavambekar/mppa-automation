@@ -1,4 +1,0 @@
-[     316ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/favicon.ico:0
-[  239709ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/module/admin/agency/certificate.php?id=86:0
-[  246774ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/module/admin/agency/certificate.php?id=86:0
-[ 1862421ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://devmppa.sppuef.in/module/admin/auth/licenses.php?status=all&q=:0
