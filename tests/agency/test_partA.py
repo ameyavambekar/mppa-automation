@@ -21,10 +21,12 @@ LATER_STEP_PAGES = ("partB", "partC", "partF", "enclosures", "declaration", "pre
 
 # Fields the server must reject when Part A is saved blank (KAN-TC-60).
 MANDATORY_FIELD_NAMES = (
-    "agency_type", "date_of_establishment",
-    "tan_number", "tan_file", "gstin", "gst_file", "address_line1", "taluka", "city",
+    "agency_type", "date_of_establishment", "address_line1", "taluka", "city",
     "pincode", "authorized_signatory", "designation",
 )
+# Tax Registration: labelled "(optional)" and not checked when blank since 18-Nov-2026 (KAN-TC-60, KAN-TC-64).
+# A TAN or GSTIN that is entered must still match its format (KAN-TC-64, KAN-TC-65).
+OPTIONAL_TAX_FIELD_NAMES = ("tan_number", "tan_file", "gstin", "gst_file")
 # Mandatory for every Agency type except Proprietorship (TC-430). The server checks them only once an Agency
 # type is chosen, so a save with Agency type blank does not flag them.
 INCORPORATION_FIELD_NAMES = ("incorporation_no", "incorporation_file")
@@ -129,8 +131,8 @@ def test_tc58_step1_saves_and_unlocks_step2(
 ):
     """
     Given I am on Part A with no prior data saved (head office in Maharashtra)
-    When  I fill every mandatory field, upload the TAN, GST and incorporation
-          certificates and click "Save Part A & Continue"
+    When  I fill every mandatory field and the optional TAN and GST details, upload the
+          certificates and click "Save Part A & Continue" (saving without the tax details: KAN-TC-857)
     Then  Part A is saved and Part B no longer redirects back to Part A
 
     Notion: KAN-TC-58 | KAN-8 AC-5 | data: valid_mandatory_fields
@@ -222,6 +224,8 @@ def test_tc60_blank_form_shows_validation_tooltip(part_a_page: PartAPage, logged
     Given I am on Part A with no data entered
     When  I click "Save Part A & Continue"
     Then  the save is rejected and every mandatory field is highlighted in red at once
+    And   the Tax Registration fields (TAN, TAN certificate, GSTIN, GST certificate) are labelled "(optional)"
+          and are not highlighted (dev, 18-Nov-2026: they used to be mandatory)
     And   the page scrolls to the first highlighted field
     When  I choose an Agency type other than Proprietorship and save again
     Then  the incorporation number and certificate are highlighted as well
@@ -250,6 +254,12 @@ def test_tc60_blank_form_shows_validation_tooltip(part_a_page: PartAPage, logged
         highlighted = set(part_a_page.rejected_fields.evaluate_all("els => els.map(e => e.name)"))
         missing = sorted(set(MANDATORY_FIELD_NAMES) - highlighted)
         assert not missing, f"Mandatory fields not highlighted: {missing}; highlighted: {sorted(highlighted)}"
+
+    with allure.step("Verify the Tax Registration fields are optional and not highlighted"):
+        for name in OPTIONAL_TAX_FIELD_NAMES:
+            expect(part_a_page.optional_mark(name)).to_have_text("(optional)")
+        flagged = sorted(set(OPTIONAL_TAX_FIELD_NAMES) & highlighted)
+        assert not flagged, f"Optional tax fields highlighted on a blank save: {flagged}"
 
     with allure.step("Verify the page scrolled to the first highlighted field"):
         expect(part_a_page.rejected_fields.first).to_be_in_viewport()
@@ -344,11 +354,11 @@ def test_tc63_invalid_date_format(
 
 
 # ---------------------------------------------------------------------------
-# TC-64  TAN is mandatory and must match the TAN format — DESTRUCTIVE
+# TC-64  TAN is optional but must match the TAN format when entered — DESTRUCTIVE
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-64")
 @allure.story("Step 1 - Agency Identity")
-@allure.title("TC-64: TAN Number is mandatory and must match the TAN format")
+@allure.title("TC-64: TAN Number is optional but must match the TAN format when entered")
 def test_tc64_invalid_tan_format(
     part_a_page: PartAPage,
     logged_in_part_a_fresh_mh_page,
@@ -357,10 +367,12 @@ def test_tc64_invalid_tan_format(
 ):
     """
     Given I am on Part A with all other mandatory fields filled
+    Then  TAN Number is labelled "(optional)" (dev, 18-Nov-2026: it used to be mandatory; a blank save not
+          flagging it is checked by TC-60)
     When  I type a lower-case TAN with separators
     Then  it is upper-cased with only letters and digits kept
-    When  I save with an incorrectly formatted TAN, and then with no TAN
-    Then  each save is rejected and the TAN field is highlighted in red
+    When  I save with an incorrectly formatted TAN
+    Then  the save is rejected and the TAN field is highlighted in red
     When  I save with a valid TAN and TAN certificate
     Then  Part A saves successfully
 
@@ -369,6 +381,9 @@ def test_tc64_invalid_tan_format(
     page, user = logged_in_part_a_fresh_mh_page
     data = PartAFactory.for_user(part_a_invalid_tan_data, user)
     typed = part_a_tan_typed_lowercase
+
+    with allure.step("Verify TAN Number is labelled optional"):
+        expect(part_a_page.optional_mark("tan_number")).to_have_text("(optional)")
 
     with allure.step(f"Type '{typed.typed}' into TAN Number"):
         part_a_page.type_into(typed.field, typed.typed)
@@ -380,14 +395,6 @@ def test_tc64_invalid_tan_format(
         part_a_page.click_save_next()
 
     with allure.step("Verify the save is rejected and TAN is highlighted"):
-        expect(part_a_page.rejected_field("tan_number")).to_have_count(1)
-
-    with allure.step("Fill all mandatory fields with TAN left blank and save"):
-        _fill_part_a(part_a_page, data)
-        part_a_page.fill_tan("")
-        part_a_page.click_save_next()
-
-    with allure.step("Verify the save is rejected and TAN is highlighted (TAN is mandatory)"):
         expect(part_a_page.rejected_field("tan_number")).to_have_count(1)
 
     with allure.step(f"Fill all mandatory fields with a valid TAN '{data.tan_number}' and certificate, then save"):
@@ -1319,3 +1326,78 @@ def test_tc436_as_you_type_input_rules(
 
     with allure.step("Verify the upper-cased GSTIN is recognised as valid"):
         expect(part_a_page.gstin_hint).to_have_text(PartAPage.GSTIN_VALID_HINT)
+
+
+# ---------------------------------------------------------------------------
+# KAN-TC-857  Part A saves without TAN and GST details — DESTRUCTIVE
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-857")
+@allure.story("Step 1 - Agency Identity")
+@allure.title("KAN-TC-857: Part A saves without TAN and GST details (tax registration is optional)")
+def test_tc857_save_without_tax_details(
+    part_a_page: PartAPage, logged_in_part_a_fresh_mh_page, part_a_valid_data: PartAData
+):
+    """
+    Given I am on Part A with no prior data saved (head office in Maharashtra)
+    Then  the four Tax Registration fields are labelled "(optional)"
+    When  I fill every mandatory field, leave TAN, TAN certificate, GSTIN and GST certificate empty and save
+    Then  Part A is saved with no tax field highlighted
+    And   Part A reopens with TAN Number and GSTIN empty
+
+    AIO: KAN-TC-857 | KAN-8 AC-5 | data: valid_mandatory_fields without tax details (dev, 18-Nov-2026)
+    """
+    page, user = logged_in_part_a_fresh_mh_page
+    data = dataclasses.replace(PartAFactory.for_user(part_a_valid_data, user),
+                               tan_number="", tan_certificate=None, gstin="", gst_certificate=None)
+
+    with allure.step("Verify the Tax Registration fields are labelled optional"):
+        for name in OPTIONAL_TAX_FIELD_NAMES:
+            expect(part_a_page.optional_mark(name)).to_have_text("(optional)")
+
+    with allure.step("Fill every mandatory field, leave the tax fields empty and save"):
+        _fill_part_a(part_a_page, data)
+        part_a_page.click_save_next()
+
+    with allure.step("Verify no tax field is highlighted and Part A is saved"):
+        highlighted = set(part_a_page.rejected_fields.evaluate_all("els => els.map(e => e.name)"))
+        assert not highlighted, f"Fields highlighted on save: {sorted(highlighted)}"
+        _expect_part_a_saved(page)
+
+    with allure.step("Record Part A as completed in state store"):
+        TestStateStore().mark_form_step_status(
+            username=user.username, step="part_a", status="completed", data=PartAFactory.state_store_data(data)
+        )
+
+    with allure.step("Reopen Part A — TAN Number and GSTIN are empty"):
+        part_a_page.open()
+        expect(part_a_page.edit_section_button.first).to_be_visible()
+        expect(part_a_page.tan_number_input).to_have_value("")
+        expect(part_a_page.gst_number_input).to_have_value("")
+
+
+# ---------------------------------------------------------------------------
+# KAN-TC-858  Agency Type / Legal Constitution options (nothing is saved)
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-858")
+@allure.story("Step 1 - Agency Identity")
+@allure.title("KAN-TC-858: Agency Type / Legal Constitution lists the nine agency types")
+def test_tc858_agency_type_options(part_a_page: PartAPage, logged_in_part_a_fresh_page):
+    """
+    Given I am on Part A
+    When  I open the Agency Type / Legal Constitution dropdown
+    Then  it offers "— Select type —" and the nine types in the page's order, with One Person Company (OPC)
+          and without Section 8 Company (dev, 18-Nov-2026)
+    When  I choose One Person Company (OPC)
+    Then  Incorporation No. and Certificate stay marked mandatory
+
+    AIO: KAN-TC-858 | KAN-8 Section 1 | data: PartAPage.LEGAL_CONSTITUTIONS
+    """
+    with allure.step("Read the dropdown's options"):
+        options = [o.strip() for o in part_a_page.legal_constitution_select.locator("option").all_inner_texts()]
+        assert options == ["— Select type —", *PartAPage.LEGAL_CONSTITUTIONS], options
+        expect(part_a_page.legal_constitution_select).to_have_value("")
+
+    with allure.step("Choose One Person Company (OPC)"):
+        part_a_page.select_legal_constitution("One Person Company (OPC)")
+        expect(part_a_page.incorporation_no_required_mark).to_be_visible()
+        expect(part_a_page.incorporation_certificate_required_mark).to_be_visible()

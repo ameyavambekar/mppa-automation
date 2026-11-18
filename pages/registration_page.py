@@ -366,8 +366,9 @@ class RegistrationPage(BasePage):
         return self.page.locator("#cityBox label")
 
     # ── Section 3 — Document Upload ──────────────────────────────────────────
-    # Only the 'Upload File' mode is offered; the live-photo (camera) option is
-    # commented out in the page markup.
+    # Company PAN Card only. The 'Upload File' mode is the only one offered (the
+    # live-photo option is commented out in the markup). The Authorised Signatory
+    # letterhead upload was removed on 18-Nov-2026.
 
     @property
     def pan_upload_mode_file(self):
@@ -383,17 +384,18 @@ class RegistrationPage(BasePage):
         return self.page.locator("#panFileHelper")
 
     @property
-    def auth_upload_mode_file(self):
-        return self.page.locator("input[name='authUploadMode'][value='file']")
+    def document_note(self):
+        """
+        Note beside the PAN upload: the PAN card is used for the whole application and
+        signatory details come later (Part F signature, FORM-I(B)). Replaced the
+        Authorised Signatory letterhead upload (#authSignFile), removed 18-Nov-2026.
+        """
+        return self.page.locator(".reg-doc-note")
 
     @property
-    def auth_sign_file_input(self):
-        return self.page.locator("#authSignFile")
-
-    @property
-    def auth_sign_file_helper(self):
-        """'Signed letterhead — PDF, JPG or PNG — max 5 MB' helper; updates after selection."""
-        return self.page.locator("#authSignFileHelper")
+    def file_inputs(self):
+        """Every file upload in the form — only #panFile since 18-Nov-2026."""
+        return self.page.locator("#registrationForm input[type='file']")
 
     # ── Section 4 — CAPTCHA ──────────────────────────────────────────────────
 
@@ -749,22 +751,9 @@ class RegistrationPage(BasePage):
         }
         self.pan_file_input.set_input_files(payload)
 
-    @allure.step("Upload Authorised Signatory document")
-    def upload_auth_sign_document(self, file_info=None):
-        payload = file_info or {
-            "name": "auth_sign.pdf",
-            "mimeType": "application/pdf",
-            "buffer": b"%PDF-1.4 dummy auth sign document content",
-        }
-        self.auth_sign_file_input.set_input_files(payload)
-
     @allure.step("Remove the selected PAN document")
     def clear_pan_document(self):
         self.pan_file_input.set_input_files([])
-
-    @allure.step("Remove the selected Authorised Signatory document")
-    def clear_auth_sign_document(self):
-        self.auth_sign_file_input.set_input_files([])
 
     @allure.step("Read PAN field value from DOM")
     def get_pan_value(self) -> str:
@@ -815,10 +804,9 @@ class RegistrationPage(BasePage):
 
     # Section 3
 
-    @allure.step("Fill Section 3 — Document Upload")
-    def fill_document_upload(self, pan_file=None, auth_sign_file=None):
+    @allure.step("Fill Section 3 — Document Upload (Company PAN Card)")
+    def fill_document_upload(self, pan_file=None):
         self.upload_pan_document(pan_file)
-        self.upload_auth_sign_document(auth_sign_file)
 
     # Section 4
     @allure.step("Read current CAPTCHA text from DOM")
@@ -912,9 +900,9 @@ class RegistrationPage(BasePage):
     district_not_selected_error = "Please select your district." #Alert Pop-up
     city_not_entered_error = "Please enter your city/town name." #Alert Pop-up
     pan_file_missing_error = "Please upload your PAN card file." #Alert Pop-up
-    auth_sign_file_missing_error = "Please upload the Authorised Signatory letterhead file." #Alert Pop-up
     pan_file_too_large_error = "File exceeds 2 MB limit." #Inline (#panFileHelper)
-    auth_sign_file_too_large_error = "File exceeds 5 MB limit." #Inline (#authSignFileHelper)
+    document_note_text = ("The PAN card uploaded here is used for the whole application — you will not be asked for it again. "
+                          "Authorised signatory details are given later in the form (Part F signature and FORM-I(B)).")
     unsupported_file_type_error = "Only PDF, JPG, PNG files are allowed." #Inline
     confirm_paste_error = "Paste not allowed — type your password manually." #Inline (#confirmPasteErr)
     declaration_error_message = "You must accept the declaration to proceed with registration."

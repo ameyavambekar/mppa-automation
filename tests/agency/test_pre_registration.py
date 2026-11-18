@@ -34,12 +34,6 @@ from test_data.agency_registration_factory import AgencyRegistrationFactory
 from utils.aio import aio_case
 from utils.file_manager import INVALID_FORMAT, OVERSIZED_FILE, VALID_JPG, VALID_PDF
 
-try:
-    from utils.file_manager import get_document_path
-    OVERSIZED_IMAGE = get_document_path("oversized_image.jpg")   # > 5 MB JPG
-except FileNotFoundError:
-    OVERSIZED_IMAGE = None
-
 # ---------------------------------------------------------------------------
 # Marks
 # ---------------------------------------------------------------------------
@@ -774,7 +768,7 @@ def test_tc16_duplicate_pan_blocked(registration_page, duplicate_pan_data):
             _fill_credentials_and_contact(registration_page, data)
             registration_page.select_district(data.district)
 
-        with allure.step("Fill Section 3 — upload PAN card and signatory letterhead"):
+        with allure.step("Fill Section 3 — upload the Company PAN Card"):
             registration_page.fill_document_upload()
 
         with allure.step("Fill Section 4 CAPTCHA and accept Section 5 declaration"):
@@ -1128,7 +1122,7 @@ def test_tc25_full_valid_submission_shows_success_overlay(registration_page, dat
     """
     Given I fill all sections correctly (valid credentials, email,
     valid unique PAN, selected district — plus City / Town when the district is
-    'Other' — uploaded documents, correct CAPTCHA, accepted declaration),
+    'Other' — uploaded PAN card, correct CAPTCHA, accepted declaration),
     When I click SUBMIT REGISTRATION,
     Then the server accepts the registration (no mocked response),
     And the 'Registration Started!' overlay is shown with a redirect countdown
@@ -1173,10 +1167,9 @@ def test_tc25_full_valid_submission_shows_success_overlay(registration_page, dat
         else:
             expect(registration_page.city_box).to_be_hidden()
 
-    with allure.step("Fill Section 3 — upload PAN card and signatory letterhead"):
+    with allure.step("Fill Section 3 — upload the Company PAN Card"):
         registration_page.fill_document_upload()
         expect(registration_page.pan_file_helper).to_contain_text("✓")
-        expect(registration_page.auth_sign_file_helper).to_contain_text("✓")
 
     with allure.step("Fill Section 4 CAPTCHA and accept Section 5 declaration"):
         registration_page.fill_captcha()
@@ -1386,40 +1379,42 @@ def test_tc28_alternate_phone_validation(
 
 
 # =============================================================================
-# TC-29 — Document Upload: Valid Files Accepted
+# TC-29 — Document Upload: PAN Card is the Only Upload; Valid Files Accepted
 # =============================================================================
 @aio_case("KAN-TC-419")
-@allure.story("TC-29: Document Upload — Valid Files Accepted")
-@allure.title("Valid PAN card and letterhead files are accepted in Document Upload")
+@allure.story("TC-29: Document Upload — Company PAN Card Accepted")
+@allure.title("Company PAN Card is the only document upload and accepts a valid PDF or JPG")
 def test_tc29_valid_documents_accepted(registration_page):
     """
     Given I am on the Pre-Registration page,
-    When I upload a PDF under 2 MB as the Company PAN Card
-    And a JPG under 5 MB as the Authorised Signatory letterhead,
-    Then each helper changes to '✓ <file name> (<size> MB)'.
+    Then Section 3 'Document Upload' has a single upload, Company PAN Card
+    ('PDF, JPG or PNG — max 2 MB'), with a note that the PAN card is used for the whole
+    application and signatory details come later (Part F signature, FORM-I(B)),
+    And there is no Authorised Signatory letterhead upload (removed 18-Nov-2026).
+    When I upload a PDF under 2 MB, and then a JPG under 2 MB,
+    Then the helper changes to '✓ <file name> (<size> MB)' each time.
 
     AIO ref: KAN-TC-419 | Data: valid_doc.pdf, valid_image.jpg
     """
     registration_page.ensure_on_registration_page()
 
-    with allure.step("Assert Section 3 shows both uploads with their limits"):
+    with allure.step("Assert Section 3 has only the Company PAN Card upload, with its limit and note"):
         expect(registration_page.section_header(3)).to_contain_text("Document Upload")
+        expect(registration_page.file_inputs).to_have_count(1)
+        expect(registration_page.pan_file_input).to_be_visible()
         expect(registration_page.pan_upload_mode_file).to_be_checked()
-        expect(registration_page.auth_upload_mode_file).to_be_checked()
         expect(registration_page.pan_file_helper).to_contain_text("PDF, JPG or PNG — max 2 MB")
-        expect(registration_page.auth_sign_file_helper).to_contain_text(
-            "Signed letterhead — PDF, JPG or PNG — max 5 MB"
-        )
+        expect(registration_page.document_note).to_have_text(registration_page.document_note_text)
 
     with allure.step("Upload a valid PDF as the Company PAN Card"):
         registration_page.upload_pan_document(VALID_PDF)
         expect(registration_page.pan_file_helper).to_contain_text(f"✓ {os.path.basename(VALID_PDF)}")
         assert registration_page.get_selected_file_count(registration_page.pan_file_input) == 1
 
-    with allure.step("Upload a valid JPG as the Authorised Signatory letterhead"):
-        registration_page.upload_auth_sign_document(VALID_JPG)
-        expect(registration_page.auth_sign_file_helper).to_contain_text(f"✓ {os.path.basename(VALID_JPG)}")
-        assert registration_page.get_selected_file_count(registration_page.auth_sign_file_input) == 1
+    with allure.step("Replace it with a valid JPG"):
+        registration_page.upload_pan_document(VALID_JPG)
+        expect(registration_page.pan_file_helper).to_contain_text(f"✓ {os.path.basename(VALID_JPG)}")
+        assert registration_page.get_selected_file_count(registration_page.pan_file_input) == 1
 
 
 # =============================================================================
@@ -1427,22 +1422,17 @@ def test_tc29_valid_documents_accepted(registration_page):
 # =============================================================================
 @aio_case("KAN-TC-420")
 @allure.story("TC-30: Document Upload — Oversized File Rejected")
-@allure.title("Document larger than the size limit is rejected immediately")
+@allure.title("PAN card file larger than 2 MB is rejected immediately")
 def test_tc30_oversized_document_rejected(registration_page):
     """
     Given I am on the Pre-Registration page,
-    When I select a PAN card file over 2 MB, or a letterhead file over 5 MB,
-    Then the file is cleared and the helper shows 'File exceeds N MB limit.'.
+    When I select a Company PAN Card file over 2 MB,
+    Then the file is cleared and the helper shows 'File exceeds 2 MB limit.'.
     When I then select a file within the limit,
     Then it is accepted.
 
-    AIO ref: KAN-TC-420 | Data: oversized.pdf (3 MB), oversized_image.jpg (> 5 MB)
+    AIO ref: KAN-TC-420 | Data: oversized.pdf (3 MB), valid_doc.pdf
     """
-    if OVERSIZED_IMAGE is None:
-        pytest.skip(
-            "oversized_image.jpg not found in test_data/documents/ — "
-            "add a JPG > 5 MB to run this test."
-        )
     registration_page.ensure_on_registration_page()
 
     with allure.step("Select a PDF larger than 2 MB for Company PAN Card"):
@@ -1452,18 +1442,10 @@ def test_tc30_oversized_document_rejected(registration_page):
         expect(registration_page.pan_file_helper).to_have_text(registration_page.pan_file_too_large_error)
         assert registration_page.get_selected_file_count(registration_page.pan_file_input) == 0
 
-    with allure.step("Select a JPG larger than 5 MB for the Authorised Signatory letterhead"):
-        registration_page.upload_auth_sign_document(OVERSIZED_IMAGE)
-
-    with allure.step("Assert the letterhead file is cleared with the 5 MB error"):
-        expect(registration_page.auth_sign_file_helper).to_have_text(registration_page.auth_sign_file_too_large_error)
-        assert registration_page.get_selected_file_count(registration_page.auth_sign_file_input) == 0
-
-    with allure.step("Select files within the limit; assert both are accepted"):
+    with allure.step("Select a file within the limit; assert it is accepted"):
         registration_page.upload_pan_document(VALID_PDF)
-        registration_page.upload_auth_sign_document(VALID_PDF)
-        expect(registration_page.pan_file_helper).to_contain_text("✓")
-        expect(registration_page.auth_sign_file_helper).to_contain_text("✓")
+        expect(registration_page.pan_file_helper).to_contain_text(f"✓ {os.path.basename(VALID_PDF)}")
+        assert registration_page.get_selected_file_count(registration_page.pan_file_input) == 1
 
 
 # =============================================================================
@@ -1471,11 +1453,11 @@ def test_tc30_oversized_document_rejected(registration_page):
 # =============================================================================
 @aio_case("KAN-TC-421")
 @allure.story("TC-31: Document Upload — Unsupported File Type Rejected")
-@allure.title("Unsupported document file type is rejected immediately")
+@allure.title("Unsupported PAN card file type is rejected immediately")
 def test_tc31_unsupported_document_type_rejected(registration_page):
     """
     Given I am on the Pre-Registration page,
-    When I select a file other than PDF, JPG or PNG for either upload,
+    When I select a file other than PDF, JPG or PNG for the Company PAN Card,
     Then the file is cleared and the helper shows 'Only PDF, JPG, PNG files are allowed.'.
 
     AIO ref: KAN-TC-421 | Data: invalid.docx
@@ -1489,27 +1471,18 @@ def test_tc31_unsupported_document_type_rejected(registration_page):
         expect(registration_page.pan_file_helper).to_have_text(registration_page.unsupported_file_type_error)
         assert registration_page.get_selected_file_count(registration_page.pan_file_input) == 0
 
-    with allure.step("Select a .docx file for the Authorised Signatory letterhead"):
-        registration_page.upload_auth_sign_document(INVALID_FORMAT)
-
-    with allure.step("Assert the letterhead file is cleared with the file-type error"):
-        expect(registration_page.auth_sign_file_helper).to_have_text(registration_page.unsupported_file_type_error)
-        assert registration_page.get_selected_file_count(registration_page.auth_sign_file_input) == 0
-
 
 # =============================================================================
-# TC-32 — Document Upload: Missing Document Blocks Submission
+# TC-32 — Document Upload: Missing PAN Card Blocks Submission
 # =============================================================================
 @aio_case("KAN-TC-422")
-@allure.story("TC-32: Document Upload — Missing Document Blocks Submission")
-@allure.title("Submission blocked when a mandatory document is not uploaded")
+@allure.story("TC-32: Document Upload — Missing PAN Card Blocks Submission")
+@allure.title("Submission blocked when the Company PAN Card is not uploaded")
 def test_tc32_missing_document_blocks_submission(registration_page, valid_registration_data):
     """
-    Given all other fields are validly filled,
-    When I upload only the Company PAN Card and click SUBMIT REGISTRATION,
-    Then the alert 'Please upload the Authorised Signatory letterhead file.' is shown.
-    When neither document is uploaded,
-    Then the alert 'Please upload your PAN card file.' is shown.
+    Given all other fields are validly filled and the declaration is accepted,
+    When no Company PAN Card is uploaded and I click SUBMIT REGISTRATION,
+    Then the alert 'Please upload your PAN card file.' is shown and nothing is submitted.
 
     AIO ref: KAN-TC-422
     """
@@ -1517,21 +1490,14 @@ def test_tc32_missing_document_blocks_submission(registration_page, valid_regist
     registration_page.ensure_on_registration_page()
     expect(registration_page.username_input).to_be_visible()
 
-    with allure.step("Fill Sections 1, 2 and 4 validly"):
+    with allure.step("Fill Sections 1, 2, 4 and 5 validly; leave the PAN card empty"):
         _fill_credentials_and_contact(registration_page, data)
         registration_page.select_district(data.district)
-        registration_page.fill_captcha()
-
-    with allure.step("Upload only the Company PAN Card and click SUBMIT REGISTRATION"):
-        registration_page.upload_pan_document(VALID_PDF)
-        message = registration_page.submit_and_handle_alert()
-
-    with allure.step("Assert the missing-letterhead alert; form not submitted"):
-        assert registration_page.auth_sign_file_missing_error in message, f"Unexpected alert: {message!r}"
-        expect(registration_page.success_overlay).to_be_hidden()
-
-    with allure.step("Remove the PAN card as well and click SUBMIT REGISTRATION"):
         registration_page.clear_pan_document()
+        registration_page.fill_captcha()
+        registration_page.accept_declaration()
+
+    with allure.step("Click SUBMIT REGISTRATION"):
         message = registration_page.submit_and_handle_alert()
 
     with allure.step("Assert the missing-PAN-card alert; form not submitted"):

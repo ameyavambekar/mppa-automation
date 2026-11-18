@@ -13,7 +13,12 @@ def _login_and_open_step1(page, user) -> PartAPage:
     """Logs in, waits for the Form-I wizard, then opens Step 1 — Part A.
 
     Login lands on the step the user stopped at, so Part A is opened
-    explicitly for users who have already completed it."""
+    explicitly for users who have already completed it.
+
+    Cookies are cleared first: the browser context is shared by the whole run, and a session left behind by an
+    earlier test (e.g. TC-80's idle timeout, 18-Nov-2026) made the next logins land on the User Manual instead of
+    the wizard."""
+    page.context.clear_cookies()
     login = LoginPage(page)
     login.open()
     login.login(user.username, user.password)

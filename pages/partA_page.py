@@ -21,9 +21,11 @@ class PartAPage(BasePage):
     No beforeunload prompt is registered, so leaving the page never asks to confirm.
     """
 
+    # Agency Type / Legal Constitution options in the page's order (dev, 18-Nov-2026: "Section 8 Company" removed,
+    # "One Person Company (OPC)" added).
     LEGAL_CONSTITUTIONS = (
-        "Proprietorship", "Partnership Firm", "Private Limited Company", "Public Limited Company",
-        "Limited Liability Partnership (LLP)", "Trust", "Society", "Section 8 Company", "Other",
+        "Proprietorship", "Partnership Firm", "Limited Liability Partnership (LLP)", "Private Limited Company",
+        "Public Limited Company", "One Person Company (OPC)", "Trust", "Society", "Other",
     )
     PREMISE_TYPES = (
         "Owned Office Space", "Rented Office Space", "Co-working Space", "Home Office",
@@ -162,6 +164,12 @@ class PartAPage(BasePage):
     def gst_certificate_input(self):
         """'GST registration certificate' file input (PDF/JPG/PNG, 10 KB – 2 MB)."""
         return self.page.locator("input[name='gst_file']")
+
+    def optional_mark(self, field_name: str):
+        """The '(optional)' tag (span.opt) on the label of the field named ``field_name``. Since 18-Nov-2026 the
+        four Tax Registration fields (tan_number, tan_file, gstin, gst_file) carry it."""
+        return self.page.locator(f"[name='{field_name}']").locator(
+            "xpath=ancestor::div[label][1]/label/span[contains(concat(' ', @class, ' '), ' opt ')]")
 
     # ── Registered Office Address ─────────────────────────────────────────────
 
