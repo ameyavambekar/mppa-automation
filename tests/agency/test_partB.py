@@ -881,8 +881,8 @@ def test_tc110_remove_added_entry(part_b_page: PartBPage, logged_in_part_b_page,
     Then  only that card is removed, the others keep their data and titles
     And   the new card's number keeps counting up (no renumbering)
 
-    Possible defect (portal 2.1.0, 17-Nov-2026, not logged yet): the new card is numbered by the card
-    count, so it repeats "Director 3" next to the existing "Director 3".
+    Known defect "Part B:Key Persons" #25 (reopened 18-Nov-2026, regression in portal 2.1.0): the new
+    card is numbered by the card count, so it repeats "Director 3" next to the existing "Director 3".
 
     Notion: KAN-TC-110 | KAN-19 AC-8, EC-6 | data: valid_director
     """
@@ -952,7 +952,7 @@ def test_tc112_duplicate_aadhaar_blocked(
     When  I save
     Then  the save is rejected with the duplicate-Aadhaar error on Director 2
 
-    Known defect (28 Oct 2026): the server accepts the duplicate and saves Part B.
+    Known defect "Part B:Key Persons" #33 (28 Oct 2026): the server accepts the duplicate and saves Part B.
 
     Notion: KAN-TC-112 | KAN-19 EC-1 | data: duplicate_aadhaar_director
     """
