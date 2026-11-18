@@ -305,7 +305,8 @@ def test_tc262_save_updates_validity(
     Given an agency with an Active certificate
     When  I renew it from today for 5 years (+5 Years) with a remark
     Then  the row shows the new dates (with ✓ and '✓ approvals'), Days Left and Active
-    And   the detail row's 'Eff. Valid From / Eff. Valid Upto' show the new dates
+    And   the detail row's 'Valid From / Valid Upto (approvals)' show the new dates (a row with no Issue /
+          Renew record labels them 'Eff. Valid From / Eff. Valid Upto' instead)
     And   History shows 'Renewed' with my name and role (known defect "Super admin" #60: no entry is added)
 
     AIO: KAN-TC-262 | data: valid_renewal
@@ -335,8 +336,8 @@ def test_tc262_save_updates_validity(
     with allure.step("Verify the detail row shows the new dates (agency_approvals)"):
         lp.toggle_detail_row(agency)
         expect(lp.detail_row(agency)).to_be_visible()
-        expect(lp.detail_field(agency, "Eff. Valid From")).to_have_text(_display(data.valid_from))
-        expect(lp.detail_field(agency, "Eff. Valid Upto")).to_have_text(_display(data.valid_upto))
+        expect(lp.detail_validity(agency, "From")).to_have_text(_display(data.valid_from))
+        expect(lp.detail_validity(agency, "Upto")).to_have_text(_display(data.valid_upto))
 
     with allure.step("Verify History shows 'Renewed'"):
         lp.open_history(agency)
@@ -704,8 +705,9 @@ def test_tc628_row_details(logged_in_admin_licenses_page: AdminLicensesPage):
     Given an agency with an Active certificate
     When  I click its row
     Then  the detail row opens with Registration No., Agency Status, Email, PAN, Approval Date,
-          Eff. Valid From / Eff. Valid Upto, Days Remaining and the two buttons, matching the row
-          (dev, 17-Nov-2026: 'Valid From / Valid Upto (approvals)' renamed, 'Approved By' and 'Remarks' removed)
+          the validity dates, Days Remaining and the two buttons, matching the row
+          (dev, 18-Nov-2026: 'Eff. Valid From / Upto' on a row with no Issue / Renew record,
+          'Valid From / Upto (approvals)' plus 'Approved By' and 'Remarks' on a row saved through the modal)
     When  I click the row again
     Then  the detail row closes
 
@@ -722,8 +724,10 @@ def test_tc628_row_details(logged_in_admin_licenses_page: AdminLicensesPage):
         expect(lp.detail_row(agency)).to_be_visible()
 
     with allure.step("Verify the details"):
-        for key in ("Agency Status", "Email", "PAN", "Approval Date", "Eff. Valid From", "Eff. Valid Upto"):
+        for key in ("Agency Status", "Email", "PAN", "Approval Date"):
             expect(lp.detail_field(agency, key)).to_have_count(1)
+        for which in ("From", "Upto"):
+            expect(lp.detail_validity(agency, which)).to_have_count(1)
         expect(lp.detail_field(agency, "Registration No.")).to_have_text(registration)
         expect(lp.detail_field(agency, "Email")).to_have_text(re.compile(r"\S+@\S+\.\S+"))
         expect(lp.detail_field(agency, "PAN")).to_have_text(re.compile(r"^\s*[A-Z]{5}\d{4}[A-Z]\s*$"))

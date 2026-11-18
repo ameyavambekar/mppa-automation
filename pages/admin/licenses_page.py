@@ -232,10 +232,21 @@ class AdminLicensesPage(BasePage):
 
     def detail_field(self, agency_name: str, key: str):
         """A detail value by its label: 'Registration No.', 'Agency Status', 'Email', 'PAN', 'Approval Date',
-        'Eff. Valid From', 'Eff. Valid Upto', 'Days Remaining' (dev, 17-Nov-2026 — 'Valid From / Valid Upto
-        (approvals)' were renamed and 'Approved By' and 'Remarks' removed)."""
+        'Days Remaining', then the validity labels, which depend on the row (dev, 18-Nov-2026): a row with
+        no Issue / Renew record shows 'Eff. Valid From' / 'Eff. Valid Upto'; a row saved through the Issue /
+        Renew modal shows 'Valid From (approvals)' / 'Valid Upto (approvals)' plus 'Approved By' and
+        'Remarks'. Use detail_validity() when either form will do."""
         return self.detail_row(agency_name).locator(
             f"//div[@class='df'][div[@class='dk' and normalize-space(text())='{key}']]/div[@class='dv']"
+        )
+
+    def detail_validity(self, agency_name: str, which: str):
+        """The detail row's validity value, which = 'From' or 'Upto', under either label form
+        ('Eff. Valid From' or 'Valid From (approvals)'; see detail_field)."""
+        labels = (f"Eff. Valid {which}", f"Valid {which} (approvals)")
+        match = " or ".join(f"normalize-space(text())='{label}'" for label in labels)
+        return self.detail_row(agency_name).locator(
+            f"//div[@class='df'][div[@class='dk' and ({match})]]/div[@class='dv']"
         )
 
     def detail_view_certificate_link(self, agency_name: str):

@@ -285,6 +285,9 @@ def test_tc837_application_action(decided_renewals):
     When  I click Application on it
     Then  the agency's View Agency page opens in the same tab with the same agency name and registration no.
 
+    Known defect "Super admin" #95: an agency approved since 18-Nov-2026 gets its name in the tab title instead
+    of the registration no., so this fails while such an agency's renewal is listed first.
+
     Notion: KAN-TC-837 | KAN-51 AC-6
     """
     renewals, rows = decided_renewals
