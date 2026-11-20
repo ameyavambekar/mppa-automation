@@ -15,7 +15,9 @@ class PreviewPage(BasePage):
     Uploaded files open through ``a.file-link`` in a new tab.
 
     Below the sections, a fee box and the "Confirm & Proceed to Payment — ₹ <amount>"
-    button, which posts ``#payForm`` (draft token + fee amount) to payment_init.php.
+    button, which posts ``#payForm`` (draft token + fee amount) to payment_init.php. The fee
+    follows Part C's saved area: ₹ 2,000 Within Maharashtra, ₹ 4,000 Across India,
+    ₹ 10,000 India and Overseas (dev, 20-Nov-2026).
     The page is only reachable once both signed declaration forms are uploaded —
     until then preview.php redirects to Declaration.
     """
@@ -50,6 +52,11 @@ class PreviewPage(BasePage):
     # "Other Services" was added after Service Mode on dev (17-Nov-2026, portal 2.1.0)
     PART_C_LABELS = ("Area of Placement Operations", "Sectors", "Digital Platform", "Training", "Mobilization",
                      "Service Mode", "Other Services", "Type of Agency", "Charges displayed")
+
+    @classmethod
+    def part_c_labels(cls, other_services: bool) -> list[str]:
+        """The Part C row labels — "Other Services" is shown only when Part C has it (dev, 20-Nov-2026)."""
+        return [label for label in cls.PART_C_LABELS if other_services or label != "Other Services"]
     # Part F certificate rows: (number label, date label) → Part F certificate key (see PartFPage.CERTIFICATES)
     CERTIFICATE_ROWS = {("Contract Labour Cert", "Contract Labour Date"): "cl",
                         ("Emigration Cert", "Emigration Date"): "em",

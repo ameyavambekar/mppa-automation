@@ -3,7 +3,7 @@ Data Factory — Application Preview
 ==================================
 All test-data construction for the Preview step (KAN-39).
 Each factory method maps to one Acceptance Criterion, Edge Case, or scenario
-referenced in the AIO test cases KAN-TC-504 … KAN-TC-516.
+referenced in the AIO test cases KAN-TC-504 … KAN-TC-516 and KAN-TC-871.
 
 Preview itself takes no input; the factory holds what the page is expected to
 show for a given kind of agency.
@@ -24,6 +24,7 @@ from dataclasses import dataclass
 class PreviewData:
     fee_amount: int = 0           # rupees, as posted in #payForm's fee_amount
     fee_category: str = ""        # the line under the amount in the fee box
+    area: str = ""                # Part C "Area of Placement Operations" that gives this fee
     # Scenario-specific values
     scenario_label: str = ""
     expected_error: str = ""
@@ -38,5 +39,17 @@ class PreviewFactory:
             fee_amount=2000,
             fee_category=("Within Maharashtra — Operates only within the State of Maharashtra · Rule 3(3)(d) · "
                           "one-time, non-refundable"),
+            area="Within Maharashtra",
             scenario_label="within_maharashtra",
+        )
+
+    @staticmethod
+    def across_india() -> PreviewData:
+        """KAN-TC-871: the fee once Part C's area is changed to "Across India" (dev, 20-Nov-2026)."""
+        return PreviewData(
+            fee_amount=4000,
+            fee_category=("Across India — Registered office or operations outside Maharashtra · Rule 3(3)(d) · "
+                          "one-time, non-refundable"),
+            area="Across India",
+            scenario_label="across_india",
         )

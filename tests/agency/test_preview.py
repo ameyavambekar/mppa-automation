@@ -35,6 +35,29 @@ def _yes_no(checked: bool) -> str:
     return "Yes" if checked else "No"
 
 
+def _save_part_c_area(page, area: str) -> None:
+    """Opens Part C for editing, chooses ``area`` and saves; saving stays on Part C (dev, 20-Nov-2026)."""
+    part_c = PartCPage(page)
+    part_c.open()
+    page.wait_for_load_state("networkidle")
+    part_c.make_editable()
+    part_c.select_placement_type(area)
+    if part_c.area_declaration_checkbox.is_visible() and not part_c.area_declaration_checkbox.is_checked():
+        part_c.tick_area_declaration()
+    with page.expect_navigation():
+        part_c.submit_button.click()
+    page.wait_for_load_state("networkidle")
+    expect(part_c.success_message).to_have_text(PartCPage.SAVED_MESSAGE)
+    expect(part_c.next_part_f_link).to_be_visible()
+
+
+def _expect_fee(preview_page: PreviewPage, data: PreviewData) -> None:
+    expect(preview_page.fee_amount).to_have_text(PreviewPage.fee_text(data.fee_amount))
+    expect(preview_page.fee_category).to_have_text(data.fee_category)
+    expect(preview_page.pay_button).to_have_text(PreviewPage.pay_label(data.fee_amount))
+    expect(preview_page.fee_amount_input).to_have_value(str(data.fee_amount))
+
+
 def _expect_served(page, link, content_type: str = None) -> None:
     """The link opens in a new tab and its URL serves a file (of ``content_type`` when given)."""
     expect(link).to_have_attribute("target", "_blank")
@@ -138,7 +161,7 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
     """
     Given Part A, Part C and Part F are saved
     When  I compare each step's saved form with its section on the Preview step
-    Then  every value matches, and dates are dd/mm/yyyy
+    Then  every value matches, and dates are dd/mm/yyyy; "Other Services" is shown only when Part C has it
 
     Notion: KAN-TC-506 | KAN-39 AC-3
     """
@@ -179,6 +202,9 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
             "Charges displayed": _yes_no(part_c.charges_displayed_radio("yes").is_checked()),
         }
         sectors = [box.get_attribute("value") for box in part_c.sector_checkboxes.all() if box.is_checked()]
+        other_services = part_c.other_services_textarea.input_value().strip()
+        if other_services:
+            saved_c["Other Services"] = other_services
 
     with allure.step("Read the Place and the certificate documents saved in Part F"):
         part_f = PartFPage(page)
@@ -197,7 +223,8 @@ def test_tc506_saved_values(preview_page: PreviewPage, logged_in_preview_page):
         expect(preview_page.value(PreviewPage.PART_A, "Date of Estab.")).to_have_text(DATE)
 
     with allure.step("Verify the Part C section"):
-        expect(preview_page.row_labels(PreviewPage.PART_C)).to_have_text(list(PreviewPage.PART_C_LABELS))
+        expect(preview_page.row_labels(PreviewPage.PART_C)).to_have_text(
+            PreviewPage.part_c_labels(other_services=bool(other_services)))
         for label, value in saved_c.items():
             expect(preview_page.value(PreviewPage.PART_C, label)).to_have_text(value)
         assert sectors, "no sector is saved in Part C"
@@ -535,6 +562,57 @@ def test_tc515_certificates_not_given(preview_page: PreviewPage, logged_in_previ
         expect(preview_page.value(PreviewPage.PART_F, "Application Date")).to_have_text(DATE)
         expect(preview_page.value(PreviewPage.PART_F, "Place")).not_to_have_text(PreviewPage.EMPTY)
         expect(preview_page.value(PreviewPage.PART_F, "Place")).to_have_text(re.compile(r"\S"))
+
+
+# ---------------------------------------------------------------------------
+# TC-871  Fee follows the Part C area
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-871")
+@allure.story(STORY)
+@allure.title("TC-871: Changing the Part C area from Preview changes the registration fee")
+def test_tc871_fee_follows_part_c_area(preview_page: PreviewPage, logged_in_preview_page,
+                                       preview_fee_data: PreviewData, preview_across_india_data: PreviewData):
+    """
+    Given Part C's area is "Within Maharashtra" and the fee on Preview is ₹ 2,000
+    When  I click "Edit" on Part C, change the area to "Across India" and save
+    Then  Part C stays open with "Part C saved." and "Next: Part F →"; on Preview Part C shows "Across India",
+          the earlier steps stay ✓ and the fee, the button and the posted amount are ₹ 4,000.
+          The area is set back to "Within Maharashtra" (₹ 2,000) at the end.
+
+    Notion: KAN-TC-871 | KAN-39 AC-5, AC-11 | data: within_maharashtra, across_india
+    """
+    page, user = logged_in_preview_page
+
+    with allure.step("Verify the fee is ₹ 2,000 for Within Maharashtra"):
+        expect(preview_page.value(PreviewPage.PART_C, "Area of Placement Operations")).to_have_text(
+            preview_fee_data.area)
+        _expect_fee(preview_page, preview_fee_data)
+
+    try:
+        with allure.step("Click 'Edit' on Part C — Part C opens with 'Edit this section'"):
+            preview_page.click_edit(PreviewPage.PART_C)
+            expect(page).to_have_url(re.compile(rf"{re.escape(f'{FORMS_BASE}/partC.php')}"))
+            expect(PartCPage(page).edit_section_link).to_be_visible()
+
+        with allure.step(f"Change the area to '{preview_across_india_data.area}' and save — Part C stays open"):
+            _save_part_c_area(page, preview_across_india_data.area)
+            expect(page).to_have_url(re.compile(r"/partC\.php"))
+
+        with allure.step("Open Preview — Part C shows the new area and the earlier steps stay ✓"):
+            preview_page.open()
+            expect(page).to_have_url(ON_PREVIEW)
+            expect(preview_page.value(PreviewPage.PART_C, "Area of Placement Operations")).to_have_text(
+                preview_across_india_data.area)
+            for label in ("Part A", "Part B", "Part C", "Part F", "Documents", "Photos", "Declaration"):
+                expect(preview_page.completed_step_link(label)).to_contain_text("✓")
+
+        with allure.step("Verify the fee, the button and the posted amount are ₹ 4,000"):
+            _expect_fee(preview_page, preview_across_india_data)
+    finally:
+        with allure.step(f"Set the area back to '{preview_fee_data.area}' — the fee is ₹ 2,000 again"):
+            _save_part_c_area(page, preview_fee_data.area)
+            preview_page.open()
+            _expect_fee(preview_page, preview_fee_data)
 
 
 # ---------------------------------------------------------------------------
