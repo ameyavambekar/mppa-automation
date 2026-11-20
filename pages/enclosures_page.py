@@ -14,6 +14,9 @@ PREMISES_URL = f"{FORMS_BASE}/premises.php"
 class EnclosuresPage(BasePage):
     """Page object for Step 5 — Upload Documents (Enclosures) (forms/enclosures.php).
 
+    Since 20-Nov-2026 document 1 is the PAN card uploaded at registration (``PAN_card_<PAN>.pdf``), so the
+    step opens at 1/2, and the address proof type list ends with "Other", which asks for the document name.
+
     Since portal 2.1.0 (17-Nov-2026): four document rows numbered 1–4 in two groups. Each row has a
     PDF-only file chooser (``input[name='file<N>']`` — see ``DOCUMENTS`` for the field names). Documents
     1–2 are mandatory, 3–4 optional; the office address proof (2) has a type select (``doctype3``)
@@ -44,15 +47,28 @@ class EnclosuresPage(BasePage):
     MANDATORY = (1, 2)
     GROUPS = ("Core Documents", "Other")
     ADDRESS_PROOF_TYPES = ("Electricity (Light) Bill", "Rent / Leave and Licence Agreement",
-                           "Property Ownership Document (Index-II / Property Tax Receipt)")
+                           "Property Ownership Document (Index-II / Property Tax Receipt)", "Other")
+    # Since 20-Nov-2026: choosing "Other" shows a text box (``doctype_other3``) for the name of the document.
+    ADDRESS_PROOF_OTHER = "Other"
+    ADDRESS_PROOF_OTHER_PLACEHOLDER = "Type of document, e.g. Water bill, Telephone bill, NOC from owner"
+    ADDRESS_PROOF_OTHER_MAXLENGTH = 80
+    # Since 20-Nov-2026 the PAN card uploaded on the registration form is already document 1, saved as
+    # "PAN_card_<PAN>.pdf", so an agency that has uploaded nothing here opens the step at 1/2.
+    REGISTRATION_PAN_PREFIX = "PAN_card_"
+    UPLOADED_AT_START = 1
 
     # Client-side texts
     TITLE = "Step 5 — Upload Documents (Enclosures)"
     SUBTITLE = "PDF only · minimum 10 KB, maximum 2 MB per file"
     FILE_HINT = "PDF only · 10 KB – 2 MB"
     NOTE = "Documents must be uploaded as PDF (10 KB – 2 MB each)."
-    NOTE_PHOTOS = ("Office photographs are taken in the next step (Premises Photos) — including the working area "
-                   "and the service-charges display board.")
+    # Shortened on 20-Nov-2026 ("the working area and" dropped)
+    NOTE_PHOTOS = ("Office photographs are taken in the next step (Premises Photos) — including the service-charges "
+                   "display board.")
+    PAN_HELP = "For a Proprietorship: PAN card of the proprietor."
+    PAN_FROM_REGISTRATION = ("Taken from the PAN card you uploaded at registration — nothing more to do. "
+                             "Choose a file only if you want to replace it.")
+    SAVED_FILE_TOOLTIP = "Already uploaded — choose a file only to replace it"
     ADDRESS_PROOF_HELP = "Choose the document type, then upload it."
     ADDRESS_PROOF_PLACEHOLDER = "— Select type of address proof —"
     NOT_PDF_ERROR = "Only PDF files are allowed."
@@ -63,6 +79,10 @@ class EnclosuresPage(BasePage):
     # Server message when document 2 is uploaded with no type chosen in ``doctype3`` (dev, 17-Nov-2026);
     # the file is not saved.
     ADDRESS_PROOF_TYPE_REQUIRED = "Office Address Proof: choose the type of document from the list."
+    # Server message when "Other" is chosen with a name under 3 characters (dev, 20-Nov-2026). With a blank name
+    # the page also adds ADDRESS_PROOF_TYPE_REQUIRED and resets the select (possible defect, KAN-TC-865).
+    ADDRESS_PROOF_OTHER_NAME_REQUIRED = ('Office Address Proof: you chose "Other" — type the name of the document '
+                                         '(at least 3 characters).')
 
     @staticmethod
     def uploaded_message(count: int) -> str:
@@ -130,6 +150,11 @@ class EnclosuresPage(BasePage):
         return self.page.locator("select[name='doctype3']")
 
     @property
+    def address_proof_other_input(self):
+        """Name of the document when the address proof type is "Other" — hidden for every other type."""
+        return self.page.locator("input[name='doctype_other3']")
+
+    @property
     def address_proof_help(self):
         """'Choose the document type, then upload it.' above the address proof type select."""
         return self.address_proof_type_select.locator("xpath=preceding-sibling::p[1]")
@@ -173,7 +198,30 @@ class EnclosuresPage(BasePage):
         return self.document_row(number).locator(".badge-req")
 
     def document_hint(self, number: int):
-        return self.file_input(number).locator("xpath=following-sibling::p[not(@id)][1]")
+        """'PDF only · 10 KB – 2 MB' under the file chooser (the chooser sits in a ``div.fu`` widget)."""
+        return self.file_input(number).locator(
+            "xpath=ancestor::div[contains(concat(' ',normalize-space(@class),' '),' fu ')][1]/following-sibling::p[1]")
+
+    def document_help(self, number: int):
+        """Help line under the title (documents 1 and 2 only), e.g. PAN_HELP."""
+        return self.document_row(number).locator("xpath=(.//div[span])[1]/following-sibling::p[1]")
+
+    def file_name(self, number: int):
+        """Name next to 'Choose File': 'No file chosen', the chosen file, or '✓ <saved file>' (SAVED_FILE_TOOLTIP)."""
+        return self.file_input(number).locator("xpath=preceding-sibling::span[contains(@class,'fu-name')]")
+
+    def saved_file(self, number: int) -> str:
+        """File name of the document on file ('' when none), from the chooser's ``data-current``."""
+        return self.file_input(number).get_attribute("data-current") or ""
+
+    @property
+    def pan_from_registration_note(self):
+        """PAN_FROM_REGISTRATION on document 1 while it is the PAN card from registration."""
+        return self.document_row(1).get_by_text(self.PAN_FROM_REGISTRATION)
+
+    def has_registration_pan(self) -> bool:
+        """Document 1 is the PAN card carried over from registration (not replaced on this step)."""
+        return self.saved_file(1).startswith(self.REGISTRATION_PAN_PREFIX)
 
     def document_error(self, number: int):
         """Error under the row, shown when an invalid file is chosen."""
@@ -221,12 +269,20 @@ class EnclosuresPage(BasePage):
     def select_address_proof_type(self, proof_type: str):
         self.address_proof_type_select.select_option(value=proof_type)
 
+    @allure.step("Office address proof name (Other): {name}")
+    def enter_address_proof_other(self, name: str):
+        self.address_proof_other_input.fill(name)
+
     @allure.step("Upload documents {documents}")
-    def upload_documents(self, documents: dict, address_proof_type: str = ADDRESS_PROOF_TYPES[0]):
+    def upload_documents(self, documents: dict, address_proof_type: str = ADDRESS_PROOF_TYPES[0],
+                         address_proof_other: str = None):
         """Chooses ``{number: path}`` and clicks 'Upload Documents'. When the office address proof (2) is
-        among them, its type is chosen first (``address_proof_type``)."""
+        among them, its type is chosen first (``address_proof_type``) and, for "Other", the name of the
+        document (``address_proof_other``)."""
         if 2 in documents and address_proof_type:
             self.select_address_proof_type(address_proof_type)
+            if address_proof_other is not None:
+                self.enter_address_proof_other(address_proof_other)
         for number, path in documents.items():
             self.choose_document(number, path)
         self.click_upload()
