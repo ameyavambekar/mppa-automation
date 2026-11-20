@@ -92,6 +92,39 @@ def registered_agency_home_page(page):
 
 
 @pytest.fixture
+def refused_agency_home_page(page):
+    """Yields (page, user) on Home for an agency whose application has been refused (status "Refused").
+    Read-only: any refused agency will do, whatever its appeals stand at."""
+    for user in _submitted_agencies():
+        if _login_to_home(page, user) and _status(page) == AgencyHomePage.REFUSED:
+            yield page, user
+            return
+    pytest.skip("No submitted agency has been refused — run python -m utils.seed_appeals (irreversible, ask first).")
+
+
+# First Appeal badge on Home › Appeals for each state the Appeals card test runs in
+_FIRST_APPEAL_STATES = {"pending": re.compile(r"^Pending — decision by "),
+                        "dismissed": re.compile(rf"^{AgencyHomePage.DISMISSED_BADGE}$")}
+
+
+@pytest.fixture
+def refused_home_with_first_appeal(request, page):
+    """Indirectly parametrised with "pending" or "dismissed": yields (page, user, state) on Home for a refused
+    agency whose First Appeal is in that state."""
+    state = request.param
+    home = AgencyHomePage(page)
+    for user in _submitted_agencies():
+        if not (_login_to_home(page, user) and _status(page) == AgencyHomePage.REFUSED):
+            continue
+        badge = home.appeal_level_badge(AgencyHomePage.FIRST_APPEAL)
+        if badge.count() and _FIRST_APPEAL_STATES[state].match(badge.inner_text().strip()):
+            yield page, user, state
+            return
+    pytest.skip(f"No refused agency has a {state} First Appeal — run python -m utils.seed_appeals "
+                "(irreversible, ask first).")
+
+
+@pytest.fixture
 def home_with_unread_notifications(page):
     """Yields (page, user) on Home for a submitted agency with at least one unread notification.
     Every agency gets one when it pays; TC-522 ("Mark all read") uses it up, so the pool shrinks by
