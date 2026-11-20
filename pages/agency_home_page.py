@@ -14,9 +14,11 @@ class AgencyHomePage(BasePage):
     A welcome block (``.hd-welcome``: agency name, Application ID, status badge, registration
     date), a next-step banner (``.hd-next``; "View my application" while under review, "View
     certificate" once registered), the "Application progress" card (stage tracker
-    ``.ui-steps .st`` + timeline ``.ui-timeline li``) and the Notifications card (``#agNotes``,
-    "Mark all read" ``#agNotesRead``). The side column holds three ``.hd-tile`` links, the
-    Notice board (``.notice-item``), Quick links (``.hd-links``) and "Need help?".
+    ``.ui-steps .st`` + timeline ``.ui-timeline li``), the Appeals card (``#appeals``, refused
+    agencies), the Registration certificate (Form-II) card (registered agencies) and the
+    Notifications card (``#agNotes``, "Mark all read" ``#agNotesRead``). The side column holds the
+    ``.hd-tile`` links, Quick links (``.hd-links``) and "Need help?". The Notice board card and the
+    Notices menu item were removed on 20-Nov-2026.
     """
 
     EYEBROW = "Agency dashboard"
@@ -35,11 +37,11 @@ class AgencyHomePage(BasePage):
     UP_TO_DATE = "You are up to date"  # card subtitle (and no "Mark all read") once nothing is unread
     SUBMITTED_NOTIFICATION = "Your application has been received and submitted to the Registering Authority"
     OPEN_LABEL = "Open"
+    # The Notice board card and the Notices menu item were removed on 20-Nov-2026; module/notices.php
+    # (config.NOTICES_URL) now redirects to the portal's start page (config.INDEX_URL).
     NOTICE_BOARD_TITLE = "Notice board"
-    NOTICE_LIMIT = 5
-    NOTICE_TEXT_LIMIT = 100
-    NOTICE_BADGES = ("NEW", "ALERT", "INFO")
-    VIEW_ALL_NOTICES_LABEL = "View all notices →"
+    NOTICES_LABEL = "Notices"
+    NOTICES_PATH = "notices.php"
     QUICK_LINKS_TITLE = "Quick links"
     FOOTER_LINKS = ("Privacy Policy", "Terms of Use", "Accessibility Statement")
     FOOTER_TEXTS = ("Placement Agency Regulation Portal", "Skills, Employment, Entrepreneurship and Innovation Department",
@@ -52,9 +54,9 @@ class AgencyHomePage(BasePage):
              "Corrections": "agency/forms/corrections.php",
              "Helpdesk": "contact.php"}
     QUICK_LINKS = ("Document checklist", "User manual (PDF)", "Frequently asked questions", "Contact helpdesk")
+    NAV_ORDER = ("Home", "About Portal", "Downloads", "Contact Us")
     NAV_LINKS = {"About Portal": "about.php",
                  "Downloads": "agency/forms/download.php",
-                 "Notices": "notices.php",
                  "Contact Us": "contact.php",
                  "Home": "home.php"}
     # Unread notifications are drawn on this background (inline style; there is no class)
@@ -97,6 +99,37 @@ class AgencyHomePage(BasePage):
                         "Certificate": CERTIFICATE_PATH,
                         "Job seekers": "agency/job_seekers.php",
                         "Helpdesk": "contact.php"}
+    CERTIFICATE_VALID = "Valid"      # certificate card subtitle while the certificate is in force
+    CERTIFICATE_ACTIVE = "Active"    # certificate card chip while the certificate is in force
+    CERTIFICATE_PAGE_TITLE = "MPPA Certificate — {agency_name}"
+
+    # Once the application is refused (speaking refusal order) — seen on dev 20-Nov-2026
+    REFUSED = "Refused"
+    REFUSED_HEADING = "Your application was refused"
+    APPEALS_LABEL = "Appeals"
+    APPEALS_ANCHOR = "#appeals"
+    REFUSED_PROGRESS = "Refused · Closed"
+    REFUSED_STAGES = ("Submitted", "Desktop scrutiny", "Physical verification", "Refused")
+    REFUSAL_EVENT = "Refusal order issued"
+    REFUSAL_EVENT_NOTE = ("Speaking refusal order issued (Sec 4(3)(b), Rule 4(8)). You may file a First Appeal to the "
+                          "Divisional Appellate Authority within 60 days.")
+    REFUSED_TILES = ("My application", "Corrections", "Appeals", "Helpdesk")
+    APPEALS_TILE_TEXT = "{n} remaining"
+    APPEALS_REMAINING = "{n} of 2 appeals remaining"
+    APPEALS_REASON_PREFIX = "Reason given in the order:"
+    FIRST_APPEAL = "First Appeal"
+    SECOND_APPEAL = "Second Appeal"
+    FIRST_APPEAL_ROW = "First Appeal — Divisional Appellate Authority (FORM-III) #{n}"
+    SECOND_APPEAL_ROW = "Second Appeal — Commissionerate (FORM-IV)"
+    NOT_FILED = "Not filed"
+    PENDING_BADGE = "Pending — decision by {date}"
+    DISMISSED_BADGE = "Dismissed"
+    APPEAL_PENDING_HINT = "Your appeal is with the authority. You will be informed here and by e-mail."
+    APPEAL_DISMISSED_HINT = "Your First Appeal was dismissed. You can file the Second (final) Appeal."
+    VIEW_FIRST_APPEAL_LABEL = "View First Appeal"
+    FILE_SECOND_APPEAL_LABEL = "File Second Appeal"
+    FIRST_APPEAL_PATH = "agency/appeals/first.php"
+    SECOND_APPEAL_PATH = "agency/appeals/second.php"
 
     @staticmethod
     def url_of(path: str) -> str:
@@ -235,6 +268,11 @@ class AgencyHomePage(BasePage):
         return self.certificate_card.get_by_role("link", name=self.VIEW_CERTIFICATE_LABEL)
 
     @property
+    def certificate_download_button(self):
+        """'Download PDF' (``agency/certificate_pdf.php``) while the certificate is in force."""
+        return self.certificate_card.get_by_role("link", name=self.DOWNLOAD_PDF_LABEL)
+
+    @property
     def certificate_start_renewal_button(self):
         return self.certificate_card.get_by_role("link", name=self.START_RENEWAL_LABEL)
 
@@ -362,6 +400,16 @@ class AgencyHomePage(BasePage):
         return self.appeals_card.locator("p.ui-small")
 
     @property
+    def appeals_buttons(self):
+        """The card's buttons, in order ('File Second Appeal', 'View First Appeal', …)."""
+        return self.appeals_card.locator("a.ui-btn")
+
+    @property
+    def appeals_banner_link(self):
+        """'Appeals' in the next-step banner once the application is refused (links to ``#appeals``)."""
+        return self.page.locator(".hd-next").get_by_role("link", name=self.APPEALS_LABEL)
+
+    @property
     def first_appeal_links(self):
         """Every link on the page to FORM-III ('File First Appeal' / 'View First Appeal')."""
         return self.page.locator("a[href*='appeals/first.php']")
@@ -385,19 +433,24 @@ class AgencyHomePage(BasePage):
             has=self.page.locator("p.section-title", has_text=title))
 
     @property
-    def notices(self):
-        return self.side_card(self.NOTICE_BOARD_TITLE).locator(".notice-item")
-
-    def notice_badge(self, index: int):
-        return self.notices.nth(index).locator(".notice-badge")
-
-    def notice_text(self, index: int):
-        """The notice's text (first 100 characters, '…' when cut)."""
-        return self.notices.nth(index).locator("div")
+    def notice_board(self):
+        """The Notice board side card — removed on 20-Nov-2026."""
+        return self.side_card(self.NOTICE_BOARD_TITLE)
 
     @property
-    def view_all_notices_link(self):
-        return self.side_card(self.NOTICE_BOARD_TITLE).get_by_role("link", name=self.VIEW_ALL_NOTICES_LABEL)
+    def notice_items(self):
+        """Notice rows anywhere on the page (``.notice-item``) — none since 20-Nov-2026."""
+        return self.page.locator(".notice-item")
+
+    @property
+    def nav_links(self):
+        """Desktop top-menu links, in order."""
+        return self.page.locator(".nav-links a.nav-link")
+
+    @property
+    def notices_links(self):
+        """Any link to the notice list (``notices.php``) — none since 20-Nov-2026."""
+        return self.page.locator(f"a[href$='{self.NOTICES_PATH}'], a[href*='{self.NOTICES_PATH}?']")
 
     def quick_link(self, label: str):
         return self.side_card(self.QUICK_LINKS_TITLE).get_by_role("link", name=label, exact=True)

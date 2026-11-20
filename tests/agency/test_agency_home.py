@@ -2,13 +2,13 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import allure
+import pytest
 from playwright.sync_api import expect
 
-from config import AUTH_BASE
+from config import AUTH_BASE, INDEX_URL, NOTICES_URL
 from pages.agency_home_page import AGENCY_HOME_URL, AgencyHomePage
 from pages.declaration_page import PREVIEW_URL
 from pages.login_page import LoginPage
-from pages.notice_board_page import NoticeBoardPage
 from utils.aio import aio_case
 
 STORY = "Agency Home"
@@ -320,37 +320,31 @@ def test_tc524_quick_links(agency_home: AgencyHomePage, logged_in_agency_home_pa
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-525")
 @allure.story(STORY)
-@allure.title("TC-525: Notice board shows the latest five notices and links to all notices")
-def test_tc525_notice_board(agency_home: AgencyHomePage, logged_in_agency_home_page):
+@allure.title("TC-525: Agency Home has no Notice board and no Notices menu; notices.php leads to the portal start page")
+def test_tc525_no_notices(agency_home: AgencyHomePage, logged_in_agency_home_page):
     """
-    Given notices have been published
-    When  I look at the Notice board
-    Then  it shows up to five notices, each with a NEW / ALERT / INFO badge and its text cut at 100
-          characters, and "View all notices →" opens the Notice Board, which holds at least as many
+    Given I am on the Home page
+    When  I look for notices and open module/notices.php
+    Then  there is no Notice board card and no Notices menu item or link, and notices.php opens the
+          portal's start page (index.php) instead of a notice list
+
+    Changed 20-Nov-2026: the Notice board and the Notices menu item were removed from the agency pages.
 
     Notion: KAN-TC-525 | KAN-40 AC-8
     """
     page, user = logged_in_agency_home_page
-    shown = agency_home.notices.count()
 
-    with allure.step("Verify the notices"):
-        assert 0 < shown <= AgencyHomePage.NOTICE_LIMIT, f"{shown} notices shown"
-        for index in range(shown):
-            expect(agency_home.notice_badge(index)).to_have_text(
-                re.compile(rf"^({'|'.join(AgencyHomePage.NOTICE_BADGES)})$"))
-            text = agency_home.notice_text(index).inner_text().strip()
-            assert len(text) <= AgencyHomePage.NOTICE_TEXT_LIMIT, f"notice {index + 1} text is {len(text)} long"
-            if text.endswith("…"):
-                assert len(text) == AgencyHomePage.NOTICE_TEXT_LIMIT, f"notice {index + 1} was cut at {len(text)}"
+    with allure.step("Verify there is no Notice board"):
+        expect(agency_home.notice_board).to_have_count(0)
+        expect(agency_home.notice_items).to_have_count(0)
 
-    with allure.step("Click 'View all notices →'"):
-        _expect_opens(page, agency_home.view_all_notices_link, "notices.php")
-        board = NoticeBoardPage(page)
-        expect(board.board_heading).to_be_visible()
+    with allure.step("Verify there is no Notices menu item or link"):
+        expect(agency_home.nav_link(AgencyHomePage.NOTICES_LABEL)).to_have_count(0)
+        expect(agency_home.notices_links).to_have_count(0)
 
-    with allure.step("Verify Home shows the latest five (or all, when there are fewer)"):
-        assert shown == min(AgencyHomePage.NOTICE_LIMIT, board.notice_cards.count()), \
-            f"Home shows {shown} of {board.notice_cards.count()} notices"
+    with allure.step("Open module/notices.php — the portal's start page opens"):
+        page.goto(NOTICES_URL)
+        expect(page).to_have_url(re.compile(rf"^{re.escape(INDEX_URL)}"))
 
 
 # ---------------------------------------------------------------------------
@@ -362,12 +356,16 @@ def test_tc525_notice_board(agency_home: AgencyHomePage, logged_in_agency_home_p
 def test_tc526_top_menu(agency_home: AgencyHomePage, logged_in_agency_home_page):
     """
     Given I am on the Home page
-    When  I click About Portal, Downloads, Notices, Contact Us and Home
-    Then  each opens its page
+    When  I click About Portal, Downloads, Contact Us and Home
+    Then  the menu reads Home, About Portal, Downloads, Contact Us (no Notices since 20-Nov-2026) and each
+          opens its page
 
     Notion: KAN-TC-526 | KAN-40 AC-9
     """
     page, user = logged_in_agency_home_page
+
+    with allure.step("Verify the menu items, in order"):
+        expect(agency_home.nav_links).to_have_text(list(AgencyHomePage.NAV_ORDER))
 
     for label, path in AgencyHomePage.NAV_LINKS.items():
         with allure.step(f"Click '{label}'"):
@@ -490,7 +488,7 @@ def test_tc580_registered_status(agency_home: AgencyHomePage, registered_agency_
     Given my registration certificate has been issued
     When  I open the Home page
     Then  the welcome block shows "Registered", the banner says my agency is registered with the certificate's
-          validity (five years after issue) and "View certificate", Application progress reads "Approved —
+          validity (the certificate card's Valid until) and "View certificate", Application progress reads "Approved —
           Certificate Issued · Closed" with no deadline and every stage done, and the timeline lists the
           certificate, the office verification, Desktop Scrutiny and the submission, newest first
 
@@ -517,12 +515,10 @@ def test_tc580_registered_status(agency_home: AgencyHomePage, registered_agency_
         moments = [_timeline_moment(text) for text in agency_home.timeline_times.all_inner_texts()]
         assert moments == sorted(moments, reverse=True), f"Timeline is not newest first: {moments}"
 
-    with allure.step("Verify the banner"):
-        issued = moments[0]
-        valid_until = issued.replace(year=issued.year + AgencyHomePage.CERTIFICATE_YEARS)
+    with allure.step("Verify the banner — valid until the certificate card's Valid until (which renewal moves)"):
+        valid_until = agency_home.certificate_field("Valid until").inner_text().strip()
         expect(agency_home.next_step_heading).to_have_text(AgencyHomePage.REGISTERED_HEADING)
-        expect(agency_home.next_step_text).to_have_text(
-            re.compile(rf"^Certificate valid until 0?{valid_until.day} {valid_until:%b %Y}\.$"))
+        expect(agency_home.next_step_text).to_have_text(f"Certificate valid until {valid_until}.")
         expect(agency_home.view_certificate_button).to_be_visible()
         expect(agency_home.next_step_button).to_have_count(0)
 
@@ -565,3 +561,171 @@ def test_tc581_registered_tiles(agency_home: AgencyHomePage, registered_agency_h
         agency_home.open()
         _expect_opens(page, agency_home.view_certificate_button, AgencyHomePage.CERTIFICATE_PATH)
         expect(page).to_have_title(re.compile(rf"^MPPA Certificate — {re.escape(user.agency_name)}$"))
+
+
+# ---------------------------------------------------------------------------
+# TC-888  Registered agency — Registration certificate (Form-II) card
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-888")
+@allure.story(STORY)
+@allure.title("TC-888: Registration certificate card on Home shows the certificate number, validity and its two buttons")
+def test_tc888_certificate_card(agency_home: AgencyHomePage, registered_agency_home_page):
+    """
+    Given my registration certificate has been issued
+    When  I look at the Registration certificate (Form-II) card and use its buttons
+    Then  it reads "Valid" with an "Active" chip, shows the certificate number, Valid from and Valid until (five
+          years later, or one day less — the same date as the banner), "View certificate" opens the certificate
+          and "Download PDF" answers with a PDF
+
+    Notion: KAN-TC-888 | KAN-40 AC-10
+    """
+    page, user = registered_agency_home_page
+
+    with allure.step("Verify the card's status"):
+        expect(agency_home.certificate_card).to_be_visible()
+        expect(agency_home.certificate_subtitle).to_have_text(AgencyHomePage.CERTIFICATE_VALID)
+        expect(agency_home.certificate_chip).to_have_text(AgencyHomePage.CERTIFICATE_ACTIVE)
+
+    with allure.step("Verify the certificate number and validity"):
+        expect(agency_home.certificate_field("Certificate no.")).to_have_text(re.compile(r"^\d{13,14}$"))
+        expect(agency_home.certificate_field("Valid from")).to_have_text(re.compile(rf"^{DATE}$"))
+        expect(agency_home.certificate_field("Valid until")).to_have_text(re.compile(rf"^{DATE}$"))
+        valid_from = datetime.strptime(agency_home.certificate_field("Valid from").inner_text().strip(), "%d %b %Y")
+        until_text = agency_home.certificate_field("Valid until").inner_text().strip()
+        valid_until = datetime.strptime(until_text, "%d %b %Y")
+        five_years = valid_from.replace(year=valid_from.year + AgencyHomePage.CERTIFICATE_YEARS)
+        assert valid_until in (five_years, five_years - timedelta(days=1)), \
+            f"Valid until {until_text} is not five years after Valid from {valid_from:%d %b %Y}"
+        expect(agency_home.next_step_text).to_have_text(f"Certificate valid until {until_text}.")
+
+    with allure.step("Verify the buttons"):
+        expect(agency_home.certificate_buttons).to_have_text(
+            [AgencyHomePage.VIEW_CERTIFICATE_LABEL, AgencyHomePage.DOWNLOAD_PDF_LABEL])
+        expect(agency_home.certificate_download_button).to_have_attribute("href", AgencyHomePage.CERTIFICATE_PDF_PATH)
+
+    with allure.step("Fetch 'Download PDF' — a PDF comes back"):
+        response = page.request.get(AgencyHomePage.url_of(AgencyHomePage.CERTIFICATE_PDF_PATH))
+        assert response.ok, f"certificate_pdf.php returned {response.status}"
+        assert response.headers.get("content-type", "").startswith("application/pdf"), \
+            f"certificate_pdf.php returned {response.headers.get('content-type')}"
+
+    with allure.step("Click 'View certificate' on the card"):
+        _expect_opens(page, agency_home.certificate_view_button, AgencyHomePage.CERTIFICATE_PATH)
+        expect(page).to_have_title(AgencyHomePage.CERTIFICATE_PAGE_TITLE.format(agency_name=user.agency_name))
+
+
+# ---------------------------------------------------------------------------
+# TC-889  Refused agency — welcome block, banner, progress and tiles
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-889")
+@allure.story(STORY)
+@allure.title("TC-889: Home after refusal shows the Refused status, the refusal banner, a red Refused stage and the Appeals tile")
+def test_tc889_refused_status(agency_home: AgencyHomePage, refused_agency_home_page):
+    """
+    Given my application has been refused by a speaking refusal order
+    When  I open the Home page
+    Then  the welcome block shows a red "Refused" badge, the banner reads "Your application was refused" with an
+          "Appeals" link to the Appeals card, Application progress reads "Refused · Closed" with no deadline and
+          the tracker ends in a red Refused stage, the timeline holds the refusal order, and the tiles are
+          My application, Corrections, Appeals and Helpdesk
+
+    The banner's text is not checked: after an appeal it still invites the first appeal ("Agency homepage" #83).
+
+    Notion: KAN-TC-889 | KAN-40 AC-11
+    """
+    page, user = refused_agency_home_page
+
+    with allure.step("Verify the welcome block"):
+        expect(agency_home.eyebrow).to_have_text(AgencyHomePage.EYEBROW)
+        expect(agency_home.status_badge).to_have_text(AgencyHomePage.REFUSED)
+        expect(agency_home.status_badge).to_have_class(re.compile(r"\bui-badge-red\b"))
+        expect(agency_home.application_id).to_have_text(APPLICATION_ID)
+        expect(agency_home.view_submitted_button).to_be_visible()
+
+    with allure.step("Verify the banner"):
+        expect(agency_home.next_step_heading).to_have_text(AgencyHomePage.REFUSED_HEADING)
+        expect(agency_home.appeals_banner_link).to_have_attribute("href", AgencyHomePage.APPEALS_ANCHOR)
+        expect(agency_home.next_step_button).to_have_count(0)
+        expect(agency_home.view_certificate_button).to_have_count(0)
+
+    with allure.step("Verify Application progress"):
+        expect(agency_home.progress_subtitle).to_have_text(AgencyHomePage.REFUSED_PROGRESS)
+        expect(agency_home.progress_badge).to_have_count(0)
+        expect(agency_home.stages).to_have_text(list(AgencyHomePage.REFUSED_STAGES))
+        expect(agency_home.stages.last).to_have_class(re.compile(r"\bis-failed\b"))
+
+    with allure.step("Verify the timeline holds the refusal order, newest first"):
+        # The note is followed by the reason given in the order (cut, with "Show more")
+        expect(agency_home.timeline_note(AgencyHomePage.REFUSAL_EVENT)).to_have_text(
+            re.compile(rf"^\s*{re.escape(AgencyHomePage.REFUSAL_EVENT_NOTE)}"))
+        expect(agency_home.timeline_time(AgencyHomePage.REFUSAL_EVENT)).to_have_text(re.compile(rf"^{DATE_TIME}$"))
+        moments = [_timeline_moment(text) for text in agency_home.timeline_times.all_inner_texts()]
+        assert moments == sorted(moments, reverse=True), f"Timeline is not newest first: {moments}"
+
+    with allure.step("Verify the tiles"):
+        expect(agency_home.tiles).to_have_count(len(AgencyHomePage.REFUSED_TILES))
+        for index, label in enumerate(AgencyHomePage.REFUSED_TILES):
+            expect(agency_home.tiles.nth(index)).to_contain_text(label)
+        appeals_tile = agency_home.tile(AgencyHomePage.APPEALS_LABEL)
+        expect(appeals_tile).to_have_attribute("href", AgencyHomePage.APPEALS_ANCHOR)
+        # The label runs straight into the count: "Appeals1 remaining"
+        expect(appeals_tile).to_have_text(re.compile(rf"^{AgencyHomePage.APPEALS_LABEL}\s*[0-2] remaining$"))
+
+
+# ---------------------------------------------------------------------------
+# TC-890  Refused agency — Appeals card
+# ---------------------------------------------------------------------------
+_APPEAL_STATES = {
+    # state: (First Appeal badge, hint, buttons in order as (label, path))
+    "pending": (re.compile(rf"^Pending — decision by {DATE}$"), AgencyHomePage.APPEAL_PENDING_HINT,
+                [(AgencyHomePage.VIEW_FIRST_APPEAL_LABEL, AgencyHomePage.FIRST_APPEAL_PATH)]),
+    "dismissed": (re.compile(rf"^{AgencyHomePage.DISMISSED_BADGE}$"), AgencyHomePage.APPEAL_DISMISSED_HINT,
+                  [(AgencyHomePage.FILE_SECOND_APPEAL_LABEL, AgencyHomePage.SECOND_APPEAL_PATH),
+                   (AgencyHomePage.VIEW_FIRST_APPEAL_LABEL, AgencyHomePage.FIRST_APPEAL_PATH)]),
+}
+
+
+@aio_case("KAN-TC-890")
+@allure.story(STORY)
+@allure.title("TC-890: Appeals card on Home shows the appeals left, the order's reason and the next step for the appeal's state")
+@pytest.mark.parametrize("refused_home_with_first_appeal", list(_APPEAL_STATES), indirect=True)
+def test_tc890_appeals_card(agency_home: AgencyHomePage, refused_home_with_first_appeal):
+    """
+    Given my application has been refused and my First Appeal is pending (or was dismissed)
+    When  I look at the Appeals card and click its buttons
+    Then  it reads "1 of 2 appeals remaining" with the reason given in the order and a row per appeal level;
+          pending: "Pending — decision by <date>", "Your appeal is with the authority…" and View First Appeal;
+          dismissed: "Dismissed", "…You can file the Second (final) Appeal." with File Second Appeal and
+          View First Appeal; each button opens its appeal page
+
+    Notion: KAN-TC-890 | KAN-40 AC-11 | data: pending, dismissed
+    """
+    page, user, state = refused_home_with_first_appeal
+    badge, hint, buttons = _APPEAL_STATES[state]
+
+    with allure.step("Verify the appeals left and the order's reason"):
+        expect(agency_home.appeals_remaining).to_have_text(AgencyHomePage.APPEALS_REMAINING.format(n=1))
+        expect(agency_home.tile(AgencyHomePage.APPEALS_LABEL)).to_contain_text(
+            AgencyHomePage.APPEALS_TILE_TEXT.format(n=1))
+        expect(agency_home.appeals_order_reason).to_have_text(
+            re.compile(rf"^{re.escape(AgencyHomePage.APPEALS_REASON_PREFIX)}\s*\S"))
+
+    with allure.step("Verify the appeal levels"):
+        first_row = agency_home.appeal_level_row(AgencyHomePage.FIRST_APPEAL)
+        second_row = agency_home.appeal_level_row(AgencyHomePage.SECOND_APPEAL)
+        first_label = re.escape(AgencyHomePage.FIRST_APPEAL_ROW).replace(re.escape("{n}"), r"\d+")
+        expect(first_row.locator("td").first).to_have_text(re.compile(rf"^{first_label}$"))
+        expect(agency_home.appeal_level_badge(AgencyHomePage.FIRST_APPEAL)).to_have_text(badge)
+        expect(second_row.locator("td").first).to_have_text(AgencyHomePage.SECOND_APPEAL_ROW)
+        expect(agency_home.appeal_level_badge(AgencyHomePage.SECOND_APPEAL)).to_have_text(AgencyHomePage.NOT_FILED)
+
+    with allure.step("Verify the next step and the buttons"):
+        expect(agency_home.appeals_hint).to_have_text(hint)
+        expect(agency_home.appeals_buttons).to_have_text([label for label, _ in buttons])
+        for index, (_, path) in enumerate(buttons):
+            expect(agency_home.appeals_buttons.nth(index)).to_have_attribute("href", path)
+
+    for index, (label, path) in enumerate(buttons):
+        with allure.step(f"Click '{label}' — its appeal page opens"):
+            agency_home.open()
+            _expect_opens(page, agency_home.appeals_buttons.nth(index), path)
