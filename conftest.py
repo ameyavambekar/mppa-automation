@@ -51,6 +51,7 @@ pytest_plugins = [
     "fixtures.premises_fixtures",
     "fixtures.declaration_fixtures",
     "fixtures.preview_fixtures",
+    "fixtures.payment_fixtures",
     "fixtures.agency_home_fixtures",
     "fixtures.notice_board_fixtures",
     "fixtures.contact_fixtures",

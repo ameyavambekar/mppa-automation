@@ -15,9 +15,46 @@ class MyApplicationPage(BasePage):
     reason in the refusal order) and a "File Appeal" link; the page's button row has another.
     """
 
+    # Sections (``.vsec``), each headed "<n> <title> ✓ Completed" (dev, 20-Nov-2026)
+    OPERATIONS = "Operational Details"
+    FEES = "Fees & Payment"
+    COMPLETED = "✓ Completed"
+    FEE_LABELS = ("Jurisdiction", "Fee Amount", "Transaction Number", "Amount Paid", "Bank Name", "Branch Name",
+                  "Submitted At")
+    SUBMITTED_NOTE = "No changes can be made."
+
     @property
     def status_banner(self):
         return self.page.locator(".status-banner").first
+
+    def section(self, title: str):
+        return self.page.locator(".vsec").filter(has=self.page.locator(".sec-title", has_text=title))
+
+    def section_badge(self, title: str):
+        return self.section(title).locator(".sec-badge")
+
+    def field_labels(self, title: str):
+        return self.section(title).locator(".field-label")
+
+    def field_value(self, title: str, label: str):
+        """The value of the field labelled exactly ``label`` in section ``title``."""
+        return self.section(title).locator(
+            f"xpath=.//div[@class='field-item'][div[@class='field-label' and normalize-space()='{label}']]"
+            "/div[contains(@class,'field-value')]")
+
+    @property
+    def form_fields(self):
+        """Inputs, selects and text areas — none on the submitted application."""
+        return self.page.locator("input:not([type='hidden']), select, textarea")
+
+    @property
+    def edit_links(self):
+        return self.page.get_by_role("link", name="Edit", exact=True)
+
+    @property
+    def receipt_links(self):
+        """Links to the payment receipt (receipt.php) — none on dev (20-Nov-2026)."""
+        return self.page.locator("a[href*='receipt.php']")
 
     @property
     def admin_remarks(self):

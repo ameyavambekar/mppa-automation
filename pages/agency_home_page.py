@@ -127,6 +127,12 @@ class AgencyHomePage(BasePage):
         return self.page.locator(".nav-right").get_by_role("link", name="Logout")
 
     @property
+    def receipt_links(self):
+        """Links to the payment receipt (forms/receipt.php) — none on dev (20-Nov-2026, defect
+        "Step 8 — Fees & Payment" #20)."""
+        return self.page.locator("a[href*='receipt.php']")
+
+    @property
     def login_link(self):
         """'Login' in the top bar — shown instead of the user and Logout once logged out, when home.php
         is the public landing page."""
