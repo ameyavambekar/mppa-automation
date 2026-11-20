@@ -1,5 +1,6 @@
+import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import allure
 from playwright.sync_api import expect
@@ -44,6 +45,21 @@ def _today_in(text: str) -> bool:
     return any(d.strftime("%d/%m/%Y") in text for d in (datetime.now(), datetime.now(timezone.utc)))
 
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _expect_generated_in_ist(text: str) -> None:
+    """Every 'Generated: dd/mm/yyyy hh:mm' stamp is the current Indian time (within 15 minutes) — it was UTC
+    until 20-Nov-2026."""
+    stamps = re.findall(r"Generated: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", text)
+    assert stamps, "no 'Generated:' stamp in the PDF"
+    now = datetime.now(IST).replace(tzinfo=None)
+    for stamp in stamps:
+        generated = datetime.strptime(stamp, "%d/%m/%Y %H:%M")
+        assert abs(generated - now) <= timedelta(minutes=15), \
+            f"'Generated: {stamp}' is not the current Indian time ({now:%d/%m/%Y %H:%M})"
+
+
 def _expect_untouched(declaration: DeclarationPage) -> None:
     expect(declaration.counter).to_have_text(DeclarationPage.counter_text(0))
     for key in DeclarationPage.FORMS:
@@ -54,6 +70,26 @@ def _expect_ready(declaration: DeclarationPage, key: str, path: str) -> None:
     expect(declaration.zone_line1(key)).to_have_text(f"✓ {DeclarationPage.chosen_text(path)}")
     expect(declaration.zone_line2(key)).to_have_text(DeclarationPage.ready_text(path))
     expect(declaration.upload_zone(key)).to_have_class(re.compile(r"\bhas\b"))
+
+
+def _expect_served(page, declaration: DeclarationPage, key: str, path: str) -> None:
+    """'View ↗' on the card serves exactly the file at ``path``."""
+    response = page.request.get(declaration.view_link(key).evaluate("a => a.href"))
+    assert response.ok and response.headers.get("content-type", "").startswith("application/pdf")
+    with open(path, "rb") as f:
+        assert response.body() == f.read(), f"the served PDF is not {path}"
+
+
+def _expect_refused(page, declaration: DeclarationPage, error: str) -> None:
+    """The server refused the file: back on Declaration with the red message, nothing saved; the message is shown
+    once."""
+    expect(page).to_have_url(ON_DECLARATION)
+    expect(declaration.error_box).to_have_text(error)
+    expect(declaration.message_box).to_have_count(0)
+    _expect_untouched(declaration)
+    page.reload(wait_until="networkidle")
+    expect(declaration.error_box).to_have_count(0)
+    _expect_untouched(declaration)
 
 
 def _expect_rejected(declaration: DeclarationPage, key: str, path: str, error: str) -> None:
@@ -71,7 +107,7 @@ def _expect_rejected(declaration: DeclarationPage, key: str, path: str, error: s
 @allure.title("TC-490: Declaration shows the heading, instructions, both form cards and \"Upload & Continue\"")
 def test_tc490_page_layout(declaration_page: DeclarationPage, logged_in_declaration_page):
     """
-    Given I have completed the Premises Photos step
+    Given I have saved (locked) the Premises Photos step
     When  I open the Declaration step
     Then  the heading, back button, progress bar, instruction tiles, note, progress card, both form cards
           and "Upload & Continue" are shown
@@ -193,8 +229,8 @@ def test_tc493_download_form_ia(declaration_page: DeclarationPage, logged_in_dec
     """
     Given I am on the Declaration step
     When  I click "Download Pre-filled FORM-I(A)"
-    Then  a one-page PDF named after my agency is downloaded, with my agency's name, email, mobile number
-          and today's date filled into the self-declaration
+    Then  a one-page PDF named after my agency is downloaded, with my agency's name, address, email, mobile
+          number and today's date filled into the self-declaration, generated at the current Indian time
 
     Notion: KAN-TC-493 | KAN-10 AC-4
     """
@@ -221,10 +257,14 @@ def test_tc493_download_form_ia(declaration_page: DeclarationPage, logged_in_dec
             assert expected in text, f"'{expected}' not in FORM-I(A)"
 
     with allure.step("Verify the agency's details are filled in"):
-        for expected in (f"of {agency}", f"Email: {user.email}", f"Telephone Number/Mobile Number: {user.mobile}",
+        for expected in (f"of {agency}", "Address of Applicant:", f"Email: {user.email}",
+                         f"Telephone Number/Mobile Number: {user.mobile}", f"Email ID: {user.email}",
                          "Place :", "Agency Seal / Stamp", "Signature of the Applicant"):
             assert expected in text, f"'{expected}' not in FORM-I(A)"
         assert _today_in(text), "today's date not in FORM-I(A)"
+
+    with allure.step("Verify the 'Generated' time is the current Indian time"):
+        _expect_generated_in_ist(text)
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +277,12 @@ def test_tc494_download_form_ib(declaration_page: DeclarationPage, logged_in_dec
     """
     Given I am on the Declaration step
     When  I click "Download Pre-filled FORM-I(B)"
-    Then  a two-page PDF named after my agency is downloaded, addressed to the Registering Authority of my area,
-          with my agency's name and PAN filled in, the Aadhaar number left blank and the signature boxes on page 2
+    Then  a two-page PDF named after my agency is downloaded, addressed to the Assistant Commissioner of the
+          district my agency registered in, with my agency's name and PAN filled in, the Aadhaar number left
+          blank, the signature section on page 2 and the current Indian time as "Generated"
+
+    Until 20-Nov-2026 it was addressed to "The Registering Authority, [Area/ <office city> District as
+    specified]" (defect #9 on the "Application Step 6: Declaration" tab).
 
     Notion: KAN-TC-494 | KAN-10 AC-4
     """
@@ -261,20 +305,25 @@ def test_tc494_download_form_ib(declaration_page: DeclarationPage, logged_in_dec
                          f"Page 2 of 2 | {agency} | Generated:", "# This format may change on portal."):
             assert expected in text, f"'{expected}' not in FORM-I(B)"
 
-    with allure.step("Verify the addressee and the agency's details"):
-        # The area is filled in, but from the Part A office city rather than the registration district
-        # (open question on KAN-10), so only its presence is checked.
-        assert re.search(r"To, The Registering Authority, \[Area/ \S.*? District as specified\] Maharashtra\.", text), \
-            "the Registering Authority's area is not filled in"
+    with allure.step(f"Verify the addressee is the Assistant Commissioner of {user.district} district"):
+        addressee = DeclarationPage.IB_ADDRESSEE.format(district=user.district)
+        assert addressee in text, f"'{addressee}' not in FORM-I(B)"
+        assert "Subject: Letter of Authorization" in text
+
+    with allure.step("Verify the agency's details"):
         assert f"on behalf of the entity named {agency}" in text
         assert f"and PAN {user.pan}" in text
         assert re.search(r"holding Aadhaar Number _+ \(copy to be attached with this letter\)", text), \
             "the Aadhaar number should be left blank"
 
     with allure.step("Verify the signature section"):
-        for expected in ("Signature of Authorized Representative", "Yours faithfully,", "Seal of the Company"):
+        for expected in ("The specimen signature of Smt/Shri", "the authorized representative, is attested below:",
+                         "Yours faithfully,", "Signature of Director", "Seal of the Company"):
             assert expected in text, f"'{expected}' not in FORM-I(B)"
         assert _today_in(text), "today's date not in FORM-I(B)"
+
+    with allure.step("Verify the 'Generated' time is the current Indian time"):
+        _expect_generated_in_ist(text)
 
 
 # ---------------------------------------------------------------------------
@@ -360,10 +409,13 @@ def test_tc496_upload_both_forms(
             expect(declaration_page.zone_line1(key)).to_have_text(DeclarationPage.replace_label(key))
 
     with allure.step("Verify 'View ↗' on FORM-I(A) serves the uploaded PDF"):
-        response = page.request.get(declaration_page.view_link("ia").evaluate("a => a.href"))
-        assert response.ok and response.headers.get("content-type", "").startswith("application/pdf")
-        with open(files["ia"], "rb") as f:
-            assert response.body() == f.read(), "the served PDF is not the uploaded FORM-I(A)"
+        _expect_served(page, declaration_page, "ia", files["ia"])
+
+    with allure.step("Reload — the completion message is shown only once"):
+        page.reload(wait_until="networkidle")
+        expect(declaration_page.message_box).to_have_count(0)
+        expect(declaration_page.counter).to_have_text(DeclarationPage.counter_text(2))
+        expect(declaration_page.next_link).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -583,3 +635,116 @@ def test_tc503_upload_one_form(
     with allure.step("Open preview.php directly — still locked"):
         page.goto(PREVIEW_URL)
         expect(page).to_have_url(PREVIEW_LOCKED_URL)
+
+
+# ---------------------------------------------------------------------------
+# TC-868  Replace an uploaded form — uploads
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-868")
+@allure.story(STORY)
+@allure.title("TC-868: Replacing an uploaded signed form saves the new file in its place")
+def test_tc868_replace_uploaded_form(
+    declaration_page: DeclarationPage, logged_in_declaration_page, declaration_replacement_data: DeclarationData
+):
+    """
+    Given the signed FORM-I(A) is uploaded and FORM-I(B) is not
+    When  I choose another PDF in "Replace signed FORM-I(A) (optional)" and click "Upload & Continue"
+    Then  FORM-I(A) shows the new file name and "View ↗" serves the new file; the counter stays 1 / 2 and
+          FORM-I(B) is still PENDING
+
+    Added 20-Nov-2026.
+
+    Notion: KAN-TC-868 | KAN-10 AC-11 | data: replacement
+    """
+    page, user = logged_in_declaration_page
+    first, second = declaration_replacement_data.files["ia"], declaration_replacement_data.replacements["ia"]
+
+    with allure.step("Precondition: upload only the signed FORM-I(A)"):
+        declaration_page.choose_file("ia", first)
+        declaration_page.upload_and_continue()
+        _record(user, "in_progress")
+        expect(declaration_page.uploaded_file("ia")).to_have_text(DeclarationPage.uploaded_text(first))
+        expect(declaration_page.zone_line1("ia")).to_have_text(DeclarationPage.replace_label("ia"))
+
+    with allure.step("Choose another PDF in the 'Replace' zone"):
+        declaration_page.choose_file("ia", second)
+        _expect_ready(declaration_page, "ia", second)
+
+    with allure.step("Click 'Upload & Continue' — the new file replaces the old one"):
+        declaration_page.upload_and_continue()
+        expect(page).to_have_url(ON_DECLARATION)
+        expect(declaration_page.message_box).to_have_text(DeclarationPage.partial_message(1))
+        expect(declaration_page.badge("ia")).to_have_text(DeclarationPage.BADGE_UPLOADED)
+        expect(declaration_page.uploaded_file("ia")).to_have_text(DeclarationPage.uploaded_text(second))
+        expect(declaration_page.counter).to_have_text(DeclarationPage.counter_text(1))
+        expect(declaration_page.badge("ib")).to_have_text(DeclarationPage.BADGE_PENDING)
+
+    with allure.step("Verify 'View ↗' serves the new file"):
+        _expect_served(page, declaration_page, "ia", second)
+
+
+# ---------------------------------------------------------------------------
+# TC-869  JPG renamed to .pdf — refused by the server, nothing saved
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-869")
+@allure.story(STORY)
+@allure.title("TC-869: A file renamed to .pdf that is not a PDF is refused by the server")
+def test_tc869_jpg_renamed_pdf_refused(
+    declaration_page: DeclarationPage, logged_in_declaration_page, declaration_jpg_as_pdf_data: DeclarationData
+):
+    """
+    Given no signed form has been uploaded
+    When  I choose a JPG renamed to .pdf for FORM-I(A) and click "Upload & Continue"
+    Then  the browser accepts it, but the server refuses it with "Self-Declaration (FORM-I(A)): Only PDF files are
+          accepted (got "jpg_renamed.pdf")."; nothing is saved and the message is gone after a reload
+
+    Added 20-Nov-2026.
+
+    Notion: KAN-TC-869 | KAN-10 EC-5 | data: jpg_as_pdf
+    """
+    page, user = logged_in_declaration_page
+    path = declaration_jpg_as_pdf_data.invalid_files["ia"]
+
+    with allure.step("Choose the renamed JPG for FORM-I(A) — the browser accepts it"):
+        declaration_page.choose_file("ia", path)
+        _expect_ready(declaration_page, "ia", path)
+
+    with allure.step("Click 'Upload & Continue' — the server refuses it"):
+        declaration_page.upload_and_continue()
+        _expect_refused(page, declaration_page, declaration_jpg_as_pdf_data.expected_error)
+
+
+# ---------------------------------------------------------------------------
+# TC-870  Empty PDF — refused by the server, nothing saved
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-870")
+@allure.story(STORY)
+@allure.title("TC-870: An empty (0-byte) PDF is refused when uploaded")
+def test_tc870_empty_pdf_refused(
+    declaration_page: DeclarationPage, logged_in_declaration_page, declaration_empty_pdf_data: DeclarationData
+):
+    """
+    Given no signed form has been uploaded
+    When  I choose an empty PDF for FORM-I(B) and click "Upload & Continue"
+    Then  the browser accepts it ("0 KB — ready to upload"), but the server refuses it with a red message for
+          "Letter of Authorization (FORM-I(B))" naming empty.pdf; nothing is saved
+
+    The server currently says "Only PDF files are accepted" for the empty PDF — the wording is an open
+    question on KAN-10 (EC-6), so only the form name and the file name are checked.
+
+    Added 20-Nov-2026.
+
+    Notion: KAN-TC-870 | KAN-10 EC-6 | data: empty_pdf
+    """
+    page, user = logged_in_declaration_page
+    path = declaration_empty_pdf_data.invalid_files["ib"]
+
+    with allure.step("Choose the empty PDF for FORM-I(B) — the browser accepts it"):
+        declaration_page.choose_file("ib", path)
+        _expect_ready(declaration_page, "ib", path)
+
+    with allure.step("Click 'Upload & Continue' — the server refuses it"):
+        declaration_page.upload_and_continue()
+        expect(declaration_page.error_box).to_contain_text(DeclarationPage.SERVER_FORM_NAMES["ib"])
+        expect(declaration_page.error_box).to_contain_text(f'"{os.path.basename(path)}"')
+        _expect_refused(page, declaration_page, re.compile(r"\S"))

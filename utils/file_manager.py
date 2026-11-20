@@ -42,6 +42,7 @@ SIGNATURE_SMALL_DIMENSIONS_PNG = get_document_path("signature_small_dimensions.p
 # Documents step (enclosures) accepts PDF only, 10 KB – 2 MB.
 REPLACEMENT_PDF = get_document_path("certificate_v2.pdf")        # ~360 KB PDF with a different name
 EMPTY_PDF = get_document_path("empty.pdf")                       # 0-byte PDF
+JPG_AS_PDF = get_document_path("jpg_renamed.pdf")                # ~75 KB JPG (certificate.jpg) renamed to .pdf
 
 # Premises Photos accepts JPG / PNG only (use CERTIFICATE_JPG / CERTIFICATE_PNG as photos).
 UNSUPPORTED_PHOTO = get_document_path("office_photo.heic")       # ~20 KB HEIC (wrong format)

@@ -43,7 +43,7 @@ def declaration_page(page) -> DeclarationPage:
 @pytest.fixture
 def logged_in_declaration_page(page):
     """Yields (page, user) on the Declaration step for an agency whose Premises Photos step is
-    complete and who has never uploaded a signed form (counter 0 / 2, both forms PENDING).
+    saved (locked) and who has never uploaded a signed form (counter 0 / 2, both forms PENDING).
     Users with an upload are never used — a test that uploads records it in the state store —
     and when none is left, a new agency is built (see ``utils.agency_builder``)."""
     store = TestStateStore()
@@ -82,3 +82,21 @@ def declaration_not_pdf_data() -> DeclarationData:
 def declaration_too_large_data() -> DeclarationData:
     """TC-502: a 3 MB PDF, then a valid one."""
     return DeclarationFactory.too_large()
+
+
+@pytest.fixture
+def declaration_replacement_data() -> DeclarationData:
+    """TC-868: FORM-I(A), then a different PDF that replaces it."""
+    return DeclarationFactory.replacement()
+
+
+@pytest.fixture
+def declaration_jpg_as_pdf_data() -> DeclarationData:
+    """TC-869: a JPG renamed to .pdf."""
+    return DeclarationFactory.jpg_as_pdf()
+
+
+@pytest.fixture
+def declaration_empty_pdf_data() -> DeclarationData:
+    """TC-870: a 0-byte PDF."""
+    return DeclarationFactory.empty_pdf()

@@ -28,8 +28,14 @@ class DeclarationPage(BasePage):
 
     An uploaded form's card turns green ("✓ UPLOADED", class ``done``) with
     "Signed copy uploaded — <file>" and a "View ↗" link, and its zone becomes
-    "Replace signed FORM-I(…) (optional)". With both uploaded, the submit opens
-    Preview; with one, the page reloads with a message in ``message_box``.
+    "Replace signed FORM-I(…) (optional)" — choosing a file there and submitting
+    replaces the saved copy. With both uploaded, the submit opens Preview; with
+    one, the page reloads with a message in ``message_box``.
+
+    The server checks each file again (by content — a JPG renamed to .pdf gets
+    past the browser) and refuses it with a red ``error_box`` message
+    (``server_not_pdf_error`` / ``server_too_large_error``); nothing is saved.
+    Both boxes are shown once, on the page the submit returns to (20-Nov-2026).
     """
 
     # key → (card title, rule, read-text summary, download label, upload input id)
@@ -68,6 +74,10 @@ class DeclarationPage(BasePage):
     NOTHING_CHOSEN_ALERT = "Please choose the signed PDF file(s) to upload."
     # Server messages after "Upload & Continue"
     COMPLETE_MESSAGE = "Both signed PDFs uploaded. Step 6 complete — proceeding to Preview."
+    # Form names the server's refusals start with
+    SERVER_FORM_NAMES = {"ia": "Self-Declaration (FORM-I(A))", "ib": "Letter of Authorization (FORM-I(B))"}
+    # FORM-I(B) addressee since 20-Nov-2026 (was "The Registering Authority, [Area/ <office city> District as specified]")
+    IB_ADDRESSEE = "To, The Assistant Commissioner, {district} District, Maharashtra."
 
     # Opening words of each form's text on the page
     IA_TEXT_START = ("I, [Name], in my capacity as the [Designation] of [Private Placement Agency Name], do hereby "
@@ -109,6 +119,15 @@ class DeclarationPage(BasePage):
         return f"{int(os.path.getsize(path) / 1024 + 0.5)} KB — ready to upload"
 
     @staticmethod
+    def server_not_pdf_error(key: str, path: str) -> str:
+        """Server refusal of a file that is not a PDF (also shown for an empty .pdf, 20-Nov-2026)."""
+        return f'{DeclarationPage.SERVER_FORM_NAMES[key]}: Only PDF files are accepted (got "{os.path.basename(path)}").'
+
+    @staticmethod
+    def server_too_large_error(key: str) -> str:
+        return f"{DeclarationPage.SERVER_FORM_NAMES[key]}: File is larger than 2 MB. Please upload a scanned PDF of 2 MB or less."
+
+    @staticmethod
     def too_large_error(path: str) -> str:
         """'File is <N.NN> MB — maximum is 2 MB. Please compress it.'"""
         return f"File is {os.path.getsize(path) / 1048576:.2f} MB — maximum is 2 MB. Please compress it."
@@ -148,6 +167,11 @@ class DeclarationPage(BasePage):
     def message_box(self):
         """Green message above the heading after 'Upload & Continue' (absent before any upload)."""
         return self.page.locator(".dc-wrap .alert-s")
+
+    @property
+    def error_box(self):
+        """Red message above the heading when the server refuses a file (absent otherwise)."""
+        return self.page.locator(".dc-wrap .alert-e")
 
     @property
     def step_tiles(self):
@@ -236,7 +260,7 @@ class DeclarationPage(BasePage):
 
     @allure.step("Open the Declaration step")
     def open(self):
-        """Navigates to Declaration (requires a logged-in agency session with Premises Photos completed)."""
+        """Navigates to Declaration (requires a logged-in agency session with Premises Photos saved — locked)."""
         self.navigate(DECLARATION_URL)
 
     @allure.step("FORM-I({key}): choose {path}")
