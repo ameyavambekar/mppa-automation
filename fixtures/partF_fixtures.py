@@ -35,6 +35,23 @@ def _offline(user) -> bool:
     return bool(user.step_data.get("part_c", {}).get("offline"))
 
 
+def _overseas(user) -> bool:
+    """Part C was recorded with area "India and Overseas", which makes the RA certificate compulsory."""
+    return bool(user.step_data.get("part_c", {}).get("overseas"))
+
+
+def _ra_compulsory(part_f: PartFPage, store: TestStateStore, user) -> bool:
+    """Part F forces the RA certificate to Yes when Part C's area is "India and Overseas"
+    (seen 20-Nov-2026). The Part F tests expect every certificate to start at No and save
+    without RA details, so such users are skipped. Agencies saved by the Part C tests are
+    recorded without their answers, so record it here once seen."""
+    if not part_f.is_ra_compulsory():
+        return False
+    store.mark_form_step_status(username=user.username, step="part_c", status="completed",
+                                data={**(user.step_data.get("part_c") or {}), "overseas": True})
+    return True
+
+
 def _part_f_asks_for_premises(part_f: PartFPage, store: TestStateStore, user) -> bool:
     """Part F shows the office premises document only for an offline Service Mode. When
     the store did not know that, record it so the user goes to the offline fixture."""
@@ -59,14 +76,15 @@ def logged_in_part_f_page(page):
     """Yields (page, user) on Part F for a user whose Part C is saved and whose Part F
     has never been saved, so the form is in its first-visit state. Users with Part F
     saved are never used; when none is left, a new agency is built (see
-    ``utils.agency_builder``). Part C's Service Mode is Online Only, so there is no
-    office premises document."""
+    ``utils.agency_builder``). Part C's Service Mode is Online Only and its area is not
+    "India and Overseas", so every certificate starts at No."""
     store = TestStateStore()
     for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c"]):
-        if user.steps.get("part_f") == "completed" or _offline(user):
+        if user.steps.get("part_f") == "completed" or _offline(user) or _overseas(user):
             continue
         part_f = _login_and_open_part_f(page, user)
-        if not _part_f_already_saved(part_f, store, user) and not _part_f_asks_for_premises(part_f, store, user):
+        if (not _part_f_already_saved(part_f, store, user) and not _ra_compulsory(part_f, store, user)
+                and not _part_f_asks_for_premises(part_f, store, user)):
             yield page, user
             return
     user = AgencyBuilder(page, store).build("part_c")
@@ -77,9 +95,9 @@ def logged_in_part_f_page(page):
 @pytest.fixture
 def logged_in_offline_part_f_page(page):
     """Yields (page, user) on a never-saved Part F for a user whose Part C Service Mode
-    includes offline work, so Part F asks for the office premises document. Only users
-    recorded as offline are tried; when none is left, one is built with Service Mode
-    "Offline Only"."""
+    includes offline work (Part F asked such users for the office premises document until
+    20-Nov-2026). Only users recorded as offline are tried; when none is left, one is
+    built with Service Mode "Offline Only"."""
     store = TestStateStore()
     for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c"]):
         if user.steps.get("part_f") == "completed" or not _offline(user):
@@ -89,6 +107,43 @@ def logged_in_offline_part_f_page(page):
             yield page, user
             return
     user = AgencyBuilder(page, store).build("part_c", offline=True)
+    _login_and_open_part_f(page, user)
+    yield page, user
+
+
+@pytest.fixture
+def logged_in_ra_compulsory_part_f_page(page):
+    """Yields (page, user) on a never-saved Part F for a user whose Part C area is "India and
+    Overseas", so the RA certificate is compulsory. Tests using it never save Part F, so the same
+    user serves every run. Users recorded as overseas are tried first; when none still shows the
+    compulsory RA, one is built with Part C area "India and Overseas"."""
+    store = TestStateStore()
+    for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c"]):
+        if user.steps.get("part_f") == "completed" or not _overseas(user):
+            continue
+        part_f = _login_and_open_part_f(page, user)
+        if not _part_f_already_saved(part_f, store, user) and part_f.is_ra_compulsory():
+            yield page, user
+            return
+    user = AgencyBuilder(page, store).build("part_c", overseas=True)
+    _login_and_open_part_f(page, user)
+    yield page, user
+
+
+@pytest.fixture
+def logged_in_saved_part_f_page(page):
+    """Yields (page, user) on Part F for a user who has saved Part F with a signature but has not
+    finished Documents, so saving Part F again does not touch a later step. When none is left, one
+    is built up to "part_f"."""
+    store = TestStateStore()
+    for user in store.get_agency_users_with_steps(["part_a", "part_b", "part_c", "part_f"]):
+        if user.steps.get("enclosures") == "completed":
+            continue
+        part_f = _login_and_open_part_f(page, user)
+        if part_f.next_documents_link.is_visible() and part_f.has_saved_signature():
+            yield page, user
+            return
+    user = AgencyBuilder(page, store).build("part_f")
     _login_and_open_part_f(page, user)
     yield page, user
 
@@ -151,14 +206,44 @@ def part_f_undersized_certificate_data() -> PartFData:
 
 @pytest.fixture
 def part_f_undersized_signature_data() -> PartFData:
-    """TC-575: an 8 × 8 pixel signature (below 150 × 40 pixels)."""
+    """TC-575: signatures below 150 × 40 pixels (8 × 8 and 140 × 38)."""
     return PartFFactory.undersized_signature()
 
 
 @pytest.fixture
 def part_f_opaque_signature_data() -> PartFData:
-    """KAN-TC-849: a signature PNG with a white (opaque) background."""
+    """KAN-TC-849: a signature PNG with a white (opaque) background, which the page cleans."""
     return PartFFactory.opaque_signature()
+
+
+@pytest.fixture
+def part_f_unreadable_signature_data() -> PartFData:
+    """KAN-TC-862: a signature file that is not a readable image."""
+    return PartFFactory.unreadable_signature()
+
+
+@pytest.fixture
+def part_f_uncleanable_signature_data() -> PartFData:
+    """KAN-TC-863: a signature image with no plain background to remove."""
+    return PartFFactory.uncleanable_signature()
+
+
+@pytest.fixture
+def part_f_without_signature_data() -> PartFData:
+    """KAN-TC-861: every certificate No, Place chosen, no signature."""
+    return PartFFactory.without_signature()
+
+
+@pytest.fixture
+def part_f_jpg_signature_data() -> PartFData:
+    """KAN-TC-152: every certificate No with a JPG signature."""
+    return PartFFactory.jpg_signature()
+
+
+@pytest.fixture
+def part_f_ra_compulsory_blank_data() -> PartFData:
+    """KAN-TC-860: RA compulsory left blank, with a signature and a Place."""
+    return PartFFactory.ra_compulsory_blank()
 
 
 @pytest.fixture

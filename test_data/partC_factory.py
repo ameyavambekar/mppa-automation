@@ -80,6 +80,15 @@ class PartCFactory:
         return data
 
     @staticmethod
+    def overseas() -> PartCData:
+        """Agency builder: mandatory fields with area "India and Overseas", so Part F makes the
+        RA certificate compulsory (seen 20-Nov-2026)."""
+        data = PartCFactory.minimal()
+        data.placement_type = "India and Overseas"
+        data.scenario_label = "overseas"
+        return data
+
+    @staticmethod
     def with_training() -> PartCData:
         """TC-127: training = Yes with its own centre address."""
         data = PartCFactory.minimal()

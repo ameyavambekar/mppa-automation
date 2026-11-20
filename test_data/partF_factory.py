@@ -4,7 +4,7 @@ Data Factory — Step 4 (Part F: Certificates, Licences & Signature)
 All test-data construction for Part F of the Form-I wizard (KAN-21).
 Each factory method maps to one Acceptance Criterion, Edge Case, or
 scenario referenced in the AIO test cases KAN-TC-143 … KAN-TC-168,
-KAN-TC-462 … KAN-TC-470 and KAN-TC-574 … KAN-TC-579.
+KAN-TC-462 … KAN-TC-470, KAN-TC-574 … KAN-TC-579, KAN-TC-849 and KAN-TC-859 … KAN-TC-863.
 
 Dates are given as the digits a user types (the field adds the slashes);
 ``shown`` is what the field then displays.
@@ -22,8 +22,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, SIGNATURE_PNG, SIGNATURE_TRANSPARENT_PNG,
-                                UNDERSIZED_FILE, UNDERSIZED_SIGNATURE, VALID_CERTIFICATE)
+from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, SIGNATURE_JPG, SIGNATURE_OVERSIZED_PNG,
+                                SIGNATURE_PNG, SIGNATURE_SMALL_DIMENSIONS_PNG, SIGNATURE_TRANSPARENT_PNG,
+                                UNDERSIZED_FILE, UNDERSIZED_SIGNATURE, VALID_CERTIFICATE, VALID_SIGNATURE)
 
 
 @dataclass
@@ -46,7 +47,7 @@ class PartFData:
     certificates: dict[str, CertificateData] = field(default_factory=dict)   # PartFPage.CERTIFICATES ids answered Yes
     # Since portal 2.1.0 the signature is required, so every scenario carries a valid one unless it sets another.
     signature: Optional[str] = SIGNATURE_TRANSPARENT_PNG    # file path
-    premises: Optional[str] = None              # file path — offline service modes only
+    premises: Optional[str] = None              # file path — office premises document (gone from Part F 20-Nov-2026)
     # Scenario-specific values
     invalid_values: list[str] = field(default_factory=list)   # bad values a negative scenario enters, in order
     valid_values: list[str] = field(default_factory=list)     # values that clear the error, in order
@@ -154,23 +155,75 @@ class PartFFactory:
             scenario_label="undersized_certificate",
         )
 
+    # ── Signatures the page checks while cleaning them (since 20-Nov-2026) ────
+
     @staticmethod
     def undersized_signature() -> PartFData:
-        """TC-575: every certificate No, a 72-byte 8 × 8 PNG signature (below 150 × 40 pixels)."""
+        """TC-575: signatures below 150 × 40 pixels — an 8 × 8 PNG (72 bytes) and a 140 × 38 PNG —
+        both rejected in the browser."""
         return PartFData(
             place=PartFFactory.PLACE,
             signature=UNDERSIZED_SIGNATURE,
+            invalid_values=[UNDERSIZED_SIGNATURE, SIGNATURE_SMALL_DIMENSIONS_PNG],
+            expected_error="The image is too small — upload a clear signature (at least 150 × 40 pixels).",
             scenario_label="undersized_signature",
         )
 
     @staticmethod
     def opaque_signature() -> PartFData:
-        """KAN-TC-849: every certificate No, a 320 × 120 PNG with a white background (RGB, no alpha channel)."""
+        """KAN-TC-849: every certificate No, a 320 × 120 PNG with a white background (RGB, no alpha channel);
+        the page removes the background before saving."""
         return PartFData(
             place=PartFFactory.PLACE,
             signature=SIGNATURE_PNG,
             scenario_label="opaque_signature",
         )
+
+    @staticmethod
+    def unreadable_signature() -> PartFData:
+        """KAN-TC-862: a 170-byte "signature.png" that is not a valid image."""
+        return PartFData(
+            place=PartFFactory.PLACE,
+            signature=VALID_SIGNATURE,
+            expected_error="The image could not be read — choose a JPG, JPEG or PNG file.",
+            scenario_label="unreadable_signature",
+        )
+
+    @staticmethod
+    def uncleanable_signature() -> PartFData:
+        """KAN-TC-863: a ~1.5 MB PNG of random coloured pixels — no plain background to remove."""
+        return PartFData(
+            place=PartFFactory.PLACE,
+            signature=SIGNATURE_OVERSIZED_PNG,
+            expected_error=("The background could not be removed — photograph the signature on plain white "
+                            "paper in good light."),
+            scenario_label="uncleanable_signature",
+        )
+
+    @staticmethod
+    def without_signature() -> PartFData:
+        """KAN-TC-861: every certificate No, Place chosen, no signature."""
+        return PartFData(
+            place=PartFFactory.PLACE,
+            signature=None,
+            expected_error="Upload the signature (JPG, JPEG or PNG).",
+            scenario_label="without_signature",
+        )
+
+    @staticmethod
+    def jpg_signature() -> PartFData:
+        """KAN-TC-152: every certificate No, a JPG signature on white paper — saved as signature_valid.png."""
+        return PartFData(place=PartFFactory.PLACE, signature=SIGNATURE_JPG, scenario_label="jpg_signature")
+
+    @staticmethod
+    def replacement_signature(current: str) -> str:
+        """KAN-TC-153: a signature file whose cleaned name differs from ``current`` (the one on file)."""
+        return SIGNATURE_JPG if current == "signature_transparent.png" else SIGNATURE_TRANSPARENT_PNG
+
+    @staticmethod
+    def ra_compulsory_blank() -> PartFData:
+        """KAN-TC-860: RA compulsory but left blank; a signature and a Place chosen."""
+        return PartFData(place=PartFFactory.PLACE, scenario_label="ra_compulsory_blank")
 
     # ── As-you-type input rules (TC-467) ──────────────────────────────────────
 

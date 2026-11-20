@@ -12,8 +12,18 @@ class PartFPage(BasePage):
     Six certificate blocks, each keyed by an id in ``CERTIFICATES`` ('cl', 'sec',
     'em', 'lin', 'epf', 'esic'). Each has a Yes/No question (default No); "Yes"
     reveals a number, a DD/MM/YYYY date and a document upload, all required.
-    Then the specimen signature upload (JPG/PNG), the read-only Date of
-    Application (today) and a Place dropdown of Maharashtra districts.
+    When Part C's area of placement operations is "India and Overseas", the RA
+    certificate ('em') is forced to Yes with its No disabled and ``RA_COMPULSORY_NOTE``
+    under it (``ra_compulsory``) — seen 20-Nov-2026.
+    Then the signature upload, the read-only Date of Application (today) and a Place
+    dropdown of Maharashtra districts.
+
+    Since 20-Nov-2026 every file input sits in a ``div.fu`` widget ("Choose File"
+    button + file name); the help text ``p.hlp`` follows that widget. The signature
+    takes a JPG, JPEG or PNG up to 5 MB: the page removes the white background in the
+    browser (assets/js/signature_clean.js), swaps the chosen file for the cleaned PNG and
+    shows it in ``signature_preview``; images it cannot clean (smaller than 150 × 40
+    pixels, unreadable, no clear background) are rejected and cleared.
 
     The date fields keep only digits and "/" and add the slashes as you type,
     so type dates as digits (typing the slashes yourself doubles them).
@@ -25,16 +35,16 @@ class PartFPage(BasePage):
     The 10 KB minimum is not checked by the page — the server rejects a smaller file
     on save and reloads Part F unsaved with its messages in ``server_errors``.
 
-    When Part C's Service Mode includes offline work ("Offline Only" / "Both Online &
-    Offline"), an extra "Office Premises Document" section (``premises_*``) sits between
-    the certificates and the signature; its upload is required. For "Online Only" it is
-    not on the page at all.
+    The "Office Premises Document" section (``premises_*``, once shown for offline Service
+    Modes) is no longer on Part F for any Service Mode since 20-Nov-2026; Documents
+    (enclosures.php) asks every agency for an Office Address Proof instead.
 
     A successful save stays on Part F with ``SAVED_MESSAGE`` and "Next: Documents →"
     links. A saved Part F reopens editable (no "Edit this section"). A saved
     certificate document shows "Uploaded View ↗" (``has_saved_document``) and is no
     longer required; saving that certificate as No removes it. The signature is
-    optional (a save without one succeeds).
+    required (``SIGNATURE_REQUIRED_ERROR``); a saved one shows "✓ <file name>" in the
+    upload widget (``saved_signature_name``) and is not required again.
     """
 
     # id → (block title, number label, date label); the labels appear in the error messages.
@@ -71,20 +81,31 @@ class PartFPage(BasePage):
     SAVED_DOCUMENT_NOTE = "Uploaded View ↗ (choose a file only to replace it)"
     SUBTITLE = "Dates must be in DD/MM/YYYY format"
     CERT_FILE_HINT = "PDF, JPG or PNG · 10 KB – 2 MB"
-    # Signature — since portal 2.1.0 (17-Nov-2026): PNG with a transparent background, at least
-    # 150 × 40 pixels, up to 1 MB, and required.
+    RA_COMPULSORY_NOTE = "Compulsory — your area of placement operations (Part C) is India and Overseas."
+    # Signature — since 20-Nov-2026: JPG, JPEG or PNG up to 5 MB, white background removed in the
+    # browser, required.
     SIGNATURE_TITLE = "Upload Signature *"
-    SIGNATURE_GUIDANCE = ("Upload the signature of the authorised signatory as a PNG image with a transparent "
-                          "background. Sign on plain white paper with a dark pen, scan or photograph it, remove "
-                          "the background (any free \"remove background\" tool) and save as PNG.")
-    SIGNATURE_HINT = "PNG ONLY with transparent background · at least 150 × 40 pixels · up to 1 MB"
+    SIGNATURE_GUIDANCE = ("Sign on plain white paper with a dark (blue or black) pen, then scan or photograph it "
+                          "and upload the image. The white background is removed automatically — you will see "
+                          "the result before saving.")
+    SIGNATURE_HINT = "JPG, JPEG or PNG · up to 5 MB · background removed automatically"
+    SIGNATURE_ACCEPT = ".jpg,.jpeg,.png,image/jpeg,image/png"
+    SIGNATURE_PREVIEW_HEADING = "Background removed — this is how your signature will appear:"
     APPLICATION_DATE_HINT = "Today's date (system date) — filled in automatically."
     ERRORS_HEADING = "Please fix the following before saving:"
     DOCUMENT_REQUIRED_ERROR = "Please upload the document."
     CERT_FILE_TYPE_ERROR = "Only PDF, JPG or PNG allowed."
-    SIGNATURE_TYPE_ERROR = "Only a PNG image (transparent background) is allowed for the signature."
-    SIGNATURE_TOO_LARGE_ERROR = "The signature image is larger than 1 MB."
-    SIGNATURE_REQUIRED_ERROR = "Upload the signature (PNG with a transparent background)."
+    SIGNATURE_TYPE_ERROR = "Only a JPG, JPEG or PNG image is allowed for the signature."
+    SIGNATURE_TOO_LARGE_ERROR = "The signature image is larger than 5 MB."
+    SIGNATURE_REQUIRED_ERROR = "Upload the signature (JPG, JPEG or PNG)."
+    # Shown by signature_clean.js in the browser when it cannot clean the image
+    SIGNATURE_TOO_SMALL_ERROR = "The image is too small — upload a clear signature (at least 150 × 40 pixels)."
+    SIGNATURE_UNREADABLE_ERROR = "The image could not be read — choose a JPG, JPEG or PNG file."
+    SIGNATURE_BACKGROUND_ERROR = ("The background could not be removed — photograph the signature on plain white "
+                                  "paper in good light.")
+    # A saved signature shows "✓ <file name>" in the upload widget with this tooltip (seen 20-Nov-2026)
+    SIGNATURE_SAVED_TOOLTIP = "Already uploaded — choose a file only to replace it"
+    NO_FILE_CHOSEN = "No file chosen"
     FILE_TOO_LARGE_ERROR = "File is too large — max 2 MB."
     PLACE_REQUIRED_ERROR = "Place is required."
     PREMISES_TITLE = "Office Premises Owner Registration Document / Lease / Leave & Licence Agreement"
@@ -94,10 +115,6 @@ class PartFPage(BasePage):
 
     # Server-side texts (shown in ``server_errors`` after a rejected save)
     FILE_TOO_SMALL_ERROR = "File is too small — upload a clear, complete scan (minimum 10 KB)."
-    SIGNATURE_TOO_SMALL_ERROR = ("Signature: the image is too small — upload a clear signature "
-                                 "(at least 150 × 40 pixels).")
-    SIGNATURE_NOT_TRANSPARENT_ERROR = ("Signature: the background is not transparent. Save the signature as a "
-                                       "PNG with a transparent background.")
 
     @staticmethod
     def certificate_too_small_errors(name: str) -> tuple[str, ...]:
@@ -243,12 +260,29 @@ class PartFPage(BasePage):
         """Labels of the number, date and upload fields, in order."""
         return self.certificate_body(cert).locator("label")
 
+    @staticmethod
+    def _file_hint(file_input):
+        """``p.hlp`` after the ``div.fu`` widget that wraps ``file_input``."""
+        return file_input.locator(
+            "xpath=ancestor::div[contains(concat(' ',normalize-space(@class),' '),' fu ')][1]"
+            "/following-sibling::p[contains(@class,'hlp')][1]")
+
     def certificate_file_hint(self, cert: str):
-        return self.certificate_file_input(cert).locator("xpath=following-sibling::p[contains(@class,'hlp')]")
+        return self._file_hint(self.certificate_file_input(cert))
 
     def saved_document_note(self, cert: str):
         """'Uploaded View ↗ (choose a file only to replace it)' — only while a document is on file."""
-        return self.certificate_file_input(cert).locator("xpath=preceding-sibling::p[contains(normalize-space(),'Uploaded')]")
+        return self.certificate_file_input(cert).locator(
+            "xpath=ancestor::div[contains(@class,'fld')][1]//p[contains(normalize-space(),'Uploaded')]")
+
+    @property
+    def ra_compulsory(self):
+        """RA_COMPULSORY_NOTE under the RA question — only when Part C's area is "India and Overseas"."""
+        return self.certificate_block("em").get_by_text(self.RA_COMPULSORY_NOTE)
+
+    def is_ra_compulsory(self) -> bool:
+        """True when the RA certificate is forced to Yes (its No is disabled)."""
+        return self.certificate_radio("em", False).is_disabled()
 
     def saved_document_link(self, cert: str):
         """'View ↗' link to the saved document."""
@@ -262,8 +296,34 @@ class PartFPage(BasePage):
 
     @property
     def signature_input(self):
-        """'Upload Signature *' — PNG with a transparent background only."""
+        """'Upload Signature *' — JPG, JPEG or PNG; replaced by the cleaned PNG once the background is removed."""
         return self.page.locator("#sigFile")
+
+    @property
+    def signature_file_name(self):
+        """File name shown in the upload widget ("No file chosen" when empty)."""
+        return self.signature_input.locator("xpath=preceding-sibling::span[contains(@class,'fu-name')]")
+
+    @staticmethod
+    def saved_signature_text(file_name: str) -> str:
+        """What the upload widget shows for a saved signature: '✓ <file name>'."""
+        return f"✓ {file_name}"
+
+    def saved_signature_name(self) -> str:
+        """File name of the signature on file ('' when none) — the input's ``data-current``."""
+        return self.signature_input.get_attribute("data-current") or ""
+
+    def has_saved_signature(self) -> bool:
+        return self.signature_input.get_attribute("data-has-file") == "1"
+
+    @property
+    def signature_preview(self):
+        """'Background removed — …' box with the cleaned signature; hidden until an image is cleaned."""
+        return self.page.locator("#sigAuto")
+
+    @property
+    def signature_preview_image(self):
+        return self.page.locator("#sigAutoImg")
 
     @property
     def signature_title(self):
@@ -271,7 +331,7 @@ class PartFPage(BasePage):
 
     @property
     def signature_hint(self):
-        return self.signature_input.locator("xpath=following-sibling::p[contains(@class,'hlp')]")
+        return self._file_hint(self.signature_input)
 
     @property
     def signature_guidance(self):
@@ -374,7 +434,18 @@ class PartFPage(BasePage):
 
     @allure.step("Choose signature {path}")
     def set_signature(self, path: str):
+        """Chooses the signature and waits until the page has either cleaned it (the input then holds
+        the cleaned file and ``data-cleaned`` names it) or rejected it (the input is emptied and a
+        field error is shown)."""
         self.signature_input.set_input_files(path)
+        self.page.wait_for_function(
+            """() => {
+                const i = document.getElementById('sigFile');
+                const f = i.files[0];
+                if (f) return i.dataset.cleaned === f.name + f.size;
+                const err = i.closest('.fld').querySelector('.fld-err');
+                return !!err && err.offsetParent !== null && err.textContent.trim() !== '';
+            }""", timeout=20000)
 
     @allure.step("Select Place: {place}")
     def select_place(self, place: str):

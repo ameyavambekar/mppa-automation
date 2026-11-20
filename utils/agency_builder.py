@@ -12,9 +12,10 @@ data, recording every step in the state store as it goes.
 
 Stages, in order: "registered", "part_a", "part_b", "part_c", "part_f",
 "enclosures", "premises", "declaration". A built agency's Part C has "Does the agency provide
-training?" = No and Service Mode "Online Only" unless ``offline=True`` ("Offline Only", which
-makes Part F ask for the office premises document); the Part C state-store snapshot records
-``{"service_mode": …, "offline": …}``. Its Part F has every certificate answered No, "enclosures" uploads
+training?" = No, area "Within Maharashtra" and Service Mode "Online Only", unless ``offline=True``
+(Service Mode "Offline Only") or ``overseas=True`` (area "India and Overseas", which makes Part F's RA
+certificate compulsory); the Part C state-store snapshot records ``{"service_mode": …, "offline": …,
+"overseas": …}``. Its Part F has every certificate answered No, "enclosures" uploads
 the mandatory documents (2/2 since portal 2.1.0), and "premises" saves the required photos (five since 2.1.0)
 (location Pune) with the classroom question answered No, and "declaration" uploads
 both signed forms, which opens Preview.
@@ -84,13 +85,15 @@ class AgencyBuilder:
 
     @allure.step("Build a new agency up to '{stage}'")
     def build(self, stage: str, legal_constitution: str = COMPANY, offline: bool = False,
-              branches: int = 0) -> UserRecord:
+              branches: int = 0, overseas: bool = False) -> UserRecord:
         """Registers a new agency and saves every step up to and including ``stage``.
 
         ``legal_constitution`` is the Part A agency type. Only a Private Limited
         Company can be built past Part A (the Part B data is for Directors).
         ``offline`` saves Part C with Service Mode "Offline Only" (only up to "part_c":
         the Part F the builder saves has no office premises document).
+        ``overseas`` saves Part C with area "India and Overseas" (only up to "part_c": Part F then
+        requires the RA certificate, which the builder does not fill in).
         ``branches`` (1 or 2) adds that many branch offices in Part A; Premises then gets the three
         required photos for every office (the officer verifies each one in Physical Verification)."""
         if branches not in (0, 1, 2):
@@ -101,9 +104,11 @@ class AgencyBuilder:
             raise ValueError(f"Only a {COMPANY} can be built past Part A")
         if offline and STAGES.index(stage) > STAGES.index("part_c"):
             raise ValueError("An offline agency can only be built up to 'part_c'")
+        if overseas and STAGES.index(stage) > STAGES.index("part_c"):
+            raise ValueError("An overseas agency can only be built up to 'part_c'")
         user = self.register()
         steps = {"part_a": lambda u: self.save_part_a(u, legal_constitution, branches),
-                 "part_b": self.save_part_b, "part_c": lambda u: self.save_part_c(u, offline),
+                 "part_b": self.save_part_b, "part_c": lambda u: self.save_part_c(u, offline, overseas),
                  "part_f": self.save_part_f,
                  "enclosures": self.upload_documents, "premises": self.save_premises,
                  "declaration": self.upload_declaration}
@@ -213,9 +218,11 @@ class AgencyBuilder:
         self.page.wait_for_url(f"{FORMS_BASE}/partC.php**", timeout=15000)
         self.store.mark_form_step_status(username=user.username, step="part_b", status="completed")
 
-    @allure.step("Save Part C with the mandatory fields (offline: {offline})")
-    def save_part_c(self, user: UserRecord, offline: bool = False) -> None:
+    @allure.step("Save Part C with the mandatory fields (offline: {offline}, overseas: {overseas})")
+    def save_part_c(self, user: UserRecord, offline: bool = False, overseas: bool = False) -> None:
         data = PartCFactory.offline() if offline else PartCFactory.minimal()
+        if overseas:
+            data.placement_type = PartCFactory.overseas().placement_type
         part_c = PartCPage(self.page)
         part_c.open()
         self.page.wait_for_load_state("networkidle")
@@ -224,7 +231,8 @@ class AgencyBuilder:
         part_c.click_submit()
         expect(part_c.success_message).to_have_text(PartCPage.SAVED_MESSAGE)
         self.store.mark_form_step_status(username=user.username, step="part_c", status="completed",
-                                         data={"service_mode": data.service_mode, "offline": offline})
+                                         data={"service_mode": data.service_mode, "offline": offline,
+                                               "overseas": overseas})
 
     @allure.step("Save Part F with every certificate answered No")
     def save_part_f(self, user: UserRecord) -> None:
