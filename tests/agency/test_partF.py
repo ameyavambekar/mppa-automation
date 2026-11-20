@@ -3,6 +3,7 @@ import re
 from datetime import date
 
 import allure
+import pytest
 from playwright.sync_api import expect
 
 from config import FORMS_BASE
@@ -11,13 +12,15 @@ from pages.partC_page import PART_C_URL, PartCPage
 from pages.partF_page import PART_F_URL, PartFPage
 from test_data.partF_factory import CertificateData, PartFData, PartFFactory, TypedInput
 from utils.aio import aio_case
-from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, OVERSIZED_FILE,
-                                SIGNATURE_JPG, SIGNATURE_OVERSIZED_PNG, SIGNATURE_TRANSPARENT_PNG,
+from utils.file_manager import (CERTIFICATE_JPG, CERTIFICATE_PNG, OVERSIZED_FILE, OVERSIZED_IMAGE,
+                                SIGNATURE_JPG, SIGNATURE_TRANSPARENT_PNG,
                                 UNSUPPORTED_CERTIFICATE, UNSUPPORTED_SPREADSHEET, VALID_CERTIFICATE)
 from utils.state_store import TestStateStore
 
 STORY = "Step 4 - Certificates, Licences & Signature"
 ON_PART_F = re.compile(rf"{re.escape(PART_F_URL)}")
+PREMISES_REMOVED = ("KAN-TC-{} Deprecated 20-Nov-2026: Part F no longer asks for the office premises document "
+                    "for any service mode; the office address proof is on Documents (KAN-TC-851)")
 
 
 def _fill_certificate(part_f: PartFPage, cert: str, data: CertificateData) -> None:
@@ -45,6 +48,21 @@ def _fill(part_f: PartFPage, data: PartFData) -> None:
 
 def _chosen_files(field) -> int:
     return field.evaluate("e => e.files.length")
+
+
+def _chosen_file_type(field) -> str:
+    return field.evaluate("e => e.files.length ? e.files[0].type : ''")
+
+
+def _corner_alpha(field) -> int:
+    """Alpha (0–255) of the top-left pixel of the image chosen in ``field``."""
+    return field.evaluate("""async e => {
+        const bmp = await createImageBitmap(e.files[0]);
+        const c = new OffscreenCanvas(bmp.width, bmp.height);
+        const ctx = c.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        return ctx.getImageData(0, 0, 1, 1).data[3];
+    }""")
 
 
 def _expect_part_f_saved(page, part_f: PartFPage, user) -> None:
@@ -239,40 +257,43 @@ def test_tc148_place_required(part_f_page: PartFPage, logged_in_part_f_page, par
 
 
 # ---------------------------------------------------------------------------
-# TC-149  Transparent PNG signature accepted, JPG rejected
+# TC-149  JPG and PNG signatures accepted, background removed, preview shown
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-149")
 @allure.story(STORY)
-@allure.title("TC-149: A transparent PNG signature is accepted and a JPG signature is rejected")
+@allure.title("TC-149: A JPG or PNG signature is accepted, its background removed and the result previewed")
 def test_tc149_signature_jpg_png_accepted(part_f_page: PartFPage, logged_in_part_f_page):
     """
     Given I am on Part F
-    When  I choose a JPG, then a PNG with a transparent background as the signature
-    Then  the JPG is removed with "Only a PNG image (transparent background) is allowed for the signature."
-    And   the PNG is kept with no error
+    When  I choose a JPG signature on white paper, then a PNG with a transparent background
+    Then  each is kept with no error, replaced by a cleaned PNG of the same name, and shown under
+          "Background removed — this is how your signature will appear:"
 
-    Since portal 2.1.0 (17-Nov-2026) the signature is "Upload Signature *": PNG only, transparent background,
-    at least 150 × 40 pixels, up to 1 MB. JPG signatures were accepted before.
+    Since 20-Nov-2026 the signature takes a JPG, JPEG or PNG up to 5 MB and the page removes the white
+    background itself (portal 2.1.0 on 17-Nov-2026 had accepted only a transparent PNG up to 1 MB).
 
     Notion: KAN-TC-149 | data: signature_valid.jpg, signature_transparent.png
     """
     page, user = logged_in_part_f_page
 
-    with allure.step("Verify the signature title, guidance and hint"):
+    with allure.step("Verify the signature title, guidance, hint and accepted types"):
         expect(part_f_page.signature_title).to_have_text(PartFPage.SIGNATURE_TITLE)
         expect(part_f_page.signature_guidance).to_have_text(PartFPage.SIGNATURE_GUIDANCE)
         expect(part_f_page.signature_hint).to_have_text(PartFPage.SIGNATURE_HINT)
-        expect(part_f_page.signature_input).to_have_attribute("accept", ".png,image/png")
+        expect(part_f_page.signature_input).to_have_attribute("accept", PartFPage.SIGNATURE_ACCEPT)
+        expect(part_f_page.signature_preview).to_be_hidden()
 
-    with allure.step("Choose signature_valid.jpg — rejected and removed"):
-        part_f_page.set_signature(SIGNATURE_JPG)
-        expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(PartFPage.SIGNATURE_TYPE_ERROR)
-        assert _chosen_files(part_f_page.signature_input) == 0, "The JPG signature was kept"
-
-    with allure.step(f"Choose {os.path.basename(SIGNATURE_TRANSPARENT_PNG)} — kept, no error"):
-        part_f_page.set_signature(SIGNATURE_TRANSPARENT_PNG)
-        expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
-        assert _chosen_files(part_f_page.signature_input) == 1, "The signature file was not kept"
+    for path in (SIGNATURE_JPG, SIGNATURE_TRANSPARENT_PNG):
+        cleaned_name = os.path.splitext(os.path.basename(path))[0] + ".png"
+        with allure.step(f"Choose {os.path.basename(path)} — kept as {cleaned_name} and previewed"):
+            part_f_page.set_signature(path)
+            expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
+            assert _chosen_files(part_f_page.signature_input) == 1, "The signature file was not kept"
+            assert _chosen_file_type(part_f_page.signature_input) == "image/png", "The signature was not kept as a PNG"
+            expect(part_f_page.signature_file_name).to_have_text(cleaned_name)
+            expect(part_f_page.signature_preview).to_be_visible()
+            expect(part_f_page.signature_preview).to_contain_text(PartFPage.SIGNATURE_PREVIEW_HEADING)
+            expect(part_f_page.signature_preview_image).to_have_attribute("src", re.compile(r"^(blob|data):"))
 
 
 # ---------------------------------------------------------------------------
@@ -285,8 +306,8 @@ def test_tc150_signature_pdf_rejected(part_f_page: PartFPage, logged_in_part_f_p
     """
     Given I am on Part F
     When  I choose a PDF as the signature
-    Then  "Only a PNG image (transparent background) is allowed for the signature." is shown and the file
-          is removed
+    Then  "Only a JPG, JPEG or PNG image is allowed for the signature." is shown, the file is removed
+          and no preview is shown
 
     Notion: KAN-TC-150 | KAN-21 EC-8 | data: certificate.pdf
     """
@@ -298,32 +319,34 @@ def test_tc150_signature_pdf_rejected(part_f_page: PartFPage, logged_in_part_f_p
     with allure.step("Verify the error and that the file was removed"):
         expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(PartFPage.SIGNATURE_TYPE_ERROR)
         assert _chosen_files(part_f_page.signature_input) == 0, "The PDF was kept"
+        expect(part_f_page.signature_preview).to_be_hidden()
 
 
 # ---------------------------------------------------------------------------
-# TC-151  Signature over 2 MB rejected
+# TC-151  Signature over 5 MB rejected
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-151")
 @allure.story(STORY)
-@allure.title("TC-151: A signature larger than 1 MB is rejected immediately")
+@allure.title("TC-151: A signature larger than 5 MB is rejected immediately")
 def test_tc151_signature_too_large(part_f_page: PartFPage, logged_in_part_f_page):
     """
     Given I am on Part F
-    When  I choose a PNG of about 1.5 MB as the signature
-    Then  "The signature image is larger than 1 MB." is shown and the file is removed
+    When  I choose a JPG of about 30 MB as the signature
+    Then  "The signature image is larger than 5 MB." is shown, the file is removed and no preview is shown
 
-    Portal 2.1.0 (17-Nov-2026) lowered the signature limit from 2 MB to 1 MB.
+    The limit was 1 MB in portal 2.1.0 (17-Nov-2026) and 5 MB since 20-Nov-2026.
 
-    Notion: KAN-TC-151 | KAN-21 EC-7 | data: signature_oversized.png (~1.5 MB)
+    Notion: KAN-TC-151 | KAN-21 EC-7 | data: oversized_image.jpg (~30 MB)
     """
     page, user = logged_in_part_f_page
 
-    with allure.step("Choose a signature larger than 1 MB"):
-        part_f_page.set_signature(SIGNATURE_OVERSIZED_PNG)
+    with allure.step("Choose a signature larger than 5 MB"):
+        part_f_page.set_signature(OVERSIZED_IMAGE)
 
     with allure.step("Verify the error and that the file was removed"):
         expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(PartFPage.SIGNATURE_TOO_LARGE_ERROR)
         assert _chosen_files(part_f_page.signature_input) == 0, "The oversized file was kept"
+        expect(part_f_page.signature_preview).to_be_hidden()
 
 
 # ---------------------------------------------------------------------------
@@ -1039,104 +1062,330 @@ def test_tc574_certificate_too_small(
 
 
 # ---------------------------------------------------------------------------
-# TC-575  Signature below 150 × 40 pixels rejected by the server
+# TC-575  Signature below 150 × 40 pixels rejected in the browser
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-575")
 @allure.story(STORY)
-@allure.title("TC-575: A signature smaller than 150 × 40 pixels is rejected by the server and blocks saving")
+@allure.title("TC-575: A signature smaller than 150 × 40 pixels is rejected immediately")
 def test_tc575_signature_too_small(
     part_f_page: PartFPage, logged_in_part_f_page, part_f_undersized_signature_data: PartFData
 ):
     """
-    Given every certificate is answered No and a Place is chosen
-    When  I choose an 8 × 8 pixel PNG (72 bytes) as the signature and click "Save Part F & Continue"
-    Then  the page keeps the file, but the server rejects the save with
-          "Signature: the image is too small — upload a clear signature (at least 150 × 40 pixels)."
-    And   Part F is not saved
+    Given I am on Part F
+    When  I choose an 8 × 8 pixel PNG, then a 140 × 38 pixel PNG, as the signature
+    Then  each is removed with "The image is too small — upload a clear signature (at least 150 × 40 pixels)."
+          and no preview is shown
 
-    Since portal 2.1.0 (17-Nov-2026) the server checks the signature's pixel size instead of the 10 KB minimum.
+    The server checked the pixel size on save in portal 2.1.0 (17-Nov-2026); since 20-Nov-2026 the page
+    checks it while removing the background.
 
-    Notion: KAN-TC-575 | KAN-21 EC-12 | data: undersized_signature (signature_undersized.png, 8 × 8, 72 bytes)
+    Notion: KAN-TC-575 | KAN-21 EC-12 | data: undersized_signature (signature_undersized.png 8 × 8,
+    signature_small_dimensions.png 140 × 38)
     """
     page, user = logged_in_part_f_page
+    data = part_f_undersized_signature_data
 
-    with allure.step("Choose an 8 × 8 pixel signature and a Place"):
-        _fill(part_f_page, part_f_undersized_signature_data)
-
-    with allure.step("Verify the page keeps the file with no error under it"):
-        assert _chosen_files(part_f_page.signature_input) == 1, "The page removed the 8 × 8 signature"
-        expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
-
-    with allure.step("Click 'Save Part F & Continue'"):
-        part_f_page.click_submit()
-
-    with allure.step("Verify the server rejects the signature and Part F is not saved"):
-        _expect_rejected_by_server(page, part_f_page, PartFPage.SIGNATURE_TOO_SMALL_ERROR)
+    for path in data.invalid_values:
+        with allure.step(f"Choose {os.path.basename(path)} — rejected and removed"):
+            part_f_page.set_signature(path)
+            expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(data.expected_error)
+            assert _chosen_files(part_f_page.signature_input) == 0, f"{os.path.basename(path)} was kept"
+            expect(part_f_page.signature_preview).to_be_hidden()
 
 
 # ---------------------------------------------------------------------------
-# TC-849  Signature without a transparent background rejected by the server
+# TC-849  Signature on a white background is cleaned and kept
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-849")
 @allure.story(STORY)
-@allure.title("TC-849: A signature PNG without a transparent background is rejected by the server and blocks saving")
+@allure.title("TC-849: A signature PNG on a white background is kept with the background removed")
 def test_tc849_signature_not_transparent(
     part_f_page: PartFPage, logged_in_part_f_page, part_f_opaque_signature_data: PartFData
 ):
     """
-    Given every certificate is answered No and a Place is chosen
-    When  I choose a PNG with a white background as the signature and click "Save Part F & Continue"
-    Then  the page keeps the file, but the server rejects the save with
-          "Signature: the background is not transparent. Save the signature as a PNG with a transparent
-          background."
-    And   Part F is not saved
+    Given I am on Part F
+    When  I choose a PNG signature with a white (opaque) background
+    Then  it is kept with no error, the white background is made transparent, and the cleaned signature
+          is previewed under "Background removed — this is how your signature will appear:"
 
-    Portal 2.1.0 (17-Nov-2026) requires a transparent background; the browser only checks the type and size.
+    The server rejected opaque signatures in portal 2.1.0 (17-Nov-2026); since 20-Nov-2026 the page removes
+    the background itself.
 
     Notion: KAN-TC-849 | KAN-21 | data: opaque_signature (signature_valid.png, 320 × 120, RGB)
     """
     page, user = logged_in_part_f_page
+    signature = part_f_opaque_signature_data.signature
 
-    with allure.step("Choose an opaque PNG signature and a Place"):
-        _fill(part_f_page, part_f_opaque_signature_data)
+    with allure.step(f"Choose {os.path.basename(signature)}, which has a white background"):
+        part_f_page.set_signature(signature)
 
-    with allure.step("Verify the page keeps the file with no error under it"):
-        assert _chosen_files(part_f_page.signature_input) == 1, "The page removed the opaque PNG signature"
+    with allure.step("Verify it is kept as a PNG with no error"):
         expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
+        assert _chosen_files(part_f_page.signature_input) == 1, "The opaque signature was not kept"
+        assert _chosen_file_type(part_f_page.signature_input) == "image/png", "The signature was not kept as a PNG"
 
-    with allure.step("Click 'Save Part F & Continue'"):
-        part_f_page.click_submit()
-
-    with allure.step("Verify the server rejects the signature and Part F is not saved"):
-        _expect_rejected_by_server(page, part_f_page, PartFPage.SIGNATURE_NOT_TRANSPARENT_ERROR)
+    with allure.step("Verify the white background was made transparent and the result previewed"):
+        assert _corner_alpha(part_f_page.signature_input) == 0, "The white background was not removed"
+        expect(part_f_page.signature_preview).to_be_visible()
+        expect(part_f_page.signature_preview).to_contain_text(PartFPage.SIGNATURE_PREVIEW_HEADING)
 
 
 # ---------------------------------------------------------------------------
-# TC-576  Office premises document shown for an offline service mode
+# TC-862 / TC-863  Signatures the page cannot read or clean
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-862")
+@allure.story(STORY)
+@allure.title("TC-862: A signature file that is not a readable image is rejected immediately")
+def test_tc862_signature_unreadable(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_unreadable_signature_data: PartFData
+):
+    """
+    Given I am on Part F
+    When  I choose a 170-byte "signature.png" that is not a valid image as the signature
+    Then  "The image could not be read — choose a JPG, JPEG or PNG file." is shown, the file is removed
+          and no preview is shown
+
+    Notion: KAN-TC-862 | KAN-21 EC-14 | data: unreadable_signature (signature.png, 170 bytes)
+    """
+    page, user = logged_in_part_f_page
+    _expect_signature_rejected(part_f_page, part_f_unreadable_signature_data)
+
+
+@aio_case("KAN-TC-863")
+@allure.story(STORY)
+@allure.title("TC-863: A signature whose background cannot be removed is rejected immediately")
+def test_tc863_signature_background_not_removable(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_uncleanable_signature_data: PartFData
+):
+    """
+    Given I am on Part F
+    When  I choose an image of random coloured pixels (no plain white background) as the signature
+    Then  "The background could not be removed — photograph the signature on plain white paper in good light."
+          is shown, the file is removed and no preview is shown
+
+    Notion: KAN-TC-863 | KAN-21 EC-14 | data: uncleanable_signature (signature_oversized.png, ~1.5 MB)
+    """
+    page, user = logged_in_part_f_page
+    _expect_signature_rejected(part_f_page, part_f_uncleanable_signature_data)
+
+
+def _expect_signature_rejected(part_f: PartFPage, data: PartFData) -> None:
+    with allure.step(f"Choose {os.path.basename(data.signature)} — rejected and removed"):
+        part_f.set_signature(data.signature)
+        expect(part_f.field_error(part_f.signature_input)).to_have_text(data.expected_error)
+        assert _chosen_files(part_f.signature_input) == 0, f"{os.path.basename(data.signature)} was kept"
+        expect(part_f.signature_file_name).to_have_text(PartFPage.NO_FILE_CHOSEN)
+        expect(part_f.signature_preview).to_be_hidden()
+
+
+# ---------------------------------------------------------------------------
+# TC-861  Signature required
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-861")
+@allure.story(STORY)
+@allure.title("TC-861: Saving Part F without a signature is blocked")
+def test_tc861_signature_required(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_without_signature_data: PartFData
+):
+    """
+    Given every certificate is answered No and a Place is chosen
+    When  I click "Save Part F & Continue" without choosing a signature
+    Then  saving is blocked with "Upload the signature (JPG, JPEG or PNG)." under the upload and in the
+          summary, and the signature upload is focused
+
+    Notion: KAN-TC-861 | KAN-21 AC-12 | data: without_signature
+    """
+    page, user = logged_in_part_f_page
+    data = part_f_without_signature_data
+
+    with allure.step("Choose a Place, no signature, and save"):
+        _fill(part_f_page, data)
+        part_f_page.click_submit()
+
+    with allure.step("Verify the save is blocked with the signature error"):
+        _expect_blocked(page, part_f_page, data.expected_error)
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_have_text(data.expected_error)
+        expect(part_f_page.signature_input).to_be_focused()
+        expect(part_f_page.success_message).to_have_count(0)
+        expect(part_f_page.next_documents_link).to_be_hidden()
+
+
+# ---------------------------------------------------------------------------
+# TC-152  Saved signature shown and not required again — saves Part F
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-152")
+@allure.story(STORY)
+@allure.title("TC-152: A saved signature is shown as \"✓ <file name>\" and saving again does not ask for it")
+def test_tc152_saved_signature_kept(
+    part_f_page: PartFPage, logged_in_part_f_page, part_f_jpg_signature_data: PartFData
+):
+    """
+    Given Part F has never been saved
+    When  I save it with every certificate No and a JPG signature, then reopen it and save again
+          without choosing a signature
+    Then  the reopened page shows "✓ signature_valid.png" (the cleaned PNG) with the tooltip
+          "Already uploaded — choose a file only to replace it", and the second save succeeds
+
+    Defect #17 (saved signature not shown, 28-Oct-2026) looks fixed on 20-Nov-2026.
+
+    Notion: KAN-TC-152 | KAN-21 AC-10 | data: jpg_signature (signature_valid.jpg)
+    """
+    page, user = logged_in_part_f_page
+    data = part_f_jpg_signature_data
+    saved_name = os.path.splitext(os.path.basename(data.signature))[0] + ".png"
+
+    with allure.step("Save Part F with a JPG signature"):
+        _fill(part_f_page, data)
+        part_f_page.click_submit()
+        _expect_part_f_saved(page, part_f_page, user)
+
+    with allure.step(f"Reopen Part F and verify the signature shows '✓ {saved_name}'"):
+        part_f_page.open()
+        expect(part_f_page.signature_file_name).to_have_text(PartFPage.saved_signature_text(saved_name))
+        expect(part_f_page.signature_file_name).to_have_attribute("title", PartFPage.SIGNATURE_SAVED_TOOLTIP)
+        expect(part_f_page.signature_preview).to_be_hidden()
+
+    with allure.step("Save again without choosing a signature — it is not required again"):
+        part_f_page.click_submit()
+        _expect_part_f_saved(page, part_f_page, user)
+        part_f_page.open()
+        expect(part_f_page.signature_file_name).to_have_text(PartFPage.saved_signature_text(saved_name))
+
+
+# ---------------------------------------------------------------------------
+# TC-153  New signature replaces the saved one — saves Part F
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-153")
+@allure.story(STORY)
+@allure.title("TC-153: Uploading a new signature replaces the saved one")
+def test_tc153_signature_replaced(part_f_page: PartFPage, logged_in_saved_part_f_page):
+    """
+    Given Part F is saved with a signature
+    When  I choose a different signature image and save
+    Then  the reopened Part F shows "✓ <new file name>"
+
+    Uses an agency that has saved Part F but not finished Documents; it stays usable for the Documents tests.
+
+    Notion: KAN-TC-153 | KAN-21 AC-10 | data: signature_transparent.png or signature_valid.jpg
+    """
+    page, user = logged_in_saved_part_f_page
+    current = part_f_page.saved_signature_name()
+    new_signature = PartFFactory.replacement_signature(current)
+    new_name = os.path.splitext(os.path.basename(new_signature))[0] + ".png"
+
+    with allure.step(f"Verify the saved signature '{current}' is shown"):
+        expect(part_f_page.signature_file_name).to_have_text(PartFPage.saved_signature_text(current))
+
+    with allure.step(f"Choose {os.path.basename(new_signature)} and save"):
+        part_f_page.set_signature(new_signature)
+        expect(part_f_page.field_error(part_f_page.signature_input)).to_be_hidden()
+        expect(part_f_page.signature_preview).to_be_visible()
+        part_f_page.click_submit()
+        _expect_part_f_saved(page, part_f_page, user)
+
+    with allure.step(f"Reopen Part F and verify the signature shows '✓ {new_name}'"):
+        part_f_page.open()
+        expect(part_f_page.signature_file_name).to_have_text(PartFPage.saved_signature_text(new_name))
+
+
+# ---------------------------------------------------------------------------
+# TC-859 / TC-860  RA certificate compulsory for "India and Overseas"
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-859")
+@allure.story(STORY)
+@allure.title("TC-859: The RA certificate is compulsory when the Part C area is India and Overseas")
+def test_tc859_ra_compulsory(part_f_page: PartFPage, logged_in_ra_compulsory_part_f_page):
+    """
+    Given Part C is saved with area of placement operations "India and Overseas"
+    When  I open Part F
+    Then  the RA certificate is answered Yes with No disabled and the compulsory note under it, its
+          number, date and upload fields are shown, and the other certificates are No
+
+    Notion: KAN-TC-859 | KAN-21 AC-13 | data: Part C area "India and Overseas"
+    """
+    page, user = logged_in_ra_compulsory_part_f_page
+    number_label, date_label = _labels("em")
+
+    with allure.step("Verify the RA certificate is Yes, No is disabled and the note is shown"):
+        expect(part_f_page.certificate_radio("em", True)).to_be_checked()
+        expect(part_f_page.certificate_radio("em", False)).to_be_disabled()
+        expect(part_f_page.ra_compulsory).to_be_visible()
+
+    with allure.step("Verify the RA number, date and upload fields are shown"):
+        expect(part_f_page.certificate_body("em")).to_be_visible()
+        expect(part_f_page.certificate_labels("em")).to_have_text(
+            [f"{number_label} *", f"{date_label} (DD/MM/YYYY) *", "Upload Document *"])
+
+    with allure.step("Verify the other five certificates are No with their fields hidden"):
+        for cert in PartFPage.CERTIFICATES:
+            if cert == "em":
+                continue
+            expect(part_f_page.certificate_radio(cert, False)).to_be_checked()
+            expect(part_f_page.certificate_body(cert)).to_be_hidden()
+
+    with allure.step("Try to answer No for the RA certificate — Yes stays selected"):
+        part_f_page.certificate_radio("em", False).click(force=True)
+        expect(part_f_page.certificate_radio("em", True)).to_be_checked()
+        expect(part_f_page.certificate_body("em")).to_be_visible()
+
+
+@aio_case("KAN-TC-860")
+@allure.story(STORY)
+@allure.title("TC-860: Saving with the compulsory RA certificate left blank is blocked")
+def test_tc860_ra_compulsory_blank(
+    part_f_page: PartFPage, logged_in_ra_compulsory_part_f_page, part_f_ra_compulsory_blank_data: PartFData
+):
+    """
+    Given Part C's area is "India and Overseas", a signature and a Place are chosen
+    When  I save with the RA certificate's fields blank
+    Then  saving is blocked with "RA Registration Certificate No. is required.", "Date of Issue is required."
+          and "Please upload the document.", and RA Registration Certificate No. is focused
+
+    Notion: KAN-TC-860 | KAN-21 EC-15 | data: ra_compulsory_blank
+    """
+    page, user = logged_in_ra_compulsory_part_f_page
+    number_label, date_label = _labels("em")
+    errors = (PartFPage.required_error(number_label), PartFPage.required_error(date_label),
+              PartFPage.DOCUMENT_REQUIRED_ERROR)
+
+    with allure.step("Choose a signature and a Place, leave the RA fields blank and save"):
+        _fill(part_f_page, part_f_ra_compulsory_blank_data)
+        part_f_page.click_submit()
+
+    with allure.step("Verify the save is blocked with the RA errors"):
+        _expect_blocked(page, part_f_page, *errors)
+        expect(part_f_page.field_error(part_f_page.certificate_number_input("em"))).to_have_text(errors[0])
+        expect(part_f_page.field_error(part_f_page.certificate_date_input("em"))).to_have_text(errors[1])
+        expect(part_f_page.field_error(part_f_page.certificate_file_input("em"))).to_have_text(errors[2])
+        expect(part_f_page.client_errors).not_to_contain_text(PartFPage.SIGNATURE_REQUIRED_ERROR)
+        expect(part_f_page.certificate_number_input("em")).to_be_focused()
+        expect(part_f_page.next_documents_link).to_be_hidden()
+
+
+# ---------------------------------------------------------------------------
+# TC-576  No office premises document for an offline service mode
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-576")
 @allure.story(STORY)
-@allure.title("TC-576: The Office Premises Document is shown on Part F when the service mode includes offline work")
+@allure.title("TC-576: Part F shows no Office Premises Document when the service mode includes offline work")
 def test_tc576_premises_shown_offline(part_f_page: PartFPage, logged_in_offline_part_f_page):
     """
     Given Part C is saved with a Service Mode that includes offline work
     When  I open Part F
-    Then  an "Office Premises Document" section sits between the certificates and the signature,
-          with its title, note, a mandatory "Upload Document *" field and the 10 KB – 2 MB help text
+    Then  only the three usual sections are shown and there is no office premises upload
+
+    Part F asked offline agencies for an office premises document until 20-Nov-2026. The office address
+    proof is now a mandatory upload on Documents (KAN-TC-851).
 
     Notion: KAN-TC-576 | KAN-21 AC-11 | data: offline Part C (agency builder)
     """
     page, user = logged_in_offline_part_f_page
 
-    with allure.step("Verify the sections, with the Office Premises Document second"):
-        expect(part_f_page.section_headings).to_have_text(list(PartFPage.OFFLINE_SECTIONS))
+    with allure.step("Verify only the three usual sections are shown"):
+        expect(part_f_page.section_headings).to_have_text(list(PartFPage.SECTIONS))
 
-    with allure.step("Verify the Office Premises Document section"):
-        expect(part_f_page.premises_title).to_have_text(PartFPage.PREMISES_TITLE)
-        expect(part_f_page.premises_note).to_have_text(PartFPage.PREMISES_NOTE)
-        expect(part_f_page.premises_label).to_have_text("Upload Document *")
-        expect(part_f_page.premises_file_input).to_be_visible()
-        expect(part_f_page.premises_hint).to_have_text(PartFPage.CERT_FILE_HINT)
+    with allure.step("Verify there is no office premises upload"):
+        expect(part_f_page.premises_file_input).to_have_count(0)
 
 
 # ---------------------------------------------------------------------------
@@ -1166,6 +1415,7 @@ def test_tc577_premises_hidden_online_only(part_f_page: PartFPage, logged_in_par
 # TC-578  Office premises document required
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-578")
+@pytest.mark.deprecated(reason=PREMISES_REMOVED.format(578))
 @allure.story(STORY)
 @allure.title("TC-578: Saving Part F without the office premises document is blocked for an offline service mode")
 def test_tc578_premises_required(part_f_page: PartFPage, logged_in_offline_part_f_page,
@@ -1196,6 +1446,7 @@ def test_tc578_premises_required(part_f_page: PartFPage, logged_in_offline_part_
 # TC-579  Saves with the office premises document — saves Part F
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-579")
+@pytest.mark.deprecated(reason=PREMISES_REMOVED.format(579))
 @allure.story(STORY)
 @allure.title("TC-579: Part F saves with an office premises document, which is then on file and not required again")
 def test_tc579_premises_saved(part_f_page: PartFPage, logged_in_offline_part_f_page, part_f_premises_data: PartFData):
