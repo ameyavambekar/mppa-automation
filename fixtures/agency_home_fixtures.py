@@ -126,31 +126,38 @@ def refused_home_with_first_appeal(request, page):
 
 @pytest.fixture
 def home_with_unread_notifications(page):
-    """Yields (page, user) on Home for a submitted agency with at least one unread notification.
-    Every agency gets one when it pays; TC-522 ("Mark all read") uses it up, so the pool shrinks by
-    one per run until TC-513 pays for another agency."""
+    """Yields (page, user) on Home for an agency still under review with at least one unread
+    notification. Every agency gets one when it pays; TC-522 ("Mark all read") uses it up, so the pool
+    shrinks by one per run until TC-513 pays for another agency.
+
+    Refused and registered agencies are left out: Home's timeline shows only the six latest events, so
+    an agency with a long compliance or appeal history no longer shows "Application submitted" (TC-521)."""
     home = AgencyHomePage(page)
     for user in _submitted_agencies():
-        if _login_to_home(page, user) and home.unread_notifications.count():
+        if (_login_to_home(page, user) and _status(page) == AgencyHomePage.UNDER_REVIEW
+                and home.unread_notifications.count()):
             yield page, user
             return
-    pytest.skip("No submitted agency has an unread notification left — run TC-513 to pay for another.")
+    pytest.skip("No agency under review has an unread notification left — run TC-513 to pay for another.")
 
 
 @pytest.fixture
 def home_without_unread_notifications(page):
-    """Yields (page, user) on Home for a submitted agency whose notifications are all read. When there
-    is none, the first submitted agency's notifications are marked read first."""
+    """Yields (page, user) on Home for an agency still under review whose notifications are all read.
+    When there is none, the first such agency's notifications are marked read first."""
     home = AgencyHomePage(page)
-    users = _submitted_agencies()
-    for user in users:
-        if _login_to_home(page, user) and not home.unread_notifications.count():
+    under_review = []
+    for user in _submitted_agencies():
+        if not (_login_to_home(page, user) and _status(page) == AgencyHomePage.UNDER_REVIEW):
+            continue
+        if not home.unread_notifications.count():
             yield page, user
             return
-    if not users or not _login_to_home(page, users[0]):
+        under_review.append(user)
+    if not under_review or not _login_to_home(page, under_review[0]):
         pytest.skip(NO_SUBMITTED_AGENCY)
     home.mark_all_read()
-    yield page, users[0]
+    yield page, under_review[0]
 
 
 @pytest.fixture
