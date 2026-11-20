@@ -22,9 +22,12 @@ def _login_and_open_enclosures(page, user) -> EnclosuresPage:
 
 
 def _already_uploaded(enclosures: EnclosuresPage, store: TestStateStore, user) -> bool:
-    """True when the state store missed uploads (counter above 0 or any uploaded row);
-    records them so the user is skipped from now on."""
-    if enclosures.uploaded_count() == 0 and not any(enclosures.is_uploaded(n) for n in EnclosuresPage.DOCUMENTS):
+    """True unless the step is untouched: document 1 is the PAN card from registration and documents 2–4
+    are empty (1/2). Otherwise records the user in the state store so it is skipped from now on — as
+    ``completed`` / ``in_progress`` when something was uploaded here, and as ``in_progress`` for an agency
+    registered before the PAN card was carried over (18-Nov-2026), which opens at 0/2."""
+    others = [n for n in EnclosuresPage.DOCUMENTS if n != 1]
+    if enclosures.has_registration_pan() and not any(enclosures.is_uploaded(n) for n in others):
         return False
     status = "completed" if enclosures.uploaded_count() == len(EnclosuresPage.MANDATORY) else "in_progress"
     store.mark_form_step_status(username=user.username, step="enclosures", status=status)
@@ -42,8 +45,9 @@ def enclosures_page(page) -> EnclosuresPage:
 
 @pytest.fixture
 def logged_in_enclosures_page(page):
-    """Yields (page, user) on the Documents step for a user whose Part F is saved and
-    who has never uploaded a document, so every row is empty and the counter is 0/2.
+    """Yields (page, user) on the Documents step for a user whose Part F is saved and who
+    has never uploaded a document here: document 1 is the PAN card carried over from
+    registration, documents 2–4 are empty and the counter reads 1/2 (since 20-Nov-2026).
     Users with uploads are never used; when none is left, a new agency is built (see
     ``utils.agency_builder``)."""
     store = TestStateStore()
@@ -62,20 +66,20 @@ def logged_in_enclosures_page(page):
 # ── Data fixtures ─────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def enclosures_all_mandatory_data() -> DocumentUploads:
-    """TC-380 / TC-395: the mandatory documents (1 and 2)."""
-    return EnclosuresFactory.all_mandatory()
+def enclosures_address_proof_only_data() -> DocumentUploads:
+    """TC-380 / TC-381 / TC-382 / TC-395: document 2, the mandatory document not carried over."""
+    return EnclosuresFactory.address_proof_only()
 
 
 @pytest.fixture
-def enclosures_first_document_data() -> DocumentUploads:
-    """TC-381 / TC-386 / TC-388 / TC-394: document 1."""
-    return EnclosuresFactory.first_document()
+def enclosures_optional_document_data() -> DocumentUploads:
+    """TC-386 / TC-388 / TC-394 / TC-396: document 3."""
+    return EnclosuresFactory.optional_document()
 
 
 @pytest.fixture
 def enclosures_replacement_data() -> DocumentUploads:
-    """TC-387: document 1 and its replacement."""
+    """TC-387: a replacement for the PAN card from registration (document 1)."""
     return EnclosuresFactory.replacement()
 
 
@@ -86,14 +90,8 @@ def enclosures_optional_only_data() -> DocumentUploads:
 
 
 @pytest.fixture
-def enclosures_partial_data() -> DocumentUploads:
-    """TC-396: documents 1 and 3."""
-    return EnclosuresFactory.partial()
-
-
-@pytest.fixture
 def enclosures_several_at_once_data() -> DocumentUploads:
-    """TC-473: documents 1, 2 and 4."""
+    """TC-473: documents 2, 3 and 4."""
     return EnclosuresFactory.several_at_once()
 
 
@@ -101,6 +99,12 @@ def enclosures_several_at_once_data() -> DocumentUploads:
 def enclosures_address_proof_data() -> DocumentUploads:
     """KAN-TC-851: document 2 with and without its type."""
     return EnclosuresFactory.address_proof()
+
+
+@pytest.fixture
+def enclosures_address_proof_other_data() -> DocumentUploads:
+    """KAN-TC-865: document 2 of type "Other" without, then with, the name of the document."""
+    return EnclosuresFactory.address_proof_other()
 
 
 @pytest.fixture
