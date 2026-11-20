@@ -19,7 +19,7 @@ PART_F_URL = re.compile(rf"{re.escape(FORMS_BASE)}/partF\.php")
 
 def _fill(part_c: PartCPage, data: PartCData) -> None:
     part_c.fill_part_c_form(
-        data.placement_type, data.service_mode, data.sectors, data.service_models, data.charges_displayed,
+        data.placement_type, data.service_mode, data.sectors, data.service_model, data.charges_displayed,
         sector_other=data.sector_other, digital_platform_details=data.digital_platform_details,
         training=data.training, training_mode=data.training_mode, training_capacity=data.training_capacity,
         training_sectors=data.training_sectors, training_address=data.training_address,
@@ -459,7 +459,8 @@ def test_tc138_back_to_part_b(part_c_page: PartCPage, logged_in_part_c_page):
 def test_tc142_full_save_restored(part_c_page: PartCPage, logged_in_part_c_page, part_c_full_data: PartCData):
     """
     Given I am on Part C
-    When  I fill every section (all sectors incl. Other, all agency types, all three Yes blocks, website) and save
+    When  I fill every section (all sectors incl. Other, agency type "Business to job seeker and Business",
+          all three Yes blocks, website) and save
     Then  Part C is saved and every value is shown again when I reopen it
 
     Notion: KAN-TC-142 | KAN-20 AC-8 | data: full
@@ -486,8 +487,7 @@ def test_tc142_full_save_restored(part_c_page: PartCPage, logged_in_part_c_page,
         expect(part_c_page.sector_other_input).to_have_value(data.sector_other)
 
     with allure.step("Verify Service Charges"):
-        for model in data.service_models:
-            expect(part_c_page.service_model_checkbox(model)).to_be_checked()
+        expect(part_c_page.service_model_radio(data.service_model)).to_be_checked()
         expect(part_c_page.charges_displayed_radio("yes")).to_be_checked()
 
     with allure.step("Verify the digital platform, training and mobilization blocks"):
@@ -573,9 +573,9 @@ def test_tc445_default_state(part_c_page: PartCPage, logged_in_part_c_page):
         expect(part_c_page.area_declaration_checkbox).not_to_be_checked()
         expect(part_c_page.service_mode_select).to_have_value("")
 
-    with allure.step("Verify no checkbox is ticked"):
+    with allure.step("Verify no sector is ticked and no agency type is chosen"):
         expect(part_c_page.select_all_sectors_checkbox).not_to_be_checked()
-        for boxes in (part_c_page.sector_checkboxes, part_c_page.service_model_checkboxes):
+        for boxes in (part_c_page.sector_checkboxes, part_c_page.service_model_radios):
             for index in range(boxes.count()):
                 expect(boxes.nth(index)).not_to_be_checked()
 
@@ -1094,17 +1094,40 @@ def test_tc460_service_charges_restored(
 ):
     """
     Given I am on Part C
-    When  I tick two agency types, answer No to charges displayed, save and reopen
-    Then  the Rule 7(2) hint is shown, and the same two boxes and No are restored
+    When  I look at "Type of Private Placement Agency", choose "Business to Business" and then
+          "Business to job seeker", answer No to charges displayed, save and reopen
+    Then  the field reads "(choose one)" with the three options, choosing the second option clears the
+          first, the Rule 7(2) hint is shown, and only "Business to job seeker" and No are restored
 
-    Notion: KAN-TC-460 | data: service_charges
+    Since 18-Nov-2026 the agency type is a single-choice radio group (it was a set of checkboxes).
+
+    Notion: KAN-TC-460 | KAN-20 Service Charges | data: service_charges
     """
     page, user = logged_in_part_c_page
     data = part_c_service_charges_data
 
-    with allure.step("Fill Part C with two agency types and charges displayed = No"):
+    with allure.step("Verify the agency type field: '(choose one)' with three options, none chosen"):
+        expect(part_c_page.service_model_field).to_contain_text(PartCPage.SERVICE_MODEL_LABEL)
+        expect(part_c_page.service_model_field).to_contain_text(PartCPage.SERVICE_MODEL_CHOOSE_ONE)
+        expect(part_c_page.service_model_radios).to_have_count(len(PartCPage.SERVICE_MODELS))
+        for model, (title, description) in PartCPage.SERVICE_MODEL_OPTIONS.items():
+            expect(part_c_page.service_model_radio(model)).to_have_attribute("type", "radio")
+            expect(part_c_page.service_model_radio(model)).not_to_be_checked()
+            expect(part_c_page.service_model_option(model)).to_contain_text(title)
+            expect(part_c_page.service_model_option(model)).to_contain_text(description)
+
+    with allure.step("Choose 'Business to Business' first"):
+        part_c_page.select_service_model("b2b")
+        expect(part_c_page.service_model_radio("b2b")).to_be_checked()
+
+    with allure.step(f"Fill Part C, choosing agency type '{data.service_model}' and charges displayed = No"):
         _fill(part_c_page, data)
         expect(part_c_page.charges_displayed_hint).to_have_text(PartCPage.CHARGES_DISPLAYED_HINT)
+
+    with allure.step("Verify only one agency type stays chosen"):
+        for model in PartCPage.SERVICE_MODELS:
+            box = part_c_page.service_model_radio(model)
+            expect(box).to_be_checked() if model == data.service_model else expect(box).not_to_be_checked()
 
     with allure.step("Save Part C"):
         part_c_page.click_submit()
@@ -1113,8 +1136,8 @@ def test_tc460_service_charges_restored(
     with allure.step("Reopen Part C — the selections are restored"):
         _reopen(page, part_c_page)
         for model in PartCPage.SERVICE_MODELS:
-            box = part_c_page.service_model_checkbox(model)
-            expect(box).to_be_checked() if model in data.service_models else expect(box).not_to_be_checked()
+            box = part_c_page.service_model_radio(model)
+            expect(box).to_be_checked() if model == data.service_model else expect(box).not_to_be_checked()
         expect(part_c_page.charges_displayed_radio("no")).to_be_checked()
 
 

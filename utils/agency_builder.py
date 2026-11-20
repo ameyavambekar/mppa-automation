@@ -219,7 +219,7 @@ class AgencyBuilder:
         part_c = PartCPage(self.page)
         part_c.open()
         self.page.wait_for_load_state("networkidle")
-        part_c.fill_part_c_form(data.placement_type, data.service_mode, data.sectors, data.service_models,
+        part_c.fill_part_c_form(data.placement_type, data.service_mode, data.sectors, data.service_model,
                                 data.charges_displayed)
         part_c.click_submit()
         expect(part_c.success_message).to_have_text(PartCPage.SAVED_MESSAGE)

@@ -34,7 +34,7 @@ class PartCData:
     placement_type: str = ""
     service_mode: str = ""
     sectors: list[str] = field(default_factory=list)
-    service_models: list[str] = field(default_factory=list)   # PartCPage.SERVICE_MODELS values
+    service_model: str = ""                                   # one of PartCPage.SERVICE_MODELS (radio)
     charges_displayed: bool = True
     sector_other: Optional[str] = None                        # only when "Other" is in sectors
     digital_platform_details: Optional[str] = None            # None → digital platform = No
@@ -65,7 +65,7 @@ class PartCFactory:
             placement_type="Within Maharashtra",
             service_mode="Online Only",
             sectors=["IT / Software"],
-            service_models=["b2b"],
+            service_model="b2b",
             charges_displayed=True,
             scenario_label="minimal",
         )
@@ -99,7 +99,7 @@ class PartCFactory:
             service_mode="Both Online & Offline",
             sectors=list(PartCPage.SECTORS),
             sector_other="Fintech & Payments",
-            service_models=list(PartCPage.SERVICE_MODELS),
+            service_model="both",
             charges_displayed=True,
             digital_platform_details="www.youragency.in and the YourAgency Jobs app",
             training=True,
@@ -124,9 +124,10 @@ class PartCFactory:
 
     @staticmethod
     def service_charges() -> PartCData:
-        """TC-460: two agency types, charges not displayed."""
+        """TC-460: agency type Business to job seeker (after first picking Business to Business),
+        charges not displayed."""
         data = PartCFactory.minimal()
-        data.service_models = ["b2b", "b2c"]
+        data.service_model = "b2c"
         data.charges_displayed = False
         data.scenario_label = "service_charges"
         return data

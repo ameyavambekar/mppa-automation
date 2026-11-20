@@ -10,7 +10,7 @@ class PartCPage(BasePage):
     """Page object for Step 3 — Part C: Operations & Infrastructure (forms/partC.php).
 
     Sections, top to bottom: Placement Services (placement type, service mode,
-    sectors), Service Charges (agency type checkboxes, charges-displayed radio),
+    sectors), Service Charges (agency type radios — choose one — and charges-displayed radio),
     Online & Digital Platform, Training Centre, Mobilization Centre, Other
     Services and the optional agency website.
 
@@ -48,8 +48,16 @@ class PartCPage(BasePage):
         "Domestic Workers / Household", "Drivers / Logistics",
         "Media / Entertainment", "Skilled Trades / Technical", "Other",
     )
-    # service_model[] checkbox values: employer-paid, job-seeker-paid, both
-    SERVICE_MODELS = ("b2b", "b2c", "both")
+    # "Type of Private Placement Agency * (choose one)": service_model[] radios since
+    # 18-Nov-2026 (checkboxes before), so only one value is saved.
+    SERVICE_MODEL_LABEL = "Type of Private Placement Agency"
+    SERVICE_MODEL_CHOOSE_ONE = "(choose one)"
+    SERVICE_MODEL_OPTIONS = {
+        "b2b": ("Business to Business", "collects service charges from employer"),
+        "b2c": ("Business to job seeker", "collects service charges from job seekers"),
+        "both": ("Business to job seeker and Business", "collects service charges from employer and job seeker both"),
+    }
+    SERVICE_MODELS = tuple(SERVICE_MODEL_OPTIONS)
 
     # Client-side texts
     SAVED_MESSAGE = "Part C saved."
@@ -290,12 +298,16 @@ class PartCPage(BasePage):
         return self.page.locator("#modelFld")
 
     @property
-    def service_model_checkboxes(self):
+    def service_model_radios(self):
         return self.page.locator("input[name='service_model[]']")
 
-    def service_model_checkbox(self, model: str):
+    def service_model_radio(self, model: str):
         """``model``: one of SERVICE_MODELS ('b2b', 'b2c', 'both')."""
         return self.page.locator(f"input[name='service_model[]'][value='{model}']")
+
+    def service_model_option(self, model: str):
+        """The ``<label class="model-opt">`` card around a service-model radio (title + description)."""
+        return self.service_model_radio(model).locator("xpath=ancestor::label[1]")
 
     def charges_displayed_radio(self, value: str):
         """``value``: 'yes' or 'no'. Neither is selected by default."""
@@ -469,9 +481,9 @@ class PartCPage(BasePage):
         self.sector_other_input.fill(sector)
         self.sector_other_input.blur()
 
-    @allure.step("Set service model '{model}' to {checked}")
-    def set_service_model(self, model: str, checked: bool = True):
-        self.service_model_checkbox(model).set_checked(checked)
+    @allure.step("Select Type of Private Placement Agency: '{model}'")
+    def select_service_model(self, model: str):
+        self._choose(self.service_model_radio(model))
 
     @allure.step("Service charges displayed: {displayed}")
     def select_charges_displayed(self, displayed: bool):
@@ -550,7 +562,7 @@ class PartCPage(BasePage):
 
     @allure.step("Fill the complete Part-C form")
     def fill_part_c_form(self, placement_type: str, service_mode: str, sectors: list,
-                         service_models: list, charges_displayed: bool,
+                         service_model: str, charges_displayed: bool,
                          sector_other: str = None,
                          digital_platform_details: str = None,
                          training: bool = False, training_mode: str = None,
@@ -573,8 +585,8 @@ class PartCPage(BasePage):
             self.set_sector(sector, True)
         if sector_other is not None:
             self.fill_sector_other(sector_other)
-        for model in service_models:
-            self.set_service_model(model, True)
+        if service_model:
+            self.select_service_model(service_model)
         self.select_charges_displayed(charges_displayed)
 
         self.select_digital_platform(digital_platform_details is not None)
