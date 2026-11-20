@@ -1,6 +1,9 @@
 import allure
 
+from config import FORMS_BASE
 from .base_page import BasePage
+
+DASHBOARD_URL = f"{FORMS_BASE}/dashboard.php"
 
 
 class DashboardPage(BasePage):
@@ -10,7 +13,37 @@ class DashboardPage(BasePage):
     registrations go straight to the Form-I wizard (see ``PartAPage``), and
     dashboard.php sends them back to the login page. Only submitted / paid
     applications may still reach it — locators below are unverified for that.
+
+    For a paid agency it is "My Dashboard" (dev, 20-Nov-2026): status "UNDER REVIEW", the registration
+    details, Step 0 – Step 8 ticked, and ``.qa-tile`` links — "My Dashboard" (home.php), "View my
+    application" (view_application.php), "Download application PDF" (download_pdf.php, new tab; HTTP 500,
+    defect "Agency Dashboard" #10) and "Helpdesk". It has no link to the payment receipt (defect
+    "Step 8 — Fees & Payment" #20).
     """
+
+    VIEW_APPLICATION_LABEL = "View my application"
+    DOWNLOAD_PDF_LABEL = "Download application PDF"
+    DOWNLOAD_PDF_HREF = "download_pdf.php"
+
+    # ── My Dashboard (paid agency) ────────────────────────────────────────────
+
+    def tile(self, label: str):
+        """A ``.qa-tile`` link by its bold title, e.g. 'Download application PDF'."""
+        return self.page.locator("a.qa-tile").filter(has=self.page.locator("b", has_text=label))
+
+    @property
+    def download_pdf_link(self):
+        return self.tile(self.DOWNLOAD_PDF_LABEL)
+
+    @property
+    def receipt_links(self):
+        """Links to the payment receipt (receipt.php) — none on dev (20-Nov-2026)."""
+        return self.page.locator("a[href*='receipt.php']")
+
+    @allure.step("Open My Dashboard")
+    def open(self):
+        self.navigate(DASHBOARD_URL)
+        self.wait_for_load()
 
     # ── Logout ────────────────────────────────────────────────────────────────
 
