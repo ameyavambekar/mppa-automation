@@ -6,13 +6,16 @@ from playwright.sync_api import expect
 from config import FORMS_BASE
 from pages.enclosures_page import EnclosuresPage, ENCLOSURES_URL
 from pages.login_page import LoginPage
-from pages.premises_page import PREMISES_URL, PremisesPage
+from pages.premises_page import DECLARATION_URL, PREMISES_LOCKED_STEP_URL, PREMISES_URL, PremisesPage
 from test_data.premises_factory import PremisesData, PremisesFactory
 from utils.aio import aio_case
 from utils.state_store import TestStateStore
 
 STORY = "Premises Photos"
 ON_PREMISES = re.compile(rf"{re.escape(PREMISES_URL)}")
+ON_DECLARATION = re.compile(rf"{re.escape(DECLARATION_URL)}")
+LOCKED = re.compile(r"\bpp-locked\b")
+OFF = re.compile(r"\bis-off\b")
 UPLOAD_TIMEOUT = 30000   # location lookup + upload
 LAT, LNG = PremisesFactory.LOCATION
 
@@ -42,20 +45,80 @@ def _expect_empty(premises: PremisesPage, key: str) -> None:
     expect(premises.photo(key)).to_have_count(0)
 
 
+def _expect_unlocked(premises: PremisesPage) -> None:
+    """Not saved: 'Save' shown, no 'Edit', no lock note, 'Next: Declaration →' greyed out in both bars."""
+    expect(premises.container).not_to_have_class(LOCKED)
+    expect(premises.lock_note).to_be_hidden()
+    expect(premises.save_buttons).to_have_count(2)
+    for i in range(2):
+        expect(premises.save_buttons.nth(i)).to_be_visible()
+        expect(premises.edit_buttons.nth(i)).to_be_hidden()
+        expect(premises.next_declaration_links.nth(i)).to_have_class(OFF)
+        expect(premises.next_declaration_links.nth(i)).to_have_attribute("title", PremisesPage.NEXT_OFF_TOOLTIP)
+
+
+def _expect_locked(premises: PremisesPage) -> None:
+    """Saved: lock note, 'Edit' instead of 'Save', 'Next: Declaration →' enabled, photo buttons and answers disabled."""
+    expect(premises.container).to_have_class(LOCKED)
+    expect(premises.lock_note).to_be_visible()
+    expect(premises.lock_note).to_have_text(PremisesPage.LOCK_NOTE)
+    for i in range(2):
+        expect(premises.edit_buttons.nth(i)).to_be_visible()
+        expect(premises.save_buttons.nth(i)).to_be_hidden()
+        expect(premises.next_declaration_links.nth(i)).not_to_have_class(OFF)
+    for key in PremisesPage.CONDITIONAL:
+        expect(premises.answer_radio(key, True)).to_be_disabled()
+        expect(premises.answer_radio(key, False)).to_be_disabled()
+    for i in range(premises.photo_actions.count()):
+        expect(premises.photo_actions.nth(i)).to_have_css("pointer-events", "none")
+
+
+def _fill_required(premises: PremisesPage, user, data: PremisesData, skip: tuple = ()) -> None:
+    """Saves the data's photos (except ``skip``) and answers its questions — without clicking 'Save'."""
+    for key, path in data.photos.items():
+        if key in skip:
+            continue
+        with allure.step(f"Save the '{key}' photo"):
+            _save_photo(premises, user, key, path)
+    for key, yes in data.answers.items():
+        with allure.step(f"Answer '{key}': {'Yes' if yes else 'No'}"):
+            premises.answer(key, yes)
+            if not yes:
+                expect(premises.badge(key)).to_have_text(PremisesPage.BADGE_NOT_APPLICABLE)
+
+
+def _save_and_expect_locked(premises: PremisesPage) -> None:
+    premises.click_save()
+    expect(premises.toast(PremisesPage.SAVED_TOAST)).to_have_count(1)
+    expect(premises.message_box).to_have_text("")
+    _expect_locked(premises)
+
+
+def _expect_missing(premises: PremisesPage, missing: list[str], present: list[str]) -> None:
+    """The Save refusal lists exactly the ``missing`` lines and none of the ``present`` ones."""
+    expect(premises.message_box).to_contain_text(PremisesPage.MISSING_INTRO)
+    for line in missing:
+        expect(premises.message_box).to_contain_text(line)
+    for line in present:
+        expect(premises.message_box).not_to_contain_text(line)
+    expect(premises.container).not_to_have_class(LOCKED)
+
+
 # ---------------------------------------------------------------------------
 # TC-475  Page layout
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-475")
 @allure.story(STORY)
-@allure.title("TC-475: Premises Photos shows the heading, location note, Head office cards and navigation buttons")
+@allure.title("TC-475: Premises Photos shows the heading, location note, five Head office cards and the Save bar")
 def test_tc475_page_layout(premises_page: PremisesPage, logged_in_premises_page):
     """
     Given I have uploaded every mandatory document
     When  I open the Premises Photos step
-    Then  the heading, subtitle, progress bar, note, Head office cards and the two buttons are shown
+    Then  the heading with the "← Documents" / "Save" / "Next: Declaration →" bar (repeated at the bottom), the
+          subtitle, progress bar, note and the five Head office cards are shown
 
-    Portal 2.1.0 (17-Nov-2026): six cards — signboard, outside view, inside view, classroom (with its
-    question), working area (now a required photo with no question) and the new service charges display board.
+    20-Nov-2026: five cards — signboard, outside view, inside view, classroom (with its question) and the
+    service charges display board; the working area card is gone and "Save & continue" became the Save bar.
 
     Notion: KAN-TC-475 | KAN-38 AC-1
     """
@@ -85,13 +148,19 @@ def test_tc475_page_layout(premises_page: PremisesPage, logged_in_premises_page)
                 expect(premises_page.card_title(key)).to_contain_text("*")
             if question:
                 expect(premises_page.question(key)).to_contain_text(question)
+                continue
             expect(premises_page.take_photo_button(key)).to_have_text("Take photo")
             expect(premises_page.choose_label(key)).to_contain_text("Choose from device")
             expect(premises_page.help_text(key)).to_have_text(PremisesPage.HELP)
+        expect(page.locator(".pp-card[data-key='working_area']")).to_have_count(0)
 
-    with allure.step("Verify the two buttons"):
+    with allure.step("Verify the bar under the heading and at the bottom"):
         expect(premises_page.back_to_documents_link).to_be_visible()
-        expect(premises_page.finish_button).to_have_text("Save & continue to Declaration")
+        expect(premises_page.back_to_documents_link).to_have_attribute("href", "enclosures.php")
+        expect(premises_page.save_button).to_have_text("Save")
+        expect(premises_page.next_declaration_link).to_have_text("Next: Declaration →")
+        expect(premises_page.next_declaration_link).to_have_attribute("href", "declaration.php")
+        _expect_unlocked(premises_page)
 
 
 # ---------------------------------------------------------------------------
@@ -99,13 +168,13 @@ def test_tc475_page_layout(premises_page: PremisesPage, logged_in_premises_page)
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-476")
 @allure.story(STORY)
-@allure.title("TC-476: Premises Photos opens with every card empty and the classroom question unanswered")
+@allure.title("TC-476: Premises Photos opens with every card required, the classroom question unanswered and Next greyed out")
 def test_tc476_default_state(premises_page: PremisesPage, logged_in_premises_page):
     """
     Given no photo has been saved and no question answered
     When  I open the Premises Photos step
-    Then  every card shows "No photo yet" with a "Required" badge and no location, and the classroom question
-          is unanswered (the working area has no question since portal 2.1.0)
+    Then  every card shows "No photo yet" with a "Required" badge and no location, the classroom question is
+          unanswered with its photo area hidden, and the bar shows "Save" with "Next: Declaration →" greyed out
 
     Notion: KAN-TC-476 | KAN-38 AC-2
     """
@@ -118,9 +187,13 @@ def test_tc476_default_state(premises_page: PremisesPage, logged_in_premises_pag
             expect(premises_page.location(key)).to_have_text("")
 
     for key in PremisesPage.CONDITIONAL:
-        with allure.step(f"Verify the '{key}' question is unanswered"):
+        with allure.step(f"Verify the '{key}' question is unanswered and its photo area hidden"):
             expect(premises_page.answer_radio(key, True)).not_to_be_checked()
             expect(premises_page.answer_radio(key, False)).not_to_be_checked()
+            expect(premises_page.card_body(key)).to_be_hidden()
+
+    with allure.step("Verify the step is not saved: 'Save' shown, 'Next: Declaration →' greyed out"):
+        _expect_unlocked(premises_page)
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +226,7 @@ def test_tc477_take_photo(logged_in_premises_camera_page):
 
     with allure.step("Verify the photo is saved with the location"):
         _expect_saved(premises, "signboard")
+        expect(premises.toast(PremisesPage.photo_saved_toast("signboard"))).to_have_count(1)
         expect(premises.map_link("signboard")).to_have_attribute(
             "href", f"https://www.google.com/maps?q={LAT},{LNG}")
 
@@ -178,6 +252,7 @@ def test_tc478_choose_from_device(
     for key, path in premises_jpg_and_png_data.photos.items():
         with allure.step(f"Choose a photo for '{key}'"):
             _save_photo(premises_page, user, key, path)
+            expect(premises_page.toast(PremisesPage.photo_saved_toast(key))).to_have_count(1)
 
 
 # ---------------------------------------------------------------------------
@@ -251,53 +326,55 @@ def test_tc480_conditional_photos(premises_page: PremisesPage, logged_in_premise
 
 
 # ---------------------------------------------------------------------------
-# TC-481  Save & continue — completes the step
+# TC-481  Save locks the photos — completes the step
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-481")
 @allure.story(STORY)
-@allure.title("TC-481: \"Save & continue to Declaration\" goes to the Declaration step when every required photo is saved")
+@allure.title("TC-481: \"Save\" locks the photos and enables \"Next: Declaration\", which opens the Declaration step")
 def test_tc481_save_and_continue(
     premises_page: PremisesPage, logged_in_premises_page, premises_required_only_data: PremisesData
 ):
     """
     Given location access is allowed
-    When  I save the five required photos, answer No to the classroom question and click
-          "Save & continue to Declaration"
-    Then  the Declaration step opens
+    When  I save the four required photos, answer No to the classroom question, click "Save", reload and
+          click "Next: Declaration →"
+    Then  the page is locked (toast, lock note, "Edit", photo buttons and answers disabled, Next enabled),
+          stays locked after the reload, and Next opens the Declaration step
 
-    Notion: KAN-TC-481 | KAN-38 AC-7 | data: required_only
+    Until 20-Nov-2026 the step was completed with "Save & continue to Declaration".
+
+    Notion: KAN-TC-481 | KAN-38 AC-8, EC-7 | data: required_only
     """
     page, user = logged_in_premises_page
-    data = premises_required_only_data
 
-    for key, path in data.photos.items():
-        with allure.step(f"Save the '{key}' photo"):
-            _save_photo(premises_page, user, key, path)
+    _fill_required(premises_page, user, premises_required_only_data)
 
-    for key, yes in data.answers.items():
-        with allure.step(f"Answer '{key}': {'Yes' if yes else 'No'}"):
-            premises_page.answer(key, yes)
-            expect(premises_page.badge(key)).to_have_text(PremisesPage.BADGE_NOT_APPLICABLE)
-
-    with allure.step("Click 'Save & continue to Declaration' — the Declaration step opens"):
-        premises_page.click_finish()
-        page.wait_for_url(re.compile(r"/forms/declaration"), timeout=15000)
+    with allure.step("Click 'Save' — the photos are saved and locked"):
+        _save_and_expect_locked(premises_page)
         _record(user, "completed")
+
+    with allure.step("Reload — the page is still locked"):
+        page.reload(wait_until="networkidle")
+        _expect_locked(premises_page)
+
+    with allure.step("Click 'Next: Declaration →' — the Declaration step opens"):
+        premises_page.click_next_declaration()
+        page.wait_for_url(ON_DECLARATION, timeout=15000)
 
 
 # ---------------------------------------------------------------------------
-# TC-482  Save & continue refused with photos missing — saves a photo
+# TC-482  Save refused with photos missing — saves a photo
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-482")
 @allure.story(STORY)
-@allure.title("TC-482: \"Save & continue to Declaration\" is refused while a required photo or answer is missing")
+@allure.title("TC-482: \"Save\" is refused and lists every missing photo and answer")
 def test_tc482_save_refused_when_incomplete(premises_page: PremisesPage, logged_in_premises_page):
     """
     Given only the signboard photo is saved and the classroom question is unanswered
-    When  I click "Save & continue to Declaration"
-    Then  I stay on Premises Photos with "Head office: answer the classroom question and add every required
-          photo (including the working area and the service charges board) before continuing." and the button
-          can be clicked again
+    When  I click "Save"
+    Then  the page is not locked and the message box lists "Add these before continuing:" with the classroom
+          answer and the outside view, inside view and service charges board photos (not the signboard);
+          "Save" is still shown and "Next: Declaration →" still greyed out
 
     Notion: KAN-TC-482 | KAN-38 AC-7
     """
@@ -306,13 +383,16 @@ def test_tc482_save_refused_when_incomplete(premises_page: PremisesPage, logged_
     with allure.step("Save only the signboard photo"):
         _save_photo(premises_page, user, "signboard", PremisesFactory.PHOTO_JPG)
 
-    with allure.step("Click 'Save & continue to Declaration'"):
-        premises_page.click_finish()
+    with allure.step("Click 'Save'"):
+        premises_page.click_save()
 
-    with allure.step("Verify the step is refused with the missing-photos message"):
-        expect(premises_page.message_box).to_have_text(PremisesPage.MISSING_PHOTOS_ERROR)
+    with allure.step("Verify the refusal lists the missing answer and photos"):
+        _expect_missing(premises_page,
+                        missing=[PremisesPage.missing_answer_line("classroom"),
+                                 *(PremisesPage.missing_photo_line(k) for k in ("exterior", "interior", "charges_board"))],
+                        present=[PremisesPage.missing_photo_line("signboard")])
         expect(page).to_have_url(ON_PREMISES)
-        expect(premises_page.finish_button).to_be_enabled()
+        _expect_unlocked(premises_page)
 
 
 # ---------------------------------------------------------------------------
@@ -320,19 +400,21 @@ def test_tc482_save_refused_when_incomplete(premises_page: PremisesPage, logged_
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-483")
 @allure.story(STORY)
-@allure.title("TC-483: \"Back: Documents\" returns to the Documents step with the uploads intact")
+@allure.title("TC-483: \"← Documents\" returns to the Documents step with the uploads intact")
 def test_tc483_back_to_documents(premises_page: PremisesPage, logged_in_premises_page):
     """
     Given I am on the Premises Photos step
-    When  I click "Back: Documents", then "Next: Premises Photos →"
+    When  I click "← Documents", then "Next: Premises Photos →"
     Then  the Documents step shows every mandatory document uploaded (2/2), and Premises Photos opens again
 
-    Notion: KAN-TC-483 | KAN-38 AC-8
+    The link was "Back: Documents" until 20-Nov-2026.
+
+    Notion: KAN-TC-483 | KAN-38 AC-12
     """
     page, user = logged_in_premises_page
     enclosures = EnclosuresPage(page)
 
-    with allure.step("Click 'Back: Documents'"):
+    with allure.step("Click '← Documents'"):
         premises_page.click_back_to_documents()
 
     with allure.step("Verify the Documents step shows 2/2 uploaded"):
@@ -357,7 +439,7 @@ def test_tc484_save_and_logout(premises_page: PremisesPage, logged_in_premises_p
     When  I click "Save & Log out" and log in again
     Then  login lands on Premises Photos with the signboard photo still saved
 
-    Notion: KAN-TC-484 | KAN-38 AC-9
+    Notion: KAN-TC-484 | KAN-38 AC-13
     """
     page, user = logged_in_premises_page
 
@@ -434,13 +516,13 @@ def test_tc486_not_jpg_or_png(premises_page: PremisesPage, logged_in_premises_pa
 # ---------------------------------------------------------------------------
 @aio_case("KAN-TC-487")
 @allure.story(STORY)
-@allure.title("TC-487: Changing a conditional answer from Yes to No marks the card \"Not applicable\"")
+@allure.title("TC-487: Changing the classroom answer from Yes to No marks the card \"Not applicable\"")
 def test_tc487_yes_to_no_after_photo(
     premises_page: PremisesPage, logged_in_premises_page, premises_required_only_data: PremisesData
 ):
     """
     Given the classroom question is answered Yes with a photo saved
-    When  I change the answer to No and complete the step
+    When  I change the answer to No, save the required photos, click "Save", then "Next: Declaration →"
     Then  the card is "Not applicable" with its location cleared, and it does not block the step
 
     Notion: KAN-TC-487 | KAN-38 EC-3 | data: required_only
@@ -457,14 +539,15 @@ def test_tc487_yes_to_no_after_photo(
         expect(premises_page.badge("classroom")).to_have_text(PremisesPage.BADGE_NOT_APPLICABLE)
         expect(premises_page.location("classroom")).to_have_text("")
 
-    with allure.step("Save the required photos and save & continue"):
-        for key, path in premises_required_only_data.photos.items():
-            _save_photo(premises_page, user, key, path)
-        premises_page.click_finish()
+    _fill_required(premises_page, user, premises_required_only_data)
 
-    with allure.step("Verify the classroom card did not block the step"):
-        page.wait_for_url(re.compile(r"/forms/declaration"), timeout=15000)
+    with allure.step("Click 'Save' — the classroom card does not block the step"):
+        _save_and_expect_locked(premises_page)
         _record(user, "completed")
+
+    with allure.step("Click 'Next: Declaration →' — the Declaration step opens"):
+        premises_page.click_next_declaration()
+        page.wait_for_url(ON_DECLARATION, timeout=15000)
 
 
 # ---------------------------------------------------------------------------
@@ -513,13 +596,13 @@ def test_tc850_charges_board_required(
     """
     Given location access is allowed and no photo is saved
     When  I save every required photo except the service charges display board, answer No to the classroom
-          question and click "Save & continue to Declaration", then save the board photo and click it again
-    Then  the first try is refused with the missing-photos message; after the board photo is saved
-          ("Uploaded" with my location) the Declaration step opens
+          question and click "Save", then save the board photo, click "Save" and "Next: Declaration →"
+    Then  the first Save is refused, listing only the board photo; after the board photo is saved
+          ("Uploaded" with my location) the page locks and the Declaration step opens
 
     Portal 2.1.0 (17-Nov-2026) added the service charges display board card.
 
-    Notion: KAN-TC-850 | KAN-38 | data: required_only
+    Notion: KAN-TC-850 | KAN-38 AC-7 | data: required_only
     """
     page, user = logged_in_premises_page
     data = premises_required_only_data
@@ -536,26 +619,109 @@ def test_tc850_charges_board_required(
         expect(premises_page.choose_label(key)).to_contain_text("Choose from device")
         expect(premises_page.file_input(key)).to_have_attribute("accept", re.compile(r"image/jpeg.*image/png"))
 
-    for other, path in data.photos.items():
-        if other == key:
-            continue
-        with allure.step(f"Save the '{other}' photo"):
-            _save_photo(premises_page, user, other, path)
+    _fill_required(premises_page, user, data, skip=(key,))
 
-    for question, yes in data.answers.items():
-        with allure.step(f"Answer '{question}': {'Yes' if yes else 'No'}"):
-            premises_page.answer(question, yes)
-
-    with allure.step("Click 'Save & continue to Declaration' — refused while the board photo is missing"):
-        premises_page.click_finish()
-        expect(premises_page.message_box).to_have_text(PremisesPage.MISSING_PHOTOS_ERROR)
+    with allure.step("Click 'Save' — refused while the board photo is missing"):
+        premises_page.click_save()
+        _expect_missing(premises_page, missing=[PremisesPage.missing_photo_line(key)],
+                        present=[PremisesPage.missing_photo_line(k) for k in data.photos if k != key]
+                        + [PremisesPage.missing_answer_line("classroom")])
         expect(page).to_have_url(ON_PREMISES)
         expect(premises_page.badge(key)).to_have_text(PremisesPage.BADGE_REQUIRED)
 
     with allure.step("Choose a photo of the service charges board"):
         _save_photo(premises_page, user, key, data.photos[key])
 
-    with allure.step("Click 'Save & continue to Declaration' — the Declaration step opens"):
-        premises_page.click_finish()
-        page.wait_for_url(re.compile(r"/forms/declaration"), timeout=15000)
+    with allure.step("Click 'Save', then 'Next: Declaration →' — the Declaration step opens"):
+        _save_and_expect_locked(premises_page)
         _record(user, "completed")
+        premises_page.click_next_declaration()
+        page.wait_for_url(ON_DECLARATION, timeout=15000)
+
+
+# ---------------------------------------------------------------------------
+# TC-866  Edit unlocks the photos — completes the step
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-866")
+@allure.story(STORY)
+@allure.title("TC-866: \"Edit\" unlocks the saved photos and blocks the Declaration step until they are saved again")
+def test_tc866_edit_unlocks(
+    premises_page: PremisesPage, logged_in_premises_page, premises_required_only_data: PremisesData
+):
+    """
+    Given the step is saved and locked
+    When  I click "Edit", reload, open declaration.php directly, then click "Save" again
+    Then  "Edit" unlocks the page (toast, "Save" back, Next greyed out, photos kept), it stays unlocked after
+          the reload, declaration.php sends me back to Premises Photos, and "Save" locks it again
+
+    Added 20-Nov-2026.
+
+    Notion: KAN-TC-866 | KAN-38 AC-9, AC-11 | data: required_only
+    """
+    page, user = logged_in_premises_page
+    data = premises_required_only_data
+
+    _fill_required(premises_page, user, data)
+    with allure.step("Precondition: click 'Save' — locked"):
+        _save_and_expect_locked(premises_page)
+        _record(user, "completed")
+
+    with allure.step("Click 'Edit' — the page is unlocked and the photos are kept"):
+        premises_page.click_edit()
+        expect(premises_page.toast(PremisesPage.EDIT_TOAST)).to_have_count(1)
+        _expect_unlocked(premises_page)
+        for key in data.photos:
+            expect(premises_page.photo(key)).to_be_visible()
+        for key in PremisesPage.CONDITIONAL:
+            expect(premises_page.answer_radio(key, False)).to_be_enabled()
+
+    with allure.step("Reload — still unlocked"):
+        page.reload(wait_until="networkidle")
+        _expect_unlocked(premises_page)
+
+    with allure.step("Open declaration.php directly — sent back to Premises Photos"):
+        page.goto(DECLARATION_URL)
+        page.wait_for_load_state("networkidle")
+        expect(page).to_have_url(PREMISES_LOCKED_STEP_URL)
+
+    with allure.step("Click 'Save' — locked again"):
+        _save_and_expect_locked(premises_page)
+
+
+# ---------------------------------------------------------------------------
+# TC-867  Next: Declaration blocked until Save — saves every photo, does not save the step
+# ---------------------------------------------------------------------------
+@aio_case("KAN-TC-867")
+@allure.story(STORY)
+@allure.title("TC-867: \"Next: Declaration\" stays blocked until \"Save\", even with every photo uploaded")
+def test_tc867_next_blocked_until_save(
+    premises_page: PremisesPage, logged_in_premises_page, premises_required_only_data: PremisesData
+):
+    """
+    Given the step has never been saved
+    When  I click the greyed-out "Next: Declaration →", then save every required photo and answer No to the
+          classroom question without clicking "Save", and open declaration.php directly
+    Then  Next opens nothing and shows "Click Save first — the Declaration opens after the photos are saved.",
+          stays greyed out with every photo uploaded, and declaration.php sends me back to Premises Photos
+
+    Added 20-Nov-2026.
+
+    Notion: KAN-TC-867 | KAN-38 AC-11, EC-6 | data: required_only
+    """
+    page, user = logged_in_premises_page
+
+    with allure.step("Click the greyed-out 'Next: Declaration →' — nothing opens"):
+        premises_page.click_next_declaration_while_off()
+        expect(premises_page.message_box).to_have_text(PremisesPage.SAVE_FIRST_ERROR)
+        expect(page).to_have_url(ON_PREMISES)
+
+    _fill_required(premises_page, user, premises_required_only_data)
+
+    with allure.step("Verify 'Next: Declaration →' is still greyed out"):
+        _expect_unlocked(premises_page)
+
+    with allure.step("Open declaration.php directly — sent back to Premises Photos"):
+        page.goto(DECLARATION_URL)
+        page.wait_for_load_state("networkidle")
+        expect(page).to_have_url(PREMISES_LOCKED_STEP_URL)
+        expect(premises_page.title).to_have_text(PremisesPage.TITLE)

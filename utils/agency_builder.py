@@ -255,9 +255,10 @@ class AgencyBuilder:
         expect(enclosures.mandatory_counter).to_have_text(EnclosuresPage.counter_text(len(EnclosuresPage.MANDATORY)))
         self.store.mark_form_step_status(username=user.username, step="enclosures", status="completed")
 
-    @allure.step("Save Premises Photos with the three required photos")
+    @allure.step("Save Premises Photos with the required photos")
     def save_premises(self, user: UserRecord) -> None:
-        """Saves the required photos at Pune, answers No to both questions and continues to Declaration.
+        """Saves the required photos at Pune, answers No to the classroom question, clicks Save (which locks the
+        photos, since 20-Nov-2026) and continues to Declaration.
         With branch offices the page has one set of signboard / exterior / interior cards per branch
         (``data-branch="n"``, same keys, no questions), filled with the same photos."""
         context = self.page.context
@@ -278,7 +279,9 @@ class AgencyBuilder:
                     expect(premises.photo(key, branch)).to_be_visible(timeout=30000)
             for key, yes in data.answers.items():
                 premises.answer(key, yes)
-            premises.click_finish()
+            premises.click_save()
+            expect(premises.container).to_have_class(re.compile(r"\bpp-locked\b"))
+            premises.click_next_declaration()
             self.page.wait_for_url(f"{FORMS_BASE}/declaration.php**", timeout=15000)
         finally:
             context.clear_permissions()
