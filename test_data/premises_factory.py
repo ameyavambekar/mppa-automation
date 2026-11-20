@@ -3,7 +3,8 @@ Data Factory — Premises Photos
 ==============================
 All test-data construction for the Premises Photos step (KAN-38).
 Each factory method maps to one Acceptance Criterion, Edge Case, or scenario
-referenced in the AIO test cases KAN-TC-475 … KAN-TC-489 (488: OUTSIDE_LOCATION).
+referenced in the AIO test cases KAN-TC-475 … KAN-TC-489 (488: OUTSIDE_LOCATION), KAN-TC-850 and
+KAN-TC-866 … KAN-TC-867.
 
 Photos are keyed by the card's ``data-key`` (see ``PremisesPage.PHOTOS``).
 The browser's location is set to ``PremisesFactory.LOCATION`` (Pune), or to
@@ -41,10 +42,11 @@ class PremisesFactory:
 
     @staticmethod
     def required_only() -> PremisesData:
-        """TC-481: the required photos (five since portal 2.1.0), the classroom question answered No."""
+        """TC-481 / 487 / 850 / 866 / 867: the required photos (four since 20-Nov-2026, when the working area
+        card was removed), the classroom question answered No."""
         return PremisesData(
             photos={"signboard": CERTIFICATE_JPG, "exterior": CERTIFICATE_JPG, "interior": CERTIFICATE_PNG,
-                    "working_area": CERTIFICATE_JPG, "charges_board": CERTIFICATE_PNG},
+                    "charges_board": CERTIFICATE_PNG},
             answers={"classroom": False},
             scenario_label="required_only",
         )

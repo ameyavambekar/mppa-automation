@@ -120,7 +120,7 @@ def logged_in_premises_camera_page(playwright_instance, request):
 
 @pytest.fixture
 def premises_required_only_data() -> PremisesData:
-    """TC-481: the five required photos, the classroom question No."""
+    """TC-481 / 487 / 850 / 866 / 867: the four required photos, the classroom question No."""
     return PremisesFactory.required_only()
 
 
