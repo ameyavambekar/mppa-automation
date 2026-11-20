@@ -64,3 +64,9 @@ def logged_in_preview_page(page):
 def preview_fee_data() -> PreviewData:
     """TC-512: the fee for an agency operating only within Maharashtra."""
     return PreviewFactory.within_maharashtra()
+
+
+@pytest.fixture
+def preview_across_india_data() -> PreviewData:
+    """TC-871: the fee once Part C's area is "Across India"."""
+    return PreviewFactory.across_india()
